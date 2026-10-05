@@ -1,8 +1,6 @@
 # cat-plugin-player
 
-オーディオプラグインを手軽に演奏できる軽量アプリ。
-[UAPMD](https://github.com/atsushieno/uapmd)を利用しています。
-Rustで書かれています。
+オーディオプラグインを手軽に演奏できる軽量アプリ。[UAPMD](https://github.com/atsushieno/uapmd)を利用しています。Rustで書かれています。
 
 # これまでの課題と、このアプリが解決すること
 - オーディオプラグインの音色は素晴らしいですね！
