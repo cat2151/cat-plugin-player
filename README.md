@@ -1,0 +1,1 @@
+このファイルは編集不要です。github actionsでupdateされます

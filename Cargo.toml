@@ -1,0 +1,13 @@
+[package]
+name = "cat-plugin-player"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+[dependencies]
+# Pinned: this is the eframe API the code below was written against.
+eframe = "0.31"
+# Audio output (WASAPI on Windows).
+cpal = "0.15"
+# Lock-free queue from the UI thread to the audio thread.
+rtrb = "0.3"
