@@ -3,8 +3,10 @@
 //! (on by default) or a single test note.
 
 mod audio;
+mod config;
 mod ffi;
 mod seq;
+mod session;
 
 use eframe::egui;
 use std::ffi::{c_char, c_void};
@@ -52,6 +54,7 @@ unsafe extern "C" fn on_instance(_user: *mut c_void, instance_id: i32, error: *c
 struct Instance {
     id: i32,
     label: String,
+    plugin: config::PluginKey,
     /// None if audio could not be started for this instance.
     voice: Option<audio::Voice>,
     /// When the test note that is sounding has to be released.
@@ -66,8 +69,9 @@ struct App {
     /// None if no usable audio device was found; plugins still load, silently.
     output: Option<audio::Output>,
     plugins: Vec<ffi::PluginInfo>,
-    /// Label of the plugin being instantiated, until its callback arrives.
-    pending: Option<String>,
+    pending: Option<ffi::PluginInfo>,
+    restore: Option<config::PluginKey>,
+    config_error: Option<String>,
     scanning: bool,
     filter: String,
     status: String,
@@ -86,12 +90,19 @@ impl App {
             Err(e) => (None, Some(e)),
         };
 
+        let (restore, config_error) =
+            match config::path().and_then(|path| config::Config::load(&path)) {
+                Ok(config) => (config.last_played, None),
+                Err(error) => (None, Some(format!("Could not read session: {error}"))),
+            };
         let mut app = Self {
             instances: Vec::new(),
             host,
             output,
             plugins: Vec::new(),
             pending: None,
+            restore,
+            config_error,
             scanning: false,
             filter: String::new(),
             status: String::new(),
@@ -154,13 +165,20 @@ impl App {
                 Event::ScanDone(error) => {
                     self.scanning = false;
                     self.plugins = self.host.plugins();
+                    let scan_succeeded = error.is_none();
                     self.status = match error {
                         Some(e) => format!("Scan failed: {e}"),
                         None => format!("{} plugins", self.plugins.len()),
                     };
+                    if scan_succeeded {
+                        self.restore_session();
+                    }
                 }
                 Event::InstanceCreated { id, error } => {
-                    let label = self.pending.take().unwrap_or_else(|| "?".into());
+                    let Some(plugin) = self.pending.take() else {
+                        continue;
+                    };
+                    let label = format!("{} [{}]", plugin.name, plugin.format);
                     match error {
                         None if id >= 0 => {
                             let voice = match self.start_voice(id) {
@@ -180,12 +198,17 @@ impl App {
                                     None
                                 }
                             };
+                            let playing = voice.is_some();
                             self.instances.push(Instance {
                                 id,
                                 label,
+                                plugin: config::PluginKey::from_plugin(&plugin),
                                 voice,
                                 note_off_at: None,
                             });
+                            if playing {
+                                self.remember_played(id);
+                            }
                         }
                         Some(e) => self.status = format!("Could not load {label}: {e}"),
                         None => self.status = format!("Could not load {label}"),
@@ -218,6 +241,9 @@ impl eframe::App for App {
                 ui.text_edit_singleline(&mut self.filter);
                 ui.label(&self.status);
             });
+            if let Some(error) = &self.config_error {
+                ui.colored_label(egui::Color32::YELLOW, error);
+            }
         });
 
         // Clicks are collected first and acted on after the panels are drawn.
@@ -286,21 +312,15 @@ impl eframe::App for App {
         });
 
         if let Some(i) = load {
-            let plugin = &self.plugins[i];
-            self.pending = Some(format!("{} [{}]", plugin.name, plugin.format));
-            self.status = format!("Loading {}...", plugin.name);
-            self.host.create_instance(
-                plugin.index,
-                self.sample_rate(),
-                audio::MAX_BLOCK_FRAMES,
-                on_instance,
-                std::ptr::null_mut(),
-            );
+            self.load_plugin(i);
         }
         if let Some((id, on)) = set_sequence {
             if let Some(instance) = self.instances.iter().find(|i| i.id == id) {
                 if let Some(voice) = &instance.voice {
                     voice.set_sequence(on);
+                    if on {
+                        self.remember_played(id);
+                    }
                 }
             }
         }
@@ -311,8 +331,10 @@ impl eframe::App for App {
                     if instance.note_off_at.is_some() {
                         voice.send(audio::note_off(0, TEST_NOTE));
                     }
-                    voice.send(audio::note_on(0, TEST_NOTE, TEST_VELOCITY));
-                    instance.note_off_at = Some(Instant::now() + TEST_NOTE_LENGTH);
+                    if voice.send(audio::note_on(0, TEST_NOTE, TEST_VELOCITY)) {
+                        instance.note_off_at = Some(Instant::now() + TEST_NOTE_LENGTH);
+                        self.remember_played(id);
+                    }
                 }
             }
         }
