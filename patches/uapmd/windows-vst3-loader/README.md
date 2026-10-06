@@ -2,7 +2,7 @@
 
 ## 状態
 
-- 上流への報告: **未報告**。送信用の文面は [UPSTREAM_REPORT.md](UPSTREAM_REPORT.md)。報告後はここに Issue / PR のリンクを追記する。
+- 上流への報告: **報告済み**。[UAPMD Issue #66](https://github.com/atsushieno/uapmd/issues/66)。元となった日本語の報告文は [UPSTREAM_REPORT.md](UPSTREAM_REPORT.md)。
 - 対象: UAPMD `source/remidy/src/vst3/ClassModuleInfo.cpp`。
 - 調査時の上流リビジョン: `bc39b50faf2f2b02668de82d3d95f2bdbafd3c34`。
 - 検証結果: 下記「今回の検証結果」に記録。
