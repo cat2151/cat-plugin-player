@@ -1,119 +1,120 @@
 # cat-plugin-player
 
-A lightweight application that allows you to easily play audio plugins. It utilizes [UAPMD](https://github.com/atsushieno/uapmd) and is written in Rust.
+A lightweight app for easily playing audio plugins. It utilizes [UAPMD](https://github.com/atsushieno/uapmd) and is written in Rust.
 
-# Problems So Far and What This App Solves
-- Audio plugin sounds are fantastic!
-- To play them, you often need to launch a DAW and perform setup beforehand.
-- Lightweight apps for easy playback sometimes required account registration or had a user experience that wasn't "for me."
-- In modern times, if you have a desired UX, you can achieve it through "vibe coding."
+# Previous Challenges and What This App Solves
+- Audio plugin timbres are amazing!
+- To play them, it often requires launching a DAW and performing preliminary setup for playback.
+- Lightweight apps for easy playback sometimes require account registration to obtain, or their operation felt "not for me."
+- Nowadays, if you have a desired UX, you can achieve it through "vibe coding."
 - So, I decided to do just that.
 
 # Features
-- **Detection**
+- Detection
   - Upon launch, it automatically detects installed plugins.
-- **Playback**
+- Playback
   - Pressing the `Load` button automatically starts playback after the plugin is loaded.
-- **GUI**
+- GUI
   - You can display the plugin's GUI by pressing the `Show UI` button.
-- **Timbre**
-  - To change the timbre, use the plugin's GUI.
+- Sound
+  - To change the sound/timbre, use the plugin's GUI.
 
-# Features (Detailed additions by AI. Intending to refactor later as it's a bit hard to read)
-- **Playback**
-  - The plugin instance last played is saved to `%LOCALAPPDATA%\cat-plugin-player\config.toml`, regenerated upon next launch, and automatically played.
-  - It remembers when `Load` is successful, `Sequence` is turned on, or `Test note` is played. The memory persists even after stopping or `Remove`ing.
-  - Saved targets include plugin format, ID, name, vendor, and file location. It does not include saving timbre or parameters modified within the plugin.
-  - Upon startup, it directly loads the previous plugin and starts playback, then initializes the GUI and scans the list in the background.
-  - If direct loading is not possible due to old history or file relocation, it restores from the scan results after the GUI is displayed. Old history is updated once played.
-  - For startup time measurement methods and results, please refer to [docs/startup-timing.md](docs/startup-timing.md).
+# Features (Detailed additions by AI. Will revise later as it's a bit hard to read)
+- Playback
+  - The last played plugin instance is saved to `%LOCALAPPDATA%\cat-plugin-player\config.toml` and regenerated for automatic playback on the next launch.
+  - It remembers when `Load` is successful, when `Sequence` is turned on, or when a `Test note` is played. The memory persists even after stopping or `Remove`.
+  - Saved items include the plugin's format, ID, name, vendor, and file location. This does not include saving timbre or parameters changed within the plugin.
+  - On startup, it directly loads the previous plugin and starts playback, then initializes the GUI and scans the list in the background.
+  - If direct loading is not possible due to old history or file relocation, it is restored from the scan results after GUI display. Old history is updated once played.
+  - Refer to [docs/startup-timing.md](docs/startup-timing.md) for startup time measurement methods and results.
 
-# Build & Verification Steps
-- *Prerequisite*: First, please build [UAPMD](https://github.com/atsushieno/uapmd). Refer to its documentation for instructions. On Windows, it's easy if you have `Microsoft C++ Build Tools` installed! If not, ask an AI how to install it – it's that easy! The general idea is to let AI handle it.
-- *Next Prerequisite*: If Rust is not installed, ask an AI how to install it – it's that easy!
-- As mentioned, ensure that `../uapmd` is built.
-- Ensure that an audio plugin (instrument) like Surge XT is installed. For example, verify that Surge XT produces sound in REAPER.
+# Build & Test Procedures
+- *Prerequisite: First, build [UAPMD](https://github.com/atsushieno/uapmd). Please refer to its documentation for procedures. On Windows, it's easy if you have `Microsoft C++ Build Tools` installed! If not, it's easy to install by asking AI! The general idea is that AI makes everything easy!*
+- *Next prerequisite: If Rust is not installed, it's easy to install by asking AI!*
+- As mentioned, confirm that `../uapmd` is already built.
+- Confirm that an audio plugin (instrument) like Surge XT is installed. For example, confirm that Surge XT plays sound in REAPER.
 - Run `cargo run` (the app will be debug-built).
 - Confirm that the window opens.
-- Confirm that Surge XT and similar plugins are listed on the screen.
-- Click the `Load` button.
-- Confirm that the plugin loads and produces sound.
+- Confirm that Surge XT, etc., are listed on the screen.
+- Click the Load button.
+- Confirm that it loads and produces sound.
 
 # Future Brainstorming
-- *Subject to change based on mood*
-- **Plugin Compatibility**
-  - Many plugins detectable by `cmrt` are not detected by this app.
-    - For instance, out of about 10 CLAP plugins, only 2 are detected.
-- **Effect Routing**
-  - Start small. First one, then serial. `cmrt` has already implemented this.
-- **Leverage strengths not found in `cmrt` (VST3 and GUI support)**
-  - **Screenshots**
-    - Save screenshots of open GUIs to the config directory, and the plugin launcher displays them for visual selection.
-      - Previous issue: Selecting plugins from a text-based list is prone to "eye-slipping" (losing focus).
-        - With images, selection might be intuitive, and "eye-slipping" might be reduced. Worth investigating.
-    - Consideration: `cmrt`'s method of selecting across plugins by filtering patch names is also good in its own way. We envision coexistence and validation.
-  - **GUI automation?**
-    - Log GUI operations and reproduce them swiftly via `cmrt`'s TUI? Could this hint at plugin-specific adaptations?
-  - **Experiment with `egui`**
+- *May change depending on my mood.*
+- Plugin compatibility
+  - Many plugins that `cmrt` can detect are not detected by this app.
+    - CLAP plugins are an example; only about 2 out of 10 are detected.
+- Effect routing
+  - Start small. First one. Then serial. `cmrt` already achieves this.
+- Extend the unique strength of supporting VST3 and GUI, which `cmrt` lacks.
+  - Screenshots
+    - Save screenshots of opened GUIs to the config directory, and the plugin launcher displays them, allowing visual selection.
+      - Previous challenge: choosing plugins based on text makes the eyes glaze over.
+        - With images, selection can be intuitive. It might prevent the eyes from glazing over. Worth testing.
+    - Consider: `cmrt`'s method of selecting plugins across the board by filtering patch names is also good in its own way. The plan is to verify both approaches concurrently.
+  - Automatic GUI operation?
+    - Log GUI operations and reproduce snappy operations in `cmrt`'s TUI? As a hint for plugin-specific adaptations?
+  - Play around with `egui`
     - Keyboard display?
     - Waveform display?
     - Grid sequencer?
-  - **Snapshot, State Save**
-    - Call up a favorite sound with a preferred shimmer reverb inserted, all with a single shortcut key.
-- **Utilize various `cmrt` crates for diverse functionalities**
-  - *This would also refine the crates, and we benefit from using them, making it a win-win.*
-  - **Patch Selector**
+  - Snapshot, state save
+    - Recall a favorite timbre with a preferred type of shimmer reverb inserted, with a single shortcut key.
+- Utilize various `cmrt` crates for various functionalities.
+  - *This also refines the crates, and we benefit from using them, so it's a win-win.*
+  - Patch selector
     - Can detect preset patches for CLAP audio plugins.
-  - **CLI Import / Export**
-    - The `cmrt` keyboard screen can play a sound instantly from the CLI by specifying patch, effect, arpeggio, etc. Enable the same functionality (to the level where changing `cmrt` to `cat-plugin-player` in the command makes it work).
-      - Frequent breaking changes are acceptable. Manual migration is possible later. Better than fearing changes, becoming immobile, and hindering progress.
+  - CLI import / export
+    - The `cmrt` keyboard screen can play a sound with one command from the CLI, specifying patch, effect, arpeggio, etc. Make the same possible (to the level where changing `cmrt` to `cat-plugin-player` is all it takes to play).
+      - Frequent destructive changes are acceptable. Manual migration is possible later. It's better than fearing changes, becoming stuck, and halting progress.
 
-# Concept, What We Aim For
-- **Musical Instrument**
-  - For example, a synthesizer with a MIDI keyboard produces sound when you power it on and press a key.
+# Concept, What It Aims For
+- Instrument
+  - For example, a synthesizer with a MIDI keyboard plays a sound when you power it on and press a key.
     - We aim for that level of ease of use.
-      - Minimize the operations required to produce sound.
-- **Sound Production**
-  - We aim to maintain "it produces sound in the author's environment" as much as possible.
-- **Instant Sound**
-  - From app launch to sound production, the perceived time is 0.2 seconds. We prioritize the fastest possible playback.
-    - Processes like GUI display preparation are done after the sound is produced.
-      - Sound playing before the GUI appears might be considered a "sound splash screen."
-- **Educational Use**
-  - It is geared more towards educational purposes than commercial use.
-- **Experimentation, Exploration, Personal Use**
-  - We will frequently make breaking changes.
+      - Minimize operations required to produce sound.
+- Sound Production
+  - We aim to maintain, as much as possible, "that it plays in the author's environment."
+- Instant Playback
+  - Perceived 0.2 seconds from app launch to sound. Playback is optimized for maximum speed.
+    - Processing like GUI display preparation is also done after the sound.
+      - Sound playing before the GUI appears might be considered a sound version of a splash screen.
+    - You need to run the release-built .exe directly (running via cargo involves timestamp checks, and debug builds include debug code, both of which add to startup time).
+- Educational Use
+  - It is oriented more towards educational use than commercial use.
+- Experimentation, Exploration, Personal Use
+  - Frequent destructive changes will be made.
 
-# Random Thoughts Corner
+# Casual Thoughts Corner
 - *Related to the concept*
-- I love audio plugin preset sounds.
+- I like the preset sounds of audio plugins.
   - Because they are reproducible.
   - Because they are shared freely, everyone can benefit.
 - I want to provide an instrument UX.
-  - I want to provide a musical instrument UX, not a DAW UX.
-- What is a musical instrument?
-  - It's a synthesis of layers from the audio plugin to the PC keyboard.
+  - I want to provide an instrument UX, not a DAW UX.
+- What is an instrument?
+  - It is the sum of each layer from audio plugins to PC keyboards.
     - There is an intermediate layer.
-      - This is the plugin host and performance UI.
-        - This is a layer that can be "vibe coded."
-        - Creating this can improve the UX.
+      - That is the plugin host, the playback UI.
+        - This is a layer that can be "vibe-coded."
+        - By creating this, UX can be improved.
 - For whom is this instrument?
-  - Cats, babies.
-    - In other words, we aim to broaden the target audience to include beginners, even to the extent of cats and babies (e.g., on Android tablets).
-  - *This is merely a metaphor. It is unconfirmed whether it actually works on Android tablets. The likelihood of effort being made to make it work on Android if it doesn't is also low.*
+  - Cats, babies
+    - In other words, the target range is broadened towards beginners, even including cats and and babies (e.g., on Android tablets).
+  - *This is merely a metaphor. Whether it actually runs on Android tablets is unconfirmed. The likelihood of effort being made to make it work on Android if it doesn't is also low.*
 
-# Out of Scope, What We Don't Aim For
-- **Robustness**
-  - Absolutely no bugs, no crashes, no matter what.
+# Out of Scope, Not Aimed For
+- Robustness
+  - Absolutely no bugs, no app crashes, no matter what.
   - Full compatibility. Loads and operates with all past settings and data.
-- **Features**
-  - Equipped with every conceivable feature. Usable for all purposes.
-- **Convenience**
+- Features
+  - Equipped with all conceivable features. Usable for all purposes.
+- Convenience
   - Pursuing convenience and ease of use to the extreme.
-- **Performance**
-  - Operates at high speed without CPU load in all environments. Sound never drops out.
-- **Demands**
-  - Instant response to all user requests.
+- Performance
+  - High-speed operation with no CPU load in any environment. Sound will never drop out.
+- User Requests
+  - Immediately responding to all user requests.
 
 # License
 - MIT
