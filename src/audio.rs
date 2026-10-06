@@ -4,6 +4,7 @@
 
 use crate::ffi;
 use crate::seq::{EventBuf, Sequencer};
+use crate::startup::{self, Stage};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -57,6 +58,7 @@ pub struct Voice {
     _processor: ffi::Processor,
     events: rtrb::Producer<u32>,
     sequence_on: Arc<AtomicBool>,
+    rendered: Arc<AtomicBool>,
 }
 
 impl Voice {
@@ -75,13 +77,23 @@ impl Voice {
         // SAFETY: `_stream` is declared before `_processor`, so the callback is
         // gone before the processor is; only this one callback renders.
         let mut render = unsafe { processor.audio_ref() };
+        let mut trace_callback = startup::enabled();
+        let mut trace_signal = trace_callback;
+        let rendered = Arc::new(AtomicBool::new(false));
+        let rendered_flag = Arc::clone(&rendered);
+        let mut first_render = true;
 
+        startup::mark(Stage::StreamBuildRequested);
         let stream = output
             .device
             .build_output_stream(
                 &output.config,
                 move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
                     // Audio thread: no allocation, no locks.
+                    if trace_callback {
+                        startup::mark(Stage::FirstAudioCallback);
+                        trace_callback = false;
+                    }
                     let enabled = sequence_flag.load(Ordering::Relaxed);
                     let block = MAX_BLOCK_FRAMES as usize * channels;
                     let mut first = true;
@@ -98,26 +110,41 @@ impl Voice {
                         }
                         sequencer.render(enabled, chunk.len() / channels, &mut ump);
                         render.process(ump.as_slice(), chunk, channels);
+                        if trace_signal && chunk.iter().any(|sample| sample.abs() > 0.000001) {
+                            startup::mark(Stage::FirstSignalRendered);
+                            trace_signal = false;
+                        }
+                    }
+                    if first_render {
+                        rendered_flag.store(true, Ordering::Release);
+                        first_render = false;
                     }
                 },
                 |err| eprintln!("audio stream error: {err}"),
                 None,
             )
             .map_err(|e| format!("cannot open the audio stream: {e}"))?;
+        startup::mark(Stage::StreamBuilt);
         stream
             .play()
             .map_err(|e| format!("cannot start the audio stream: {e}"))?;
+        startup::mark(Stage::PlayReturned);
 
         Ok(Self {
             _stream: stream,
             _processor: processor,
             events,
             sequence_on,
+            rendered,
         })
     }
 
     pub fn sequence_on(&self) -> bool {
         self.sequence_on.load(Ordering::Relaxed)
+    }
+
+    pub fn has_rendered(&self) -> bool {
+        self.rendered.load(Ordering::Acquire)
     }
 
     /// Starts or stops the phrase. Takes effect at the next audio block; stopping

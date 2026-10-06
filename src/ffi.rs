@@ -3,7 +3,7 @@
 //! Everything here must be used from the main (UI) thread only; `Host` is
 //! neither `Send` nor `Sync` because it holds a raw pointer.
 
-use std::ffi::{c_char, c_void, CStr};
+use std::ffi::{c_char, c_void, CStr, CString};
 use std::ptr;
 
 #[repr(C)]
@@ -25,6 +25,7 @@ pub const UH_PLUGIN_NAME: i32 = 0;
 pub const UH_PLUGIN_VENDOR: i32 = 1;
 pub const UH_PLUGIN_FORMAT: i32 = 2;
 pub const UH_PLUGIN_ID: i32 = 3;
+pub const UH_PLUGIN_PATH: i32 = 4;
 
 pub const UH_OK: i32 = 0;
 
@@ -32,6 +33,15 @@ extern "C" {
     fn uh_create(wake: Option<UhWakeFn>, wake_user: *mut c_void) -> *mut UhHost;
     fn uh_destroy(host: *mut UhHost);
     fn uh_pump(host: *mut UhHost);
+    fn uh_pump_startup(host: *mut UhHost);
+    fn uh_restore_plugin(
+        host: *mut UhHost,
+        format: *const c_char,
+        id: *const c_char,
+        name: *const c_char,
+        vendor: *const c_char,
+        path: *const c_char,
+    ) -> i32;
     fn uh_scan_async(
         host: *mut UhHost,
         rescan: i32,
@@ -93,6 +103,7 @@ pub struct PluginInfo {
     pub vendor: String,
     pub format: String,
     pub id: String,
+    pub bundle_path: String,
 }
 
 pub struct Host {
@@ -116,6 +127,37 @@ impl Host {
         unsafe { uh_pump(self.raw) }
     }
 
+    /// Before eframe starts, also dispatch native messages for plugin windows.
+    pub fn pump_startup(&self) {
+        unsafe { uh_pump_startup(self.raw) }
+    }
+
+    pub fn restore_plugin(&self, key: &crate::config::PluginKey) -> Option<PluginInfo> {
+        let format = CString::new(key.format.as_str()).ok()?;
+        let id = CString::new(key.id.as_str()).ok()?;
+        let name = CString::new(key.name.as_str()).ok()?;
+        let vendor = CString::new(key.vendor.as_str()).ok()?;
+        let path = CString::new(key.bundle_path.as_str()).ok()?;
+        let index = unsafe {
+            uh_restore_plugin(
+                self.raw,
+                format.as_ptr(),
+                id.as_ptr(),
+                name.as_ptr(),
+                vendor.as_ptr(),
+                path.as_ptr(),
+            )
+        };
+        (index >= 0).then(|| PluginInfo {
+            index,
+            format: key.format.clone(),
+            id: key.id.clone(),
+            name: key.name.clone(),
+            vendor: key.vendor.clone(),
+            bundle_path: key.bundle_path.clone(),
+        })
+    }
+
     /// Returns false if a scan is already running.
     pub fn scan_async(&self, rescan: bool, done: UhScanDoneFn, user: *mut c_void) -> bool {
         unsafe { uh_scan_async(self.raw, rescan as i32, Some(done), user) == 0 }
@@ -130,6 +172,7 @@ impl Host {
                 vendor: self.plugin_field(index, UH_PLUGIN_VENDOR),
                 format: self.plugin_field(index, UH_PLUGIN_FORMAT),
                 id: self.plugin_field(index, UH_PLUGIN_ID),
+                bundle_path: self.plugin_field(index, UH_PLUGIN_PATH),
             })
             .collect()
     }

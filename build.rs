@@ -40,7 +40,12 @@ fn main() {
     let build_dir = manifest_dir.join("target").join("shim");
     let out_dir = build_dir.join("out");
 
-    for f in ["CMakeLists.txt", "uapmd_shim.cpp", "uapmd_shim.h"] {
+    for f in [
+        "CMakeLists.txt",
+        "uapmd_shim.cpp",
+        "uapmd_shim.h",
+        "owned_instance.h",
+    ] {
         println!("cargo:rerun-if-changed={}", shim_dir.join(f).display());
     }
     for v in [

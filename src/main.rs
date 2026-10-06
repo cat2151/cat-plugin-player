@@ -3,12 +3,15 @@
 //! (on by default) or a single test note.
 
 mod audio;
+mod boot;
 mod config;
 mod ffi;
 mod seq;
 mod session;
+mod startup;
 
 use eframe::egui;
+use startup::Stage;
 use std::ffi::{c_char, c_void};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -29,22 +32,26 @@ enum Event {
 }
 
 static EVENTS: Mutex<Vec<Event>> = Mutex::new(Vec::new());
+static GUI_CONTEXT: Mutex<Option<egui::Context>> = Mutex::new(None);
 
 fn push_event(event: Event) {
     EVENTS.lock().unwrap().push(event);
 }
 
-unsafe extern "C" fn on_wake(user: *mut c_void) {
-    // Any thread. `user` is the leaked egui::Context from App::new().
-    let ctx = &*(user as *const egui::Context);
-    ctx.request_repaint();
+unsafe extern "C" fn on_wake(_user: *mut c_void) {
+    let context = GUI_CONTEXT.lock().unwrap().clone();
+    if let Some(context) = context {
+        context.request_repaint();
+    }
 }
 
 unsafe extern "C" fn on_scan_done(_user: *mut c_void, error: *const c_char) {
+    startup::mark(Stage::ScanCallback);
     push_event(Event::ScanDone(ffi::error_string(error)));
 }
 
 unsafe extern "C" fn on_instance(_user: *mut c_void, instance_id: i32, error: *const c_char) {
+    startup::mark(Stage::InstanceCallback);
     push_event(Event::InstanceCreated {
         id: instance_id,
         error: ffi::error_string(error),
@@ -73,47 +80,13 @@ struct App {
     restore: Option<config::PluginKey>,
     config_error: Option<String>,
     scanning: bool,
+    deferred_scan: bool,
+    fast_restore: bool,
     filter: String,
     status: String,
 }
 
 impl App {
-    fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        // Leaked on purpose: the shim may call on_wake() from other threads for
-        // as long as the process lives.
-        let ctx: *mut egui::Context = Box::into_raw(Box::new(cc.egui_ctx.clone()));
-        let host = ffi::Host::new(on_wake, ctx as *mut c_void)
-            .expect("uh_create() failed: could not set up the uapmd plugin host");
-
-        let (output, audio_error) = match audio::Output::open_default() {
-            Ok(output) => (Some(output), None),
-            Err(e) => (None, Some(e)),
-        };
-
-        let (restore, config_error) =
-            match config::path().and_then(|path| config::Config::load(&path)) {
-                Ok(config) => (config.last_played, None),
-                Err(error) => (None, Some(format!("Could not read session: {error}"))),
-            };
-        let mut app = Self {
-            instances: Vec::new(),
-            host,
-            output,
-            plugins: Vec::new(),
-            pending: None,
-            restore,
-            config_error,
-            scanning: false,
-            filter: String::new(),
-            status: String::new(),
-        };
-        app.start_scan(false);
-        if let Some(e) = audio_error {
-            app.status = format!("No audio: {e}");
-        }
-        app
-    }
-
     fn sample_rate(&self) -> u32 {
         self.output
             .as_ref()
@@ -127,6 +100,7 @@ impl App {
             .host
             .create_processor(instance_id, output.sample_rate(), audio::MAX_BLOCK_FRAMES)
             .ok_or("could not set up audio processing for the plugin")?;
+        startup::mark(Stage::ProcessorReady);
         // The phrase starts as soon as the plugin is ready.
         audio::Voice::start(output, processor, true)
     }
@@ -145,6 +119,7 @@ impl App {
     }
 
     fn start_scan(&mut self, rescan: bool) {
+        startup::mark(Stage::ScanRequested);
         if self
             .host
             .scan_async(rescan, on_scan_done, std::ptr::null_mut())
@@ -165,6 +140,7 @@ impl App {
                 Event::ScanDone(error) => {
                     self.scanning = false;
                     self.plugins = self.host.plugins();
+                    startup::mark(Stage::CatalogReady);
                     let scan_succeeded = error.is_none();
                     self.status = match error {
                         Some(e) => format!("Scan failed: {e}"),
@@ -175,12 +151,16 @@ impl App {
                     }
                 }
                 Event::InstanceCreated { id, error } => {
+                    startup::mark(Stage::InstanceHandled);
                     let Some(plugin) = self.pending.take() else {
                         continue;
                     };
                     let label = format!("{} [{}]", plugin.name, plugin.format);
                     match error {
                         None if id >= 0 => {
+                            if self.fast_restore {
+                                self.restore = None;
+                            }
                             let voice = match self.start_voice(id) {
                                 Ok(voice) => {
                                     // Only the newest instance plays the phrase by
@@ -213,6 +193,7 @@ impl App {
                         Some(e) => self.status = format!("Could not load {label}: {e}"),
                         None => self.status = format!("Could not load {label}"),
                     }
+                    self.fast_restore = false;
                 }
             }
         }
@@ -225,6 +206,11 @@ impl eframe::App for App {
         self.host.pump();
         self.handle_events();
         self.release_due_notes();
+        if self.deferred_scan && self.pending.is_none() {
+            self.deferred_scan = false;
+            self.start_scan(false);
+        }
+        startup::flush_if_ready();
         // egui only repaints on input. Plugins need the main thread at any time,
         // so keep a slow heartbeat going in addition to on_wake().
         ctx.request_repaint_after(Duration::from_millis(50));
@@ -232,7 +218,10 @@ impl eframe::App for App {
         egui::TopBottomPanel::top("top").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 if ui
-                    .add_enabled(!self.scanning, egui::Button::new("Rescan"))
+                    .add_enabled(
+                        !self.scanning && self.pending.is_none(),
+                        egui::Button::new("Rescan"),
+                    )
                     .clicked()
                 {
                     self.start_scan(true);
@@ -356,13 +345,24 @@ impl eframe::App for App {
 }
 
 fn main() -> eframe::Result {
+    startup::init(Instant::now());
+    let mut app = App::prepare();
+    app.restore_before_gui();
+    startup::mark(Stage::GuiRequested);
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([900.0, 600.0]),
         ..Default::default()
     };
-    eframe::run_native(
+    let result = eframe::run_native(
         "cat plugin player",
         options,
-        Box::new(|cc| Ok(Box::new(App::new(cc)))),
-    )
+        Box::new(move |cc| {
+            startup::mark(Stage::AppCreation);
+            *GUI_CONTEXT.lock().unwrap() = Some(cc.egui_ctx.clone());
+            Ok(Box::new(app))
+        }),
+    );
+    *GUI_CONTEXT.lock().unwrap() = None;
+    startup::flush();
+    result
 }

@@ -1,9 +1,10 @@
-use crate::{audio, config, on_instance, App};
+use crate::{audio, config, on_instance, startup, App};
 
 impl App {
     pub(crate) fn load_plugin(&mut self, index: usize) {
         let plugin = self.plugins[index].clone();
         self.status = format!("Loading {}...", plugin.name);
+        startup::mark(startup::Stage::LoadRequested);
         self.host.create_instance(
             plugin.index,
             self.sample_rate(),
@@ -11,6 +12,7 @@ impl App {
             on_instance,
             std::ptr::null_mut(),
         );
+        startup::mark(startup::Stage::LoadReturned);
         self.pending = Some(plugin);
     }
 

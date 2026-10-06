@@ -6,6 +6,12 @@ use std::path::{Path, PathBuf};
 pub struct PluginKey {
     pub format: String,
     pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub vendor: String,
+    #[serde(default)]
+    pub bundle_path: String,
 }
 
 impl PluginKey {
@@ -13,6 +19,9 @@ impl PluginKey {
         Self {
             format: plugin.format.clone(),
             id: plugin.id.clone(),
+            name: plugin.name.clone(),
+            vendor: plugin.vendor.clone(),
+            bundle_path: plugin.bundle_path.clone(),
         }
     }
 
@@ -63,6 +72,7 @@ mod tests {
             vendor: String::new(),
             format: format.into(),
             id: id.into(),
+            bundle_path: "X:/plugins/synth.clap".into(),
         };
         let key = PluginKey::from_plugin(&plugin(0, "CLAP", "synth"));
         let plugins = [plugin(0, "VST3", "synth"), plugin(8, "CLAP", "synth")];
@@ -86,6 +96,9 @@ mod tests {
             last_played: Some(PluginKey {
                 format: "CLAP".into(),
                 id: "X:/plugins/音源\".clap".into(),
+                name: "音源".into(),
+                vendor: "Vendor".into(),
+                bundle_path: "X:/plugins/音源.clap".into(),
             }),
         };
         config.save(&path).unwrap();
@@ -93,5 +106,14 @@ mod tests {
         std::fs::write(&path, "[invalid").unwrap();
         assert!(Config::load(&path).is_err());
         std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn old_history_can_fall_back_to_scanning() {
+        let config: Config =
+            toml::from_str("[last_played]\nformat = 'CLAP'\nid = 'synth'\n").unwrap();
+        let key = config.last_played.unwrap();
+        assert!(key.bundle_path.is_empty());
+        assert_eq!(key.id, "synth");
     }
 }

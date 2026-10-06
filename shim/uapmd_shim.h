@@ -39,7 +39,8 @@ enum {
     UH_PLUGIN_NAME   = 0,
     UH_PLUGIN_VENDOR = 1,
     UH_PLUGIN_FORMAT = 2,
-    UH_PLUGIN_ID     = 3
+    UH_PLUGIN_ID     = 3,
+    UH_PLUGIN_PATH   = 4
 };
 
 /* Return codes for uh_ui_show(). */
@@ -59,6 +60,8 @@ UH_API void uh_destroy(UhHost* host);
 
 /* Runs the tasks uapmd queued for the main thread, then delivers callbacks. */
 UH_API void uh_pump(UhHost* host);
+/* Before the GUI event loop starts: also dispatch native Windows messages. */
+UH_API void uh_pump_startup(UhHost* host);
 
 /* Scans on a worker thread. rescan == 0 uses the plugin list cache when there is one.
  * Returns 0 if started, -1 if a scan is already running. */
@@ -70,6 +73,11 @@ UH_API int32_t uh_plugin_count(UhHost* host);
  * Returns the full length in bytes without the NUL, or -1 for a bad index/field.
  * Call with buf == NULL to query the length. */
 UH_API int32_t uh_plugin_info(UhHost* host, int32_t index, int32_t field, char* buf, int32_t buf_len);
+
+/* Adds one saved entry without scanning. All strings are UTF-8. Returns its
+ * snapshot index, or -1 if the bundle is missing or a scan is active. */
+UH_API int32_t uh_restore_plugin(UhHost* host, const char* format, const char* id,
+                                 const char* name, const char* vendor, const char* path);
 
 /* Instantiates plugin #index of the snapshot. The result arrives through `done`. */
 UH_API void uh_instance_create(UhHost* host, int32_t index, uint32_t sample_rate,

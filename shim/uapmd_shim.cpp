@@ -3,6 +3,10 @@
 // No C++ exception may cross the C boundary, so every entry point catches everything.
 
 #include "uapmd_shim.h"
+#include "owned_instance.h"
+#if _WIN32
+#include <Windows.h>
+#endif
 
 #include <algorithm>
 #include <atomic>
@@ -28,7 +32,7 @@ using uapmd_plugin_hosting::AudioPluginHostingAPI;
 namespace {
 
 // remidy sends "run this on the UI thread" requests to an EventLoop. The UI thread
-// belongs to egui here, so this one only queues them; uh_pump() runs them.
+// is shared by startup and egui; uh_pump() runs the queued work.
 class ShimEventLoop final : public remidy::EventLoop {
 public:
     void setWake(UhWakeFn wake, void* user) {
@@ -90,8 +94,12 @@ ShimEventLoop* g_loop = nullptr;
 } // namespace
 
 struct UhHost {
+    // Used only for scanning (and main-thread COM initialization).
     std::unique_ptr<AudioPluginHostingAPI> api;
     std::vector<AudioPluginCatalogEntry> catalog;
+    std::map<int32_t, std::unique_ptr<OwnedInstance>> instances;
+    int32_t next_instance_id{0};
+    int32_t pending_instances{0};
     std::map<int32_t, std::unique_ptr<remidy::gui::ContainerWindow>> windows;
     std::set<int32_t> ui_created;
     std::thread scan_thread;
@@ -112,6 +120,11 @@ namespace {
 
 constexpr uint32_t kEventBufferBytes = 4096;
 
+uapmd_plugin_hosting::AudioPluginInstanceAPI* getInstance(UhHost* host, int32_t id) {
+    auto it = host->instances.find(id);
+    return it == host->instances.end() ? nullptr : it->second->lifecycle->instance();
+}
+
 const std::string* pluginField(const AudioPluginCatalogEntry& e, int32_t field) {
     switch (field) {
         case UH_PLUGIN_NAME:   return &e.displayName();
@@ -130,7 +143,7 @@ void destroyInstance(UhHost* host, int32_t instanceId) {
         // audio-thread role. The caller has already stopped the audio stream (see
         // uapmd_shim.h), so no audio thread exists and this thread may take the role.
         remidy::AudioThreadScope audioThreadRole;
-        host->api->deletePluginInstance(instanceId);
+        host->instances.erase(instanceId);
     }
     host->ui_created.erase(instanceId);
     host->windows.erase(instanceId);
@@ -164,16 +177,16 @@ void uh_destroy(UhHost* host) {
     try {
         // A scan cannot be cancelled here. Its worker may be waiting for the main
         // thread, so keep pumping until it is done.
-        while (host->scanning.load()) {
-            g_loop->drain();
+        while (host->scanning.load() || host->pending_instances != 0) {
+            uh_pump_startup(host);
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }
         if (host->scan_thread.joinable())
             host->scan_thread.join();
         g_loop->drain();
 
-        for (auto id : host->api->instanceIds())
-            destroyInstance(host, id);
+        while (!host->instances.empty())
+            destroyInstance(host, host->instances.begin()->first);
         host->windows.clear();
         host->api.reset();
     } catch (...) {
@@ -190,6 +203,21 @@ void uh_pump(UhHost* host) {
         g_loop->drain();
     } catch (...) {
     }
+}
+
+void uh_pump_startup(UhHost* host) {
+    uh_pump(host);
+#if _WIN32
+    MSG message;
+    while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
+        if (message.message == WM_QUIT) {
+            PostQuitMessage(static_cast<int>(message.wParam));
+            break;
+        }
+        TranslateMessage(&message);
+        DispatchMessageW(&message);
+    }
+#endif
 }
 
 int32_t uh_scan_async(UhHost* host, int32_t rescan, UhScanDoneFn done, void* user) {
@@ -237,15 +265,46 @@ int32_t uh_plugin_count(UhHost* host) {
 int32_t uh_plugin_info(UhHost* host, int32_t index, int32_t field, char* buf, int32_t buf_len) {
     if (!host || index < 0 || static_cast<size_t>(index) >= host->catalog.size())
         return -1;
-    const std::string* s = pluginField(host->catalog[static_cast<size_t>(index)], field);
-    if (!s)
+    try {
+        const auto& entry = host->catalog[static_cast<size_t>(index)];
+        std::string path;
+        if (field == UH_PLUGIN_PATH) {
+            const auto utf8Path = entry.bundlePath().u8string();
+            path.assign(utf8Path.begin(), utf8Path.end());
+        }
+        const std::string* s = field == UH_PLUGIN_PATH ? &path : pluginField(entry, field);
+        if (!s)
+            return -1;
+        if (buf && buf_len > 0) {
+            const size_t n = (std::min)(s->size(), static_cast<size_t>(buf_len - 1));
+            std::memcpy(buf, s->data(), n);
+            buf[n] = '\0';
+        }
+        return static_cast<int32_t>(s->size());
+    } catch (...) {
         return -1;
-    if (buf && buf_len > 0) {
-        const size_t n = (std::min)(s->size(), static_cast<size_t>(buf_len - 1));
-        std::memcpy(buf, s->data(), n);
-        buf[n] = '\0';
     }
-    return static_cast<int32_t>(s->size());
+}
+
+int32_t uh_restore_plugin(UhHost* host, const char* format, const char* id,
+                          const char* name, const char* vendor, const char* path) {
+    if (!host || host->scanning.load() || !format || !id || !name || !vendor || !path)
+        return -1;
+    try {
+        auto bundle = std::filesystem::u8path(path);
+        if (bundle.empty() || !std::filesystem::exists(bundle))
+            return -1;
+        AudioPluginCatalogEntry entry;
+        entry.format(format);
+        entry.pluginId(id);
+        entry.displayName(name);
+        entry.vendorName(vendor);
+        entry.bundlePath(bundle);
+        host->catalog.push_back(std::move(entry));
+        return static_cast<int32_t>(host->catalog.size() - 1);
+    } catch (...) {
+        return -1;
+    }
 }
 
 void uh_instance_create(UhHost* host, int32_t index, uint32_t sample_rate,
@@ -264,11 +323,32 @@ void uh_instance_create(UhHost* host, int32_t index, uint32_t sample_rate,
             report(-1, "plugin index out of range");
             return;
         }
-        const auto& entry = host->catalog[static_cast<size_t>(index)];
-        std::string format = entry.format();
-        std::string pluginId = entry.pluginId();
-        host->api->createPluginInstance(sample_rate, buffer_size, std::nullopt, std::nullopt,
-                                        false, format, pluginId, report);
+        auto instance = std::make_unique<OwnedInstance>(
+            host->catalog[static_cast<size_t>(index)], sample_rate, buffer_size);
+        const auto instanceId = host->next_instance_id++;
+        auto* lifecycle = instance->lifecycle.get();
+        auto reported = std::make_shared<std::atomic<bool>>(false);
+        auto complete = [host, done, user, instanceId, reported](std::string error) {
+            if (reported->exchange(true))
+                return;
+            g_loop->post([host, done, user, instanceId, error = std::move(error)] {
+                --host->pending_instances;
+                if (!error.empty())
+                    destroyInstance(host, instanceId);
+                if (done)
+                    done(user, error.empty() ? instanceId : -1,
+                         error.empty() ? nullptr : error.c_str());
+            });
+        };
+        host->instances.emplace(instanceId, std::move(instance));
+        ++host->pending_instances;
+        try {
+            lifecycle->makeAlive(complete);
+        } catch (const std::exception& e) {
+            complete(e.what()[0] ? e.what() : "plugin instantiation failed");
+        } catch (...) {
+            complete("plugin instantiation failed");
+        }
     } catch (const std::exception& e) {
         report(-1, e.what());
     } catch (...) {
@@ -290,7 +370,7 @@ UhProcessor* uh_processor_create(UhHost* host, int32_t instance_id,
     if (!host || max_frames == 0)
         return nullptr;
     try {
-        auto* instance = host->api->getInstance(instance_id);
+        auto* instance = getInstance(host, instance_id);
         if (!instance)
             return nullptr;
         auto* buses = instance->audioBuses();
@@ -402,7 +482,7 @@ int32_t uh_ui_show(UhHost* host, int32_t instance_id) {
     if (!host)
         return UH_ERR_NO_INSTANCE;
     try {
-        auto* instance = host->api->getInstance(instance_id);
+        auto* instance = getInstance(host, instance_id);
         if (!instance)
             return UH_ERR_NO_INSTANCE;
         if (!instance->hasUISupport())
@@ -413,7 +493,7 @@ int32_t uh_ui_show(UhHost* host, int32_t instance_id) {
             const std::string title = instance->displayName() + " (" + instance->formatName() + ")";
             window = remidy::gui::ContainerWindow::create(title.c_str(), 800, 600, [host, instance_id] {
                 // The close button: the container hides itself, the editor is kept.
-                if (auto* i = host->api->getInstance(instance_id))
+                if (auto* i = getInstance(host, instance_id))
                     i->hideUI();
             });
             if (!window) {
@@ -452,7 +532,7 @@ void uh_ui_hide(UhHost* host, int32_t instance_id) {
     if (!host)
         return;
     try {
-        if (auto* instance = host->api->getInstance(instance_id))
+        if (auto* instance = getInstance(host, instance_id))
             instance->hideUI();
         auto it = host->windows.find(instance_id);
         if (it != host->windows.end() && it->second)
