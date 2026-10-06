@@ -5,11 +5,45 @@ use std::time::{Duration, Instant};
 
 impl App {
     pub(crate) fn prepare() -> Self {
-        let (restore, config_error) =
-            match config::path().and_then(|path| config::Config::load(&path)) {
-                Ok(config) => (config.last_played, None),
-                Err(error) => (None, Some(format!("Could not read session: {error}"))),
-            };
+        let config_path = config::path();
+        let (
+            restore,
+            restore_effect,
+            effect_bypassed,
+            sequence_pattern,
+            selected_sequence,
+            sequence_velocity,
+            sequence_modulation,
+            favorite_selection,
+            config_error,
+        ) = match config_path
+            .as_ref()
+            .map_err(Clone::clone)
+            .and_then(|path| config::Config::load(path))
+        {
+            Ok(config) => (
+                config.last_played,
+                config.effect,
+                config.effect_bypassed,
+                config.sequence_pattern,
+                config.sequence_pattern.selection(config.selected_sequence),
+                config.sequence_velocity,
+                config.sequence_modulation,
+                config.favorites,
+                None,
+            ),
+            Err(error) => (
+                None,
+                None,
+                false,
+                crate::SequencePattern::default(),
+                crate::SequencePattern::default(),
+                crate::SequenceVelocity::default(),
+                crate::SequenceModulation::default(),
+                config::FavoriteSelection::default(),
+                Some(format!("Could not read session: {error}")),
+            ),
+        };
         startup::mark(Stage::HistoryRead);
         let host = ffi::Host::new(on_wake, std::ptr::null_mut())
             .expect("uh_create() failed: could not set up the uapmd plugin host");
@@ -25,13 +59,29 @@ impl App {
             output,
             plugins: Vec::new(),
             pending: None,
+            restore_effect,
+            effect_bypassed,
+            sequence_pattern,
+            selected_sequence,
+            sequence_velocity,
+            sequence_modulation,
             restore,
+            restored: None,
+            restoring: false,
             config_error,
+            config_path,
             scanning: false,
+            confirm_rescan: false,
             deferred_scan: true,
             fast_restore: false,
             filter: String::new(),
             status,
+            favorites: crate::favorites::Favorites {
+                restore: favorite_selection,
+                ..Default::default()
+            },
+            scope_ui: Default::default(),
+            plugin_icons: Default::default(),
         }
     }
 
@@ -45,6 +95,9 @@ impl App {
             return;
         };
         self.fast_restore = true;
+        self.restoring = true;
+        let mut plugin = plugin;
+        plugin.kind = crate::plugin_list::PluginKind::Instrument;
         self.plugins.push(plugin);
         self.load_plugin(0);
 

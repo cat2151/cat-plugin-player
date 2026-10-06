@@ -1,0 +1,186 @@
+//! Sequence controls independent of their containing panel and placement.
+use crate::{App, SequenceModulation, SequencePattern, SequenceVelocity};
+use eframe::egui;
+
+/// Selecting a type preserves transport state; Play/Stop changes it explicitly.
+fn selected_state(current: SequencePattern, selected: SequencePattern) -> SequencePattern {
+    if current == SequencePattern::Off {
+        SequencePattern::Off
+    } else {
+        selected
+    }
+}
+
+impl App {
+    pub(crate) fn sequence_controls(&mut self, ui: &mut egui::Ui) {
+        let current = self.sequence_pattern;
+        let original = current.selection(self.selected_sequence);
+        let mut selected = original;
+        let mut next = current;
+        let original_velocity = self.sequence_velocity;
+        let mut velocity = original_velocity;
+        let original_modulation = self.sequence_modulation;
+        let mut modulation = original_modulation;
+        let ready = self.pending.is_none() && !self.restoring;
+        let has_audio = self.instances.iter().any(|i| i.voice.is_some());
+
+        let (velocity_value, modulation_value) = self
+            .instances
+            .iter()
+            .find_map(|i| i.voice.as_ref().map(|v| v.current_values()))
+            .unwrap_or((0, 0));
+
+        ui.group(|ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Sequence");
+                ui.add_enabled_ui(ready, |ui| {
+                    if ui.button("<").on_hover_text("Previous sequence").clicked() {
+                        selected = selected.adjacent(false);
+                    }
+                    egui::ComboBox::from_id_salt("sequence_type")
+                        .selected_text(selected.label())
+                        .width(170.0)
+                        .show_ui(ui, |ui| {
+                            for &pattern in SequencePattern::TYPES {
+                                ui.selectable_value(&mut selected, pattern, pattern.label());
+                            }
+                        });
+                    if ui.button(">").on_hover_text("Next sequence").clicked() {
+                        selected = selected.adjacent(true);
+                    }
+                });
+                if selected != original {
+                    next = selected_state(current, selected);
+                }
+                let playing = current != SequencePattern::Off;
+                if ui
+                    .add_enabled(
+                        ready && has_audio,
+                        egui::Button::new(if playing { "Stop" } else { "Play" }),
+                    )
+                    .on_hover_text(if playing {
+                        "Stop sequence"
+                    } else {
+                        "Play selected sequence"
+                    })
+                    .on_disabled_hover_text(
+                        "Load an instrument with audio first; wait for loading to finish",
+                    )
+                    .clicked()
+                {
+                    next = if playing {
+                        SequencePattern::Off
+                    } else {
+                        selected
+                    };
+                }
+            });
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Velocity");
+                ui.add_enabled_ui(ready, |ui| {
+                    if ui.button("<").on_hover_text("Previous velocity").clicked() {
+                        velocity = velocity.adjacent(false);
+                    }
+                    egui::ComboBox::from_id_salt("sequence_velocity")
+                        .selected_text(velocity.label())
+                        .width(170.0)
+                        .show_ui(ui, |ui| {
+                            for &choice in SequenceVelocity::TYPES {
+                                ui.selectable_value(&mut velocity, choice, choice.label());
+                            }
+                        })
+                        .response
+                        .on_hover_text("Ranges: one phrase up, the next phrase down; repeat");
+                    if ui.button(">").on_hover_text("Next velocity").clicked() {
+                        velocity = velocity.adjacent(true);
+                    }
+                });
+                value_bar(ui, velocity_value);
+            });
+            ui.horizontal_wrapped(|ui| {
+                ui.label("CC1 modulation");
+                ui.add_enabled_ui(ready, |ui| {
+                    if ui
+                        .button("<")
+                        .on_hover_text("Previous modulation")
+                        .clicked()
+                    {
+                        modulation = modulation.adjacent(false);
+                    }
+                    egui::ComboBox::from_id_salt("sequence_modulation")
+                        .selected_text(modulation.label())
+                        .width(170.0)
+                        .show_ui(ui, |ui| {
+                            for &choice in SequenceModulation::TYPES {
+                                ui.selectable_value(&mut modulation, choice, choice.label());
+                            }
+                        })
+                        .response
+                        .on_hover_text(
+                            "sweep: 0 -> 127 in 2 seconds, then 127 -> 0 in 2 seconds; repeat",
+                        );
+                    if ui.button(">").on_hover_text("Next modulation").clicked() {
+                        modulation = modulation.adjacent(true);
+                    }
+                });
+                value_bar(ui, modulation_value);
+            });
+        });
+
+        if selected != original
+            || next != current
+            || velocity != original_velocity
+            || modulation != original_modulation
+        {
+            self.selected_sequence = selected;
+            self.sequence_pattern = next;
+            self.sequence_velocity = velocity;
+            self.sequence_modulation = modulation;
+            for instance in &self.instances {
+                if let Some(voice) = &instance.voice {
+                    voice.set_sequence(next);
+                    voice.set_velocity(velocity);
+                    voice.set_modulation(modulation);
+                }
+            }
+            self.save_session();
+        }
+    }
+}
+
+fn value_bar(ui: &mut egui::Ui, value: u8) {
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(120.0, 18.0), egui::Sense::hover());
+    ui.painter()
+        .rect_filled(rect, 2.0, ui.visuals().extreme_bg_color);
+    if value > 0 {
+        let mut fill = rect;
+        fill.max.x = fill.min.x + rect.width() * f32::from(value) / 127.0;
+        ui.painter()
+            .rect_filled(fill, 2.0, ui.visuals().selection.bg_fill);
+    }
+    ui.painter().text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        value.to_string(),
+        egui::FontId::monospace(12.0),
+        ui.visuals().text_color(),
+    );
+    response.on_hover_text(format!("Current MIDI value: {value} / 127"));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn selecting_while_stopped_does_not_start_playback() {
+        assert_eq!(
+            selected_state(SequencePattern::Off, SequencePattern::GuitarArpeggio),
+            SequencePattern::Off
+        );
+        assert_eq!(
+            selected_state(SequencePattern::Steps, SequencePattern::GuitarArpeggio),
+            SequencePattern::GuitarArpeggio
+        );
+    }
+}

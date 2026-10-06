@@ -6,6 +6,9 @@
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::ptr;
 
+#[path = "plugin_state.rs"]
+mod plugin_state;
+
 #[repr(C)]
 pub struct UhHost {
     _private: [u8; 0],
@@ -26,6 +29,7 @@ pub const UH_PLUGIN_VENDOR: i32 = 1;
 pub const UH_PLUGIN_FORMAT: i32 = 2;
 pub const UH_PLUGIN_ID: i32 = 3;
 pub const UH_PLUGIN_PATH: i32 = 4;
+pub const UH_PLUGIN_KIND: i32 = 5;
 
 pub const UH_OK: i32 = 0;
 
@@ -65,13 +69,16 @@ extern "C" {
         user: *mut c_void,
     );
     fn uh_instance_destroy(host: *mut UhHost, instance_id: i32);
-    fn uh_processor_create(
+    fn uh_processor_destroy(processor: *mut UhProcessor);
+    fn uh_chain_create(
         host: *mut UhHost,
-        instance_id: i32,
+        instrument_id: i32,
+        effect_ids: *const i32,
+        effect_count: i32,
+        bypass: i32,
         sample_rate: u32,
         max_frames: u32,
     ) -> *mut UhProcessor;
-    fn uh_processor_destroy(processor: *mut UhProcessor);
     fn uh_processor_process(
         processor: *mut UhProcessor,
         ump_words: *const u32,
@@ -82,6 +89,15 @@ extern "C" {
     ) -> i32;
     fn uh_ui_show(host: *mut UhHost, instance_id: i32) -> i32;
     fn uh_ui_hide(host: *mut UhHost, instance_id: i32);
+    fn uh_ui_is_visible(host: *mut UhHost, instance_id: i32) -> i32;
+    fn uh_ui_thumbnail(
+        host: *mut UhHost,
+        instance_id: i32,
+        rgba: *mut u8,
+        len: i32,
+        width: *mut i32,
+        height: *mut i32,
+    ) -> i32;
 }
 
 /// Turns the `error` argument of a callback into an owned string.
@@ -104,6 +120,7 @@ pub struct PluginInfo {
     pub format: String,
     pub id: String,
     pub bundle_path: String,
+    pub kind: crate::plugin_list::PluginKind,
 }
 
 pub struct Host {
@@ -155,6 +172,7 @@ impl Host {
             name: key.name.clone(),
             vendor: key.vendor.clone(),
             bundle_path: key.bundle_path.clone(),
+            kind: crate::plugin_list::PluginKind::Unknown,
         })
     }
 
@@ -173,6 +191,9 @@ impl Host {
                 format: self.plugin_field(index, UH_PLUGIN_FORMAT),
                 id: self.plugin_field(index, UH_PLUGIN_ID),
                 bundle_path: self.plugin_field(index, UH_PLUGIN_PATH),
+                kind: crate::plugin_list::PluginKind::from_metadata(
+                    &self.plugin_field(index, UH_PLUGIN_KIND),
+                ),
             })
             .collect()
     }
@@ -220,23 +241,28 @@ impl Host {
         unsafe { uh_instance_destroy(self.raw, instance_id) }
     }
 
-    /// Creates the audio-side handle for an instance. `max_frames` is the largest
-    /// block that will ever be rendered in one call.
-    ///
-    /// The caller must drop the returned `Processor` before destroying the
-    /// instance and before dropping the `Host`.
-    pub fn create_processor(
+    /// Owns all processors for a serial chain. Stop its audio stream and drop
+    /// this handle before saving state or destroying any of the instances.
+    pub fn create_chain(
         &self,
-        instance_id: i32,
+        instrument_id: i32,
+        effects: &[i32],
+        bypass: bool,
         sample_rate: u32,
         max_frames: u32,
     ) -> Option<Processor> {
-        let raw = unsafe { uh_processor_create(self.raw, instance_id, sample_rate, max_frames) };
-        if raw.is_null() {
-            None
-        } else {
-            Some(Processor { raw })
-        }
+        let raw = unsafe {
+            uh_chain_create(
+                self.raw,
+                instrument_id,
+                effects.as_ptr(),
+                effects.len() as i32,
+                bypass as i32,
+                sample_rate,
+                max_frames,
+            )
+        };
+        (!raw.is_null()).then_some(Processor { raw })
     }
 
     /// `Err` carries the UH_ERR_* code.
@@ -249,6 +275,31 @@ impl Host {
 
     pub fn hide_ui(&self, instance_id: i32) {
         unsafe { uh_ui_hide(self.raw, instance_id) }
+    }
+
+    pub fn ui_is_visible(&self, instance_id: i32) -> bool {
+        unsafe { uh_ui_is_visible(self.raw, instance_id) != 0 }
+    }
+
+    pub fn ui_thumbnail(&self, instance_id: i32) -> Result<image::RgbaImage, String> {
+        let mut rgba = vec![0; 192 * 128 * 4];
+        let (mut width, mut height) = (0, 0);
+        let code = unsafe {
+            uh_ui_thumbnail(
+                self.raw,
+                instance_id,
+                rgba.as_mut_ptr(),
+                rgba.len() as i32,
+                &mut width,
+                &mut height,
+            )
+        };
+        if code != UH_OK || !(1..=192).contains(&width) || !(1..=128).contains(&height) {
+            return Err(format!("Could not capture plugin UI (code {code})"));
+        }
+        rgba.truncate(width as usize * height as usize * 4);
+        image::RgbaImage::from_raw(width as u32, height as u32, rgba)
+            .ok_or_else(|| "Invalid plugin thumbnail dimensions".into())
     }
 }
 

@@ -1,15 +1,44 @@
 //! First step: prove that egui and plugin editors can share the main thread.
 //! Scan plugins, instantiate one, open its editor, and play a hardcoded phrase
-//! (on by default) or a single test note.
+//! using the sequence controls.
 
 mod audio;
 mod boot;
+mod cli;
 mod config;
+mod favorites;
+mod favorites_store;
+mod favorites_ui;
 mod ffi;
+mod native_library;
+mod plugin_icons;
+mod plugin_list;
+mod plugin_specific;
+mod routing_ui;
+mod scope;
+mod scope_boundary;
+mod scope_capture;
+mod scope_drift;
+mod scope_stream;
+mod scope_trigger;
+mod scope_ui;
 mod seq;
+mod sequence_modulation;
+mod spectrum;
+mod spectrum_ui;
+use sequence_modulation::SequenceModulation;
+mod sequence_pattern;
+mod sequence_ui;
+mod sequence_velocity;
+use sequence_pattern::SequencePattern;
+use sequence_velocity::SequenceVelocity;
 mod session;
+mod session_load;
 mod startup;
+mod state_store;
+mod updater;
 
+use clap::Parser;
 use eframe::egui;
 use startup::Stage;
 use std::ffi::{c_char, c_void};
@@ -18,10 +47,6 @@ use std::time::{Duration, Instant};
 
 /// Used when there is no audio device to take the rate from.
 const FALLBACK_SAMPLE_RATE: u32 = 48_000;
-
-const TEST_NOTE: u8 = 60;
-const TEST_VELOCITY: u8 = 127;
-const TEST_NOTE_LENGTH: Duration = Duration::from_secs(1);
 
 /// What the shim reported. The callbacks run on the main thread inside
 /// `Host::pump()`, i.e. while `update()` holds `&mut App`, so they cannot touch
@@ -62,10 +87,9 @@ struct Instance {
     id: i32,
     label: String,
     plugin: config::PluginKey,
-    /// None if audio could not be started for this instance.
+    kind: plugin_list::PluginKind,
+    /// Only the instrument owns the chain audio stream.
     voice: Option<audio::Voice>,
-    /// When the test note that is sounding has to be released.
-    note_off_at: Option<Instant>,
 }
 
 struct App {
@@ -77,13 +101,26 @@ struct App {
     output: Option<audio::Output>,
     plugins: Vec<ffi::PluginInfo>,
     pending: Option<ffi::PluginInfo>,
+    restore_effect: Option<config::PluginKey>,
+    effect_bypassed: bool,
+    sequence_pattern: SequencePattern,
+    selected_sequence: SequencePattern,
+    sequence_velocity: SequenceVelocity,
+    sequence_modulation: SequenceModulation,
     restore: Option<config::PluginKey>,
+    restored: Option<config::PluginKey>,
+    restoring: bool,
     config_error: Option<String>,
+    config_path: Result<std::path::PathBuf, String>,
     scanning: bool,
+    confirm_rescan: bool,
     deferred_scan: bool,
     fast_restore: bool,
     filter: String,
     status: String,
+    favorites: favorites::Favorites,
+    scope_ui: scope_ui::ScopeUi,
+    plugin_icons: plugin_icons::PluginIcons,
 }
 
 impl App {
@@ -91,31 +128,6 @@ impl App {
         self.output
             .as_ref()
             .map_or(FALLBACK_SAMPLE_RATE, |o| o.sample_rate())
-    }
-
-    /// Starts audio for a freshly created instance.
-    fn start_voice(&self, instance_id: i32) -> Result<audio::Voice, String> {
-        let output = self.output.as_ref().ok_or("no audio device")?;
-        let processor = self
-            .host
-            .create_processor(instance_id, output.sample_rate(), audio::MAX_BLOCK_FRAMES)
-            .ok_or("could not set up audio processing for the plugin")?;
-        startup::mark(Stage::ProcessorReady);
-        // The phrase starts as soon as the plugin is ready.
-        audio::Voice::start(output, processor, true)
-    }
-
-    /// Releases test notes whose time is up.
-    fn release_due_notes(&mut self) {
-        let now = Instant::now();
-        for instance in &mut self.instances {
-            if instance.note_off_at.is_some_and(|at| now >= at) {
-                instance.note_off_at = None;
-                if let Some(voice) = &mut instance.voice {
-                    voice.send(audio::note_off(0, TEST_NOTE));
-                }
-            }
-        }
     }
 
     fn start_scan(&mut self, rescan: bool) {
@@ -148,52 +160,15 @@ impl App {
                     };
                     if scan_succeeded {
                         self.restore_session();
+                    } else if self.restoring && self.instrument_id().is_some() {
+                        self.load_failed(format!(
+                            "{}; could not restore effect; playing instrument directly",
+                            self.status
+                        ));
                     }
                 }
                 Event::InstanceCreated { id, error } => {
-                    startup::mark(Stage::InstanceHandled);
-                    let Some(plugin) = self.pending.take() else {
-                        continue;
-                    };
-                    let label = format!("{} [{}]", plugin.name, plugin.format);
-                    match error {
-                        None if id >= 0 => {
-                            if self.fast_restore {
-                                self.restore = None;
-                            }
-                            let voice = match self.start_voice(id) {
-                                Ok(voice) => {
-                                    // Only the newest instance plays the phrase by
-                                    // itself: the ones loaded earlier fall silent.
-                                    for earlier in &self.instances {
-                                        if let Some(v) = &earlier.voice {
-                                            v.set_sequence(false);
-                                        }
-                                    }
-                                    self.status = format!("Loaded {label}");
-                                    Some(voice)
-                                }
-                                Err(e) => {
-                                    self.status = format!("Loaded {label}, but no audio: {e}");
-                                    None
-                                }
-                            };
-                            let playing = voice.is_some();
-                            self.instances.push(Instance {
-                                id,
-                                label,
-                                plugin: config::PluginKey::from_plugin(&plugin),
-                                voice,
-                                note_off_at: None,
-                            });
-                            if playing {
-                                self.remember_played(id);
-                            }
-                        }
-                        Some(e) => self.status = format!("Could not load {label}: {e}"),
-                        None => self.status = format!("Could not load {label}"),
-                    }
-                    self.fast_restore = false;
+                    self.instance_created(id, error);
                 }
             }
         }
@@ -205,7 +180,8 @@ impl eframe::App for App {
         // Run what uapmd and the plugins queued for the main thread.
         self.host.pump();
         self.handle_events();
-        self.release_due_notes();
+        self.initialize_favorites();
+        self.capture_plugin_icons(ctx);
         if self.deferred_scan && self.pending.is_none() {
             self.deferred_scan = false;
             self.start_scan(false);
@@ -215,137 +191,39 @@ impl eframe::App for App {
         // so keep a slow heartbeat going in addition to on_wake().
         ctx.request_repaint_after(Duration::from_millis(50));
 
-        egui::TopBottomPanel::top("top").show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                if ui
-                    .add_enabled(
-                        !self.scanning && self.pending.is_none(),
-                        egui::Button::new("Rescan"),
-                    )
-                    .clicked()
-                {
-                    self.start_scan(true);
-                }
-                ui.label("Filter:");
-                ui.text_edit_singleline(&mut self.filter);
-                ui.label(&self.status);
-            });
-            if let Some(error) = &self.config_error {
+        // Placement lives here; sequence_controls only draws the pane contents.
+        egui::TopBottomPanel::top("sequence_controls").show(ctx, |ui| {
+            self.sequence_controls(ui);
+        });
+
+        if let Some(error) = &self.config_error {
+            egui::TopBottomPanel::top("config_error").show(ctx, |ui| {
                 ui.colored_label(egui::Color32::YELLOW, error);
-            }
-        });
-
-        // Clicks are collected first and acted on after the panels are drawn.
-        let mut show: Option<i32> = None;
-        let mut hide: Option<i32> = None;
-        let mut remove: Option<i32> = None;
-        let mut test_note: Option<i32> = None;
-        let mut set_sequence: Option<(i32, bool)> = None;
-        egui::SidePanel::right("instances")
-            .min_width(420.0)
-            .show(ctx, |ui| {
-                ui.heading("Instances");
-                for instance in &self.instances {
-                    ui.horizontal(|ui| {
-                        ui.label(&instance.label);
-                        if let Some(voice) = &instance.voice {
-                            let mut on = voice.sequence_on();
-                            if ui.toggle_value(&mut on, "Sequence").changed() {
-                                set_sequence = Some((instance.id, on));
-                            }
-                        }
-                        if ui
-                            .add_enabled(instance.voice.is_some(), egui::Button::new("Test note"))
-                            .on_disabled_hover_text("No audio for this instance")
-                            .clicked()
-                        {
-                            test_note = Some(instance.id);
-                        }
-                        if ui.button("Show UI").clicked() {
-                            show = Some(instance.id);
-                        }
-                        if ui.button("Hide UI").clicked() {
-                            hide = Some(instance.id);
-                        }
-                        if ui.button("Remove").clicked() {
-                            remove = Some(instance.id);
-                        }
-                    });
-                }
             });
+        }
 
-        let mut load: Option<usize> = None;
-        egui::CentralPanel::default().show(ctx, |ui| {
-            let filter = self.filter.to_lowercase();
-            let can_load = self.pending.is_none() && !self.scanning;
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                for (i, plugin) in self.plugins.iter().enumerate() {
-                    if !filter.is_empty() && !plugin.name.to_lowercase().contains(&filter) {
-                        continue;
-                    }
-                    ui.horizontal(|ui| {
-                        if ui
-                            .add_enabled(can_load, egui::Button::new("Load"))
-                            .clicked()
-                        {
-                            load = Some(i);
-                        }
-                        ui.label(format!(
-                            "{} - {} [{}]",
-                            plugin.name, plugin.vendor, plugin.format
-                        ))
-                        .on_hover_text(&plugin.id);
-                    });
-                }
-            });
-        });
-
-        if let Some(i) = load {
-            self.load_plugin(i);
-        }
-        if let Some((id, on)) = set_sequence {
-            if let Some(instance) = self.instances.iter().find(|i| i.id == id) {
-                if let Some(voice) = &instance.voice {
-                    voice.set_sequence(on);
-                    if on {
-                        self.remember_played(id);
-                    }
-                }
-            }
-        }
-        if let Some(id) = test_note {
-            if let Some(instance) = self.instances.iter_mut().find(|i| i.id == id) {
-                if let Some(voice) = &mut instance.voice {
-                    // Pressed again while sounding: release the old note first.
-                    if instance.note_off_at.is_some() {
-                        voice.send(audio::note_off(0, TEST_NOTE));
-                    }
-                    if voice.send(audio::note_on(0, TEST_NOTE, TEST_VELOCITY)) {
-                        instance.note_off_at = Some(Instant::now() + TEST_NOTE_LENGTH);
-                        self.remember_played(id);
-                    }
-                }
-            }
-        }
-        if let Some(id) = show {
-            if let Err(code) = self.host.show_ui(id) {
-                self.status = format!("Could not open the plugin UI (code {code})");
-            }
-        }
-        if let Some(id) = hide {
-            self.host.hide_ui(id);
-        }
-        if let Some(id) = remove {
-            // Order matters: dropping the Instance stops its audio stream and frees
-            // its processor; only then may the plugin instance itself go.
-            self.instances.retain(|instance| instance.id != id);
-            self.host.destroy_instance(id);
-        }
+        // Snapshot placement so toggling takes effect together on the next frame.
+        let analysis_on_right = self.scope_ui.on_right;
+        self.scope_panel(ctx, analysis_on_right);
+        self.routing_panel(ctx, analysis_on_right);
+        self.library_panel(ctx);
     }
 }
 
 fn main() -> eframe::Result {
+    if let Some(command) = cli::Cli::parse().command {
+        let result = match command {
+            cli::Command::Check => updater::check(),
+            cli::Command::Update => updater::update(),
+        };
+        if let Err(error) = result {
+            eprintln!("{error}");
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
     startup::init(Instant::now());
+    let _native_library = native_library::load().map_err(eframe::Error::AppCreation)?;
     let mut app = App::prepare();
     app.restore_before_gui();
     startup::mark(Stage::GuiRequested);
@@ -366,3 +244,6 @@ fn main() -> eframe::Result {
     startup::flush();
     result
 }
+
+#[cfg(test)]
+mod modulation_tests;

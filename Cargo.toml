@@ -9,8 +9,12 @@ build = "build.rs"
 eframe = "0.31"
 # Audio output (WASAPI on Windows).
 cpal = "0.15"
-# Lock-free queue from the UI thread to the audio thread.
-rtrb = "0.3"
 dirs = "6"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
+clap = { version = "4.6", features = ["derive"] }
+cat-self-update-lib = { git = "https://github.com/cat2151/cat-self-update", package = "cat-self-update-lib" }
+libloading = "0.8"
+sha2 = "0.10"
+quick-xml = "0.41"
+image = { version = "0.25", default-features = false, features = ["png"] }

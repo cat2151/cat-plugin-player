@@ -1,4 +1,4 @@
-//! A hardcoded step sequencer that runs on the audio thread.
+//! Playback patterns timed on the audio thread.
 //!
 //! It counts samples, so its timing does not depend on the UI or on how the
 //! audio device slices its callbacks. No allocation, no locks.
@@ -6,8 +6,17 @@
 /// The phrase: C3, G3, then the same an octave up.
 pub const NOTES: [u8; 4] = [48, 55, 60, 67];
 pub const STEP_MILLIS: u32 = 250;
+#[cfg(test)]
 const VELOCITY: u8 = 100;
 const CHANNEL: u8 = 0;
+use crate::sequence_modulation::{cc1, Modulation, SequenceModulation};
+use crate::sequence_pattern::SequencePattern;
+use crate::sequence_velocity::SequenceVelocity;
+
+/// Standard guitar tuning, from the sixth string to the first (E2 to E4).
+pub const GUITAR_NOTES: [u8; 6] = [40, 45, 50, 55, 59, 64];
+/// Gradually accelerate the picking while keeping the phrase's total duration.
+const GUITAR_INTERVAL_MILLIS: [u32; 5] = [175, 150, 125, 100, 75];
 
 /// MIDI 1.0 channel voice messages as UMP (group 0).
 pub fn note_on(channel: u8, note: u8, velocity: u8) -> u32 {
@@ -58,26 +67,87 @@ impl EventBuf {
     pub fn as_slice(&self) -> &[u32] {
         &self.words[..self.len]
     }
+
+    #[cfg(test)]
+    pub fn remaining(&self) -> usize {
+        self.words.len() - self.len
+    }
 }
 
 pub struct Sequencer {
-    step_samples: usize,
+    sample_rate: u32,
+    sample_remainder: u64,
     /// Samples from the start of the next block to the next step.
     until_next_step: usize,
     step: usize,
-    sounding: Option<u8>,
-    running: bool,
+    sounding: [bool; 128],
+    pattern: SequencePattern,
+    velocity_down: bool,
+    current_velocity: u8,
+    current_modulation: u8,
+    modulation: Modulation,
 }
 
 impl Sequencer {
     pub fn new(sample_rate: u32) -> Self {
-        let step_samples = (sample_rate as u64 * STEP_MILLIS as u64 / 1000).max(1) as usize;
         Self {
-            step_samples,
+            sample_rate,
+            sample_remainder: 0,
             until_next_step: 0,
             step: 0,
-            sounding: None,
-            running: false,
+            sounding: [false; 128],
+            pattern: SequencePattern::Off,
+            modulation: Modulation::default(),
+            velocity_down: false,
+            current_velocity: 0,
+            current_modulation: 0,
+        }
+    }
+
+    pub fn set_modulation(&mut self, modulation: SequenceModulation) {
+        self.modulation.select(modulation);
+    }
+
+    pub fn current_values(&self) -> (u8, u8) {
+        (self.current_velocity, self.current_modulation)
+    }
+
+    fn samples(&mut self, micros: u32) -> usize {
+        let scaled = self.sample_rate as u64 * micros as u64 + self.sample_remainder;
+        self.sample_remainder = scaled % 1_000_000;
+        (scaled / 1_000_000).max(1) as usize
+    }
+
+    fn release(&mut self, out: &mut EventBuf) {
+        for (note, sounding) in self.sounding.iter_mut().enumerate() {
+            if *sounding && out.push(note_off(CHANNEL, note as u8)) {
+                *sounding = false;
+            }
+        }
+    }
+
+    /// Pick overlapping notes, hold for two seconds, then rest before the next chord.
+    /// All chords in a pattern have the same number of notes.
+    fn arpeggio(
+        &mut self,
+        out: &mut EventBuf,
+        chords: &[&[u8]],
+        interval_divisor: u32,
+    ) -> (Option<u8>, u32) {
+        let stride = chords[0].len() + 1;
+        let chord = chords[self.step / stride];
+        let index = self.step % stride;
+        self.step = (self.step + 1) % (stride * chords.len());
+        if index == chord.len() {
+            self.release(out);
+            (None, 500_000)
+        } else {
+            let delay = if index + 1 == chord.len() {
+                2_000_000
+            } else {
+                GUITAR_INTERVAL_MILLIS[index] * 1000 / interval_divisor
+            };
+            (Some(chord[index]), delay)
         }
     }
 
@@ -85,121 +155,105 @@ impl Sequencer {
     /// with that block's length; `frames` must be at most 65535.
     ///
     /// Events already in `out` are taken to be at sample 0 of the block.
-    pub fn render(&mut self, enabled: bool, frames: usize, out: &mut EventBuf) {
-        if !enabled {
-            if self.running {
-                // Switched off: release what is sounding; start from the top next time.
-                if let Some(note) = self.sounding.take() {
-                    out.push(note_off(CHANNEL, note));
-                }
-                self.running = false;
+    pub fn render(
+        &mut self,
+        pattern: SequencePattern,
+        velocity: SequenceVelocity,
+        frames: usize,
+        out: &mut EventBuf,
+    ) {
+        if pattern != self.pattern {
+            self.release(out);
+            if self.pattern == SequencePattern::Off {
+                self.modulation.restart();
             }
-            return;
-        }
-        if !self.running {
-            self.running = true;
+            self.pattern = pattern;
             self.until_next_step = 0;
             self.step = 0;
+            self.velocity_down = false;
+            self.sample_remainder = 0;
+        }
+        if pattern == SequencePattern::Off {
+            // A full buffer must not turn a dropped note off into a forgotten note.
+            self.release(out);
+            self.current_velocity = 0;
+            if frames > 0
+                && self.modulation.next(self.sample_rate, false).is_some()
+                && out.push(cc1(self.modulation.value()))
+            {
+                self.current_modulation = self.modulation.value();
+                self.modulation.sent();
+            }
+            return;
         }
 
         let mut at = self.until_next_step; // sample offset of the next step in this block
         let mut cursor = 0; // offset the events emitted so far are at
-        while at < frames {
-            if at > cursor {
-                out.push(jr_timestamp(at - cursor));
-                cursor = at;
+        loop {
+            let modulation_at = self
+                .modulation
+                .next(self.sample_rate, true)
+                .unwrap_or(usize::MAX);
+            let next = at.min(modulation_at);
+            if next >= frames {
+                break;
             }
-            if let Some(note) = self.sounding.take() {
-                out.push(note_off(CHANNEL, note));
+            if next > cursor {
+                if !out.push(jr_timestamp(next - cursor)) {
+                    break;
+                }
+                cursor = next;
             }
-            let note = NOTES[self.step];
-            out.push(note_on(CHANNEL, note, VELOCITY));
-            self.sounding = Some(note);
-            self.step = (self.step + 1) % NOTES.len();
-            at += self.step_samples;
+            if modulation_at == next {
+                if !out.push(cc1(self.modulation.value())) {
+                    break;
+                }
+                self.current_modulation = self.modulation.value();
+                self.modulation.sent();
+            }
+            if at != next {
+                continue;
+            }
+            let (index, count) = match pattern {
+                SequencePattern::Steps => (self.step, NOTES.len()),
+                SequencePattern::GuitarArpeggio => (self.step, GUITAR_NOTES.len()),
+                SequencePattern::Csus4CArpeggio => (self.step / 4 * 3 + self.step % 4, 6),
+                SequencePattern::Fmaj7G6Arpeggio => (self.step / 5 * 4 + self.step % 5, 8),
+                SequencePattern::Off => unreachable!(),
+            };
+            let (note, delay) = match pattern {
+                SequencePattern::Steps => {
+                    self.release(out);
+                    let note = NOTES[self.step];
+                    self.step = (self.step + 1) % NOTES.len();
+                    (Some(note), STEP_MILLIS * 1000)
+                }
+                SequencePattern::GuitarArpeggio => self.arpeggio(out, &[&GUITAR_NOTES], 1),
+                SequencePattern::Csus4CArpeggio => {
+                    self.arpeggio(out, &[&[60, 65, 67], &[60, 64, 67]], 2)
+                }
+                SequencePattern::Fmaj7G6Arpeggio => {
+                    self.arpeggio(out, &[&[53, 69, 72, 76], &[55, 71, 74, 76]], 2)
+                }
+                SequencePattern::Off => unreachable!(),
+            };
+            if let Some(note) = note {
+                let velocity = velocity.value(index, count, self.velocity_down);
+                if out.push(note_on(CHANNEL, note, velocity)) {
+                    self.sounding[note as usize] = true;
+                    self.current_velocity = velocity;
+                }
+            }
+            if self.step == 0 {
+                self.velocity_down = !self.velocity_down;
+            }
+            at += self.samples(delay);
         }
-        self.until_next_step = at - frames;
+        self.until_next_step = at.saturating_sub(frames);
+        self.modulation.advance(frames, true);
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Renders `total` samples in blocks of `block` and returns (absolute sample, word)
-    /// for every note on/off.
-    fn run(
-        seq: &mut Sequencer,
-        enabled: bool,
-        total: usize,
-        block: usize,
-        start: usize,
-    ) -> Vec<(usize, u32)> {
-        let mut events = Vec::new();
-        let mut done = 0;
-        while done < total {
-            let frames = block.min(total - done);
-            let mut buf = EventBuf::new();
-            seq.render(enabled, frames, &mut buf);
-            let mut offset = 0;
-            for &word in buf.as_slice() {
-                if word >> 16 == 0x0020 {
-                    offset += (word & 0xFFFF) as usize;
-                } else {
-                    assert!(offset < frames, "event outside its block");
-                    events.push((start + done + offset, word));
-                }
-            }
-            done += frames;
-        }
-        events
-    }
-
-    fn note_ons(events: &[(usize, u32)]) -> Vec<(usize, u8)> {
-        events
-            .iter()
-            .filter(|(_, w)| w & 0xFFF0_0000 == 0x2090_0000)
-            .map(|&(t, w)| (t, ((w >> 8) & 0x7F) as u8))
-            .collect()
-    }
-
-    #[test]
-    fn steps_land_on_exact_samples_whatever_the_block_size() {
-        for block in [64, 480, 1024, 1000, 12000, 30000] {
-            let mut seq = Sequencer::new(48_000);
-            let events = run(&mut seq, true, 96_000, block, 0);
-            let ons = note_ons(&events);
-            let expected: Vec<(usize, u8)> = (0..8).map(|i| (i * 12_000, NOTES[i % 4])).collect();
-            assert_eq!(ons, expected, "block size {block}");
-        }
-    }
-
-    #[test]
-    fn every_note_is_released_when_the_next_one_starts() {
-        let mut seq = Sequencer::new(44_100);
-        let events = run(&mut seq, true, 44_100, 512, 0);
-        let mut sounding: Option<u8> = None;
-        for &(_, w) in &events {
-            let note = ((w >> 8) & 0x7F) as u8;
-            if w & 0xFFF0_0000 == 0x2080_0000 {
-                assert_eq!(sounding.take(), Some(note));
-            } else {
-                assert_eq!(sounding, None, "note on while another note sounds");
-                sounding = Some(note);
-            }
-        }
-    }
-
-    #[test]
-    fn switching_off_releases_the_note_and_restarts_from_the_top() {
-        let mut seq = Sequencer::new(48_000);
-        let first = run(&mut seq, true, 13_000, 1024, 0); // steps at 0 and 12000
-        assert_eq!(note_ons(&first), vec![(0, NOTES[0]), (12_000, NOTES[1])]);
-
-        let off = run(&mut seq, false, 2048, 1024, 13_000);
-        assert_eq!(off, vec![(13_000, note_off(0, NOTES[1]))]);
-
-        let again = run(&mut seq, true, 1024, 1024, 15_048);
-        assert_eq!(note_ons(&again), vec![(15_048, NOTES[0])]);
-    }
-}
+#[path = "seq_tests.rs"]
+mod tests;

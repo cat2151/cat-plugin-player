@@ -40,7 +40,8 @@ enum {
     UH_PLUGIN_VENDOR = 1,
     UH_PLUGIN_FORMAT = 2,
     UH_PLUGIN_ID     = 3,
-    UH_PLUGIN_PATH   = 4
+    UH_PLUGIN_PATH   = 4,
+    UH_PLUGIN_KIND   = 5
 };
 
 /* Return codes for uh_ui_show(). */
@@ -84,6 +85,16 @@ UH_API void uh_instance_create(UhHost* host, int32_t index, uint32_t sample_rate
                                uint32_t buffer_size, UhInstanceFn done, void* user);
 UH_API void uh_instance_destroy(UhHost* host, int32_t instance_id);
 
+/* State operations wait for UAPMD's async callback while pumping main-thread
+ * tasks. Stop audio rendering first. Data/error are valid during the callback.
+ * Empty data is valid. Returns UH_ERR_* on failure. Includes UI state where
+ * the backend supports it; uses the Project context. */
+typedef void (*UhStateFn)(void* user, const uint8_t* data, uint64_t size);
+UH_API int32_t uh_state_save(UhHost* host, int32_t instance_id, UhStateFn receive,
+                            void* user, char* error, int32_t error_size);
+UH_API int32_t uh_state_load(UhHost* host, int32_t instance_id, const uint8_t* data,
+                            uint64_t size, char* error, int32_t error_size);
+
 /* ---- Audio ----
  * A processor feeds one plugin instance with events and pulls audio out of it.
  *  - create/destroy: main thread.
@@ -99,6 +110,14 @@ UH_API UhProcessor* uh_processor_create(UhHost* host, int32_t instance_id,
                                         uint32_t sample_rate, uint32_t max_frames);
 UH_API void uh_processor_destroy(UhProcessor* processor);
 
+/* One instrument followed by ordered effects. Main buses must be mono/stereo;
+ * auxiliary inputs receive silence. IDs must be distinct. The chain owns its
+ * processors, not instances. Bypass keeps the effect instances and skips DSP.
+ * All instances must outlive the chain. Returns NULL for an unsupported layout. */
+UH_API UhProcessor* uh_chain_create(UhHost* host, int32_t instrument_id,
+                                    const int32_t* effect_ids, int32_t effect_count,
+                                    int32_t bypass, uint32_t sample_rate, uint32_t max_frames);
+
 /* Renders `frames` frames into out_interleaved (frames * out_channels floats).
  * ump_words: UMP (MIDI 1.0 or 2.0 channel voice messages) to deliver in this block;
  * may be NULL when ump_word_count is 0. Events start at sample 0 of the block; a JR
@@ -111,6 +130,14 @@ UH_API int32_t uh_processor_process(UhProcessor* processor,
 /* Shows the plugin editor in its own top-level window. Returns UH_OK or UH_ERR_*. */
 UH_API int32_t uh_ui_show(UhHost* host, int32_t instance_id);
 UH_API void uh_ui_hide(UhHost* host, int32_t instance_id);
+/* Returns 1 if the editor window is visible, including changes from its close
+ * button; 0 for a hidden, unopened or missing instance. Main thread only. */
+UH_API int32_t uh_ui_is_visible(UhHost* host, int32_t instance_id);
+
+/* Captures only the editor client area, scaled to fit 192x128, as RGBA.
+ * rgba must hold 192*128*4 bytes; width/height receive the actual dimensions. */
+UH_API int32_t uh_ui_thumbnail(UhHost* host, int32_t instance_id, uint8_t* rgba,
+                              int32_t len, int32_t* width, int32_t* height);
 
 #ifdef __cplusplus
 }

@@ -1,4 +1,4 @@
-//! Builds shim/ (the C++ DLL over uapmd) with CMake and links it.
+//! Builds, embeds, and delay-links shim/ (the C++ DLL over uapmd).
 //!
 //! Environment variables:
 //!   UAPMD_DIR        path to the uapmd checkout (default: ../uapmd, beside this package)
@@ -19,6 +19,8 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+mod build_metadata;
+
 /// Bump to force one new configure run in existing build directories.
 const CONFIGURE_STAMP: &str = ".uh_configured_v2";
 
@@ -34,20 +36,43 @@ fn run(cmd: &mut Command) {
 
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+    build_metadata::emit(&manifest_dir);
+    println!("cargo:rerun-if-changed=build_metadata.rs");
     let shim_dir = manifest_dir.join("shim");
     // Deliberately not OUT_DIR: that path is long, and the dependency trees CMake
     // unpacks below it would run into the Windows path length limit.
     let build_dir = manifest_dir.join("target").join("shim");
     let out_dir = build_dir.join("out");
+    let uapmd_dir = env::var("UAPMD_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| manifest_dir.join("..").join("uapmd"));
+    let uapmd_dir = uapmd_dir.canonicalize().unwrap_or(uapmd_dir);
+    println!("cargo:rustc-env=BUILD_UAPMD_DIR={}", uapmd_dir.display());
 
     for f in [
         "CMakeLists.txt",
         "uapmd_shim.cpp",
         "uapmd_shim.h",
+        "ui_thumbnail.h",
         "owned_instance.h",
+        "plugin_catalog.cpp",
+        "plugin_catalog.h",
+        "plugin_specific/shu_ui.h",
     ] {
         println!("cargo:rerun-if-changed={}", shim_dir.join(f).display());
     }
+    println!(
+        "cargo:rerun-if-changed={}",
+        manifest_dir
+            .join("patches/uapmd/windows-vst3-loader")
+            .display()
+    );
+    println!(
+        "cargo:rerun-if-changed={}",
+        uapmd_dir
+            .join("source/remidy/src/vst3/ClassModuleInfo.cpp")
+            .display()
+    );
     for v in [
         "UAPMD_DIR",
         "UH_GENERATOR",
@@ -60,10 +85,6 @@ fn main() {
     if env::var_os("UH_SKIP_CMAKE").is_none() {
         let generator =
             env::var("UH_GENERATOR").unwrap_or_else(|_| "Visual Studio 17 2022".to_string());
-        let uapmd_dir = env::var("UAPMD_DIR")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| manifest_dir.join("..").join("uapmd"));
-
         let stamp = build_dir.join(CONFIGURE_STAMP);
         if !stamp.exists() || env::var_os("UH_RECONFIGURE").is_some() {
             let mut configure = Command::new("cmake");
@@ -96,23 +117,23 @@ fn main() {
 
     println!("cargo:rustc-link-search=native={}", out_dir.display());
     println!("cargo:rustc-link-lib=dylib=uapmd_shim");
-
-    // The exe needs the DLL beside it. OUT_DIR is target/<profile>/build/<pkg>-<hash>/out.
-    let dll = out_dir.join("uapmd_shim.dll");
-    if dll.exists() {
-        let profile_dir = PathBuf::from(env::var("OUT_DIR").unwrap())
-            .ancestors()
-            .nth(3)
-            .map(Path::to_path_buf)
-            .expect("unexpected OUT_DIR layout");
-        std::fs::copy(&dll, profile_dir.join("uapmd_shim.dll"))
-            .expect("could not copy uapmd_shim.dll next to the exe");
-    } else {
-        println!("cargo:warning={} not found", dll.display());
-    }
+    // cargo install only deploys the exe. Embed the DLL and load it before the
+    // first FFI call, so CLI commands and installed binaries need no loose DLL.
+    println!("cargo:rustc-link-lib=delayimp");
+    println!("cargo:rustc-link-arg=/DELAYLOAD:uapmd_shim.dll");
+    println!(
+        "cargo:rustc-env=UAPMD_SHIM_DLL={}",
+        out_dir.join("uapmd_shim.dll").display()
+    );
 }
 
-/// CMake wants forward slashes.
+/// CMake wants forward slashes and ordinary Windows paths, not verbatim paths
+/// returned by canonicalize (//?/ is not a valid CMake drive prefix).
 fn cmake_path(p: &Path) -> String {
-    p.display().to_string().replace('\\', "/")
+    let path = p.display().to_string().replace('\\', "/");
+    if let Some(unc) = path.strip_prefix("//?/UNC/") {
+        format!("//{unc}")
+    } else {
+        path.strip_prefix("//?/").unwrap_or(&path).to_owned()
+    }
 }

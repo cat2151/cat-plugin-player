@@ -27,8 +27,14 @@ set(UAPMD_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 # The whole of uapmd gets configured, but EXCLUDE_FROM_ALL means that only what
 # uapmd_shim links against gets compiled.
 add_subdirectory("${UAPMD_DIR}" uapmd EXCLUDE_FROM_ALL)
+include("${CMAKE_CURRENT_SOURCE_DIR}/../patches/uapmd/windows-vst3-loader/CMakeLists.cmake")
 
-add_library(uapmd_shim SHARED uapmd_shim.cpp uapmd_shim.h)
+add_library(uapmd_shim SHARED uapmd_shim.cpp uapmd_shim.h plugin_catalog.cpp plugin_catalog.h)
+if(WIN32)
+    target_link_libraries(uapmd_shim PRIVATE gdi32)
+endif()
+get_target_property(REMIDY_METADATA_INCLUDES remidy INCLUDE_DIRECTORIES)
+target_include_directories(uapmd_shim PRIVATE ${REMIDY_METADATA_INCLUDES})
 target_compile_definitions(uapmd_shim PRIVATE UAPMD_SHIM_BUILD)
 # uapmd declares these include directories PRIVATE, so they are repeated here.
 target_include_directories(uapmd_shim PRIVATE

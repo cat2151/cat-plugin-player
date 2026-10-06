@@ -1,22 +1,20 @@
-//! Audio output for one plugin instance: a cpal stream whose callback pulls
-//! audio from the shim, plus a lock-free queue for sending it UMP events and
-//! the step sequencer that plays the hardcoded phrase.
+//! Audio output for one instrument and its serial effects: a cpal stream whose callback pulls
+//! audio from the shim and the sequencer that plays the selected phrase.
 
-use crate::ffi;
 use crate::seq::{EventBuf, Sequencer};
+use crate::sequence_modulation::SequenceModulation;
+use crate::sequence_velocity::SequenceVelocity;
 use crate::startup::{self, Stage};
+use crate::{ffi, sequence_pattern::SequencePattern};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::Arc;
 
-pub use crate::seq::{note_off, note_on};
+use crate::seq::note_off;
 
 /// The largest block handed to the plugin at once. The device may ask for
 /// more frames per callback; those are rendered in several blocks.
 pub const MAX_BLOCK_FRAMES: u32 = 1024;
-
-/// How many UMP words can wait between two audio callbacks.
-const EVENT_QUEUE_WORDS: usize = 1024;
 
 /// The default output device and the format it runs at.
 pub struct Output {
@@ -54,26 +52,39 @@ impl Output {
 /// Field order matters: fields drop in declaration order, and the stream has to
 /// stop before the processor it renders with is destroyed.
 pub struct Voice {
-    _stream: cpal::Stream,
+    _stream: Option<cpal::Stream>,
     _processor: ffi::Processor,
-    events: rtrb::Producer<u32>,
-    sequence_on: Arc<AtomicBool>,
+    sequence_pattern: Arc<AtomicU8>,
+    sequence_velocity: Arc<AtomicU8>,
+    sequence_modulation: Arc<AtomicU8>,
+    current_velocity: Arc<AtomicU8>,
+    current_modulation: Arc<AtomicU8>,
     rendered: Arc<AtomicBool>,
+    scope: crate::scope::Scope,
 }
 
 impl Voice {
-    /// `sequence_on`: whether the phrase starts playing right away.
+    /// Starts with the selected pattern, including the stopped state.
     pub fn start(
         output: &Output,
         processor: ffi::Processor,
-        sequence_on: bool,
+        sequence_pattern: SequencePattern,
+        velocity: SequenceVelocity,
+        modulation: SequenceModulation,
     ) -> Result<Self, String> {
         let channels = output.config.channels as usize;
-        let sequence_on = Arc::new(AtomicBool::new(sequence_on));
-        let sequence_flag = Arc::clone(&sequence_on);
+        let sequence_pattern = Arc::new(AtomicU8::new(sequence_pattern as u8));
+        let sequence_flag = Arc::clone(&sequence_pattern);
+        let sequence_velocity = Arc::new(AtomicU8::new(velocity as u8));
+        let velocity_flag = Arc::clone(&sequence_velocity);
+        let sequence_modulation = Arc::new(AtomicU8::new(modulation as u8));
+        let modulation_flag = Arc::clone(&sequence_modulation);
+        let current_velocity = Arc::new(AtomicU8::new(0));
+        let current_modulation = Arc::new(AtomicU8::new(0));
+        let velocity_meter = Arc::clone(&current_velocity);
+        let modulation_meter = Arc::clone(&current_modulation);
         let mut sequencer = Sequencer::new(output.sample_rate());
         let mut ump = EventBuf::new();
-        let (events, mut incoming) = rtrb::RingBuffer::<u32>::new(EVENT_QUEUE_WORDS);
         // SAFETY: `_stream` is declared before `_processor`, so the callback is
         // gone before the processor is; only this one callback renders.
         let mut render = unsafe { processor.audio_ref() };
@@ -82,6 +93,9 @@ impl Voice {
         let rendered = Arc::new(AtomicBool::new(false));
         let rendered_flag = Arc::clone(&rendered);
         let mut first_render = true;
+        let (mut capture, scope) = crate::scope::Scope::start(output.sample_rate())?;
+        let mut captured_pattern =
+            SequencePattern::from_u8(sequence_pattern.load(Ordering::Relaxed));
 
         startup::mark(Stage::StreamBuildRequested);
         let stream = output
@@ -94,22 +108,24 @@ impl Voice {
                         startup::mark(Stage::FirstAudioCallback);
                         trace_callback = false;
                     }
-                    let enabled = sequence_flag.load(Ordering::Relaxed);
+                    let pattern = SequencePattern::from_u8(sequence_flag.load(Ordering::Relaxed));
+                    if pattern != captured_pattern {
+                        capture.reset();
+                        captured_pattern = pattern;
+                    }
+                    let velocity = SequenceVelocity::from_u8(velocity_flag.load(Ordering::Relaxed));
+                    sequencer.set_modulation(SequenceModulation::from_u8(
+                        modulation_flag.load(Ordering::Relaxed),
+                    ));
                     let block = MAX_BLOCK_FRAMES as usize * channels;
-                    let mut first = true;
                     for chunk in data.chunks_mut(block) {
                         ump.clear();
-                        if first {
-                            // What the UI sent goes to the start of the first block.
-                            first = false;
-                            while let Ok(word) = incoming.pop() {
-                                if !ump.push(word) {
-                                    break;
-                                }
-                            }
-                        }
-                        sequencer.render(enabled, chunk.len() / channels, &mut ump);
+                        sequencer.render(pattern, velocity, chunk.len() / channels, &mut ump);
                         render.process(ump.as_slice(), chunk, channels);
+                        let (velocity, modulation) = sequencer.current_values();
+                        velocity_meter.store(velocity, Ordering::Relaxed);
+                        modulation_meter.store(modulation, Ordering::Relaxed);
+                        capture.record(chunk, channels, ump.as_slice());
                         if trace_signal && chunk.iter().any(|sample| sample.abs() > 0.000001) {
                             startup::mark(Stage::FirstSignalRendered);
                             trace_signal = false;
@@ -131,30 +147,91 @@ impl Voice {
         startup::mark(Stage::PlayReturned);
 
         Ok(Self {
-            _stream: stream,
+            _stream: Some(stream),
             _processor: processor,
-            events,
-            sequence_on,
+            sequence_pattern,
+            sequence_velocity,
+            sequence_modulation,
+            current_velocity,
+            current_modulation,
             rendered,
+            scope,
         })
     }
 
-    pub fn sequence_on(&self) -> bool {
-        self.sequence_on.load(Ordering::Relaxed)
+    pub fn sequence_pattern(&self) -> SequencePattern {
+        SequencePattern::from_u8(self.sequence_pattern.load(Ordering::Relaxed))
+    }
+
+    pub fn current_values(&self) -> (u8, u8) {
+        (
+            self.current_velocity.load(Ordering::Relaxed),
+            self.current_modulation.load(Ordering::Relaxed),
+        )
+    }
+
+    pub fn scope(&self) -> &crate::scope::Scope {
+        &self.scope
     }
 
     pub fn has_rendered(&self) -> bool {
         self.rendered.load(Ordering::Acquire)
     }
 
-    /// Starts or stops the phrase. Takes effect at the next audio block; stopping
-    /// releases the sounding note, and starting again begins with the first note.
-    pub fn set_sequence(&self, on: bool) {
-        self.sequence_on.store(on, Ordering::Relaxed);
+    /// Changes pattern at the next audio block, releasing all sounding sequence
+    /// notes and restarting the selected phrase from its first note.
+    pub fn set_sequence(&self, pattern: SequencePattern) {
+        self.sequence_pattern
+            .store(pattern as u8, Ordering::Relaxed);
     }
 
-    /// Queues one UMP word for the next audio block. Returns false if the queue is full.
-    pub fn send(&mut self, word: u32) -> bool {
-        self.events.push(word).is_ok()
+    pub fn set_modulation(&self, modulation: SequenceModulation) {
+        self.sequence_modulation
+            .store(modulation as u8, Ordering::Relaxed);
+    }
+
+    /// Applies to subsequent note ons without restarting the phrase.
+    pub fn set_velocity(&self, velocity: SequenceVelocity) {
+        self.sequence_velocity
+            .store(velocity as u8, Ordering::Relaxed);
+    }
+}
+
+impl Drop for Voice {
+    fn drop(&mut self) {
+        // Wait for the callback before using the processor on this thread.
+        self._stream = None;
+        // Release every MIDI note before rebuilding a stream. The new sequencer
+        // cannot otherwise know which notes the previous callback left sounding.
+        let events = shutdown_events();
+        let mut silence = [0.0; 2];
+        unsafe { self._processor.audio_ref() }.process(&events, &mut silence, 2);
+    }
+}
+
+fn shutdown_events() -> [u32; 144] {
+    // CLAP's native note dispatcher does not implement CC 120. Explicit note
+    // offs cover sequence notes on channel 0 after losing tracking.
+    std::array::from_fn(|index| {
+        if index < 128 {
+            note_off(0, index as u8)
+        } else {
+            0x20B0_0000 | (((index - 128) as u32) << 16) | (120 << 8)
+        }
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rebuilding_stream_releases_notes_without_requiring_cc_support() {
+        let events = shutdown_events();
+        for note in crate::seq::GUITAR_NOTES.into_iter().chain([60]) {
+            assert!(events[..128].contains(&note_off(0, note)));
+        }
+        assert_eq!(events[128], 0x20B0_7800);
+        assert_eq!(events[143], 0x20BF_7800);
     }
 }
