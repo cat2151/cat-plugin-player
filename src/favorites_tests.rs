@@ -6,7 +6,7 @@ fn native_favorites_restore_both_slots_without_overwriting_snapshots() {
     let _library = crate::native_library::load().unwrap();
     let mut app = App::prepare();
     app.restore = None;
-    app.restore_effect = None;
+    app.restore_effect = Default::default();
     app.output = None;
     app.deferred_scan = false;
     let dir = std::env::temp_dir().join(format!("cat-favorite-native-{}", std::process::id()));
@@ -66,7 +66,7 @@ fn native_favorites_restore_both_slots_without_overwriting_snapshots() {
     app.load_favorite(&stopped.id);
     assert_eq!(app.sequence_pattern, crate::SequencePattern::Off);
     assert_eq!(
-        crate::config::Config::load(&path).unwrap().sequence_pattern,
+        crate::status::Status::load(&path).unwrap().sequence_pattern,
         crate::SequencePattern::Off
     );
     app.sequence_velocity = crate::SequenceVelocity::Range40To100;
@@ -83,19 +83,19 @@ fn native_favorites_restore_both_slots_without_overwriting_snapshots() {
     // changed since recall. It must not reload the immutable favorite snapshot.
     app.save_plugin_state(source).unwrap();
     app.save_plugin_state(fx).unwrap();
-    let saved = crate::config::Config::load(&path).unwrap();
+    let saved = crate::status::Status::load(&path).unwrap();
     assert_eq!(
         saved.favorites.instrument.as_deref(),
         Some(stopped.id.as_str())
     );
     assert_eq!(
-        saved.favorites.effect.as_deref(),
+        saved.favorites.effects.first().map(String::as_str),
         Some(effect_favorite.id.as_str())
     );
     let mut next = App::prepare();
     next.config_path = Ok(path.clone());
     next.restore = saved.last_played;
-    next.restore_effect = saved.effect;
+    next.restore_effect = saved.effects.into();
     next.effect_bypassed = saved.effect_bypassed;
     next.sequence_pattern = saved.sequence_pattern;
     next.favorites.restore = saved.favorites;
@@ -124,6 +124,8 @@ fn native_favorites_restore_both_slots_without_overwriting_snapshots() {
     app.save_session();
 
     let count = app.favorites.library.entries.len();
+    // A new playback pattern makes this snapshot distinct from existing favorites.
+    app.sequence_pattern = crate::SequencePattern::Csus4CArpeggio;
     let outgoing_state = app.host.save_state(source).unwrap();
     let outgoing_pattern = app.sequence_pattern;
     app.load_plugin(surge);
@@ -145,7 +147,7 @@ fn native_favorites_restore_both_slots_without_overwriting_snapshots() {
     assert_ne!(app.instrument_id(), Some(other_source), "{}", app.status);
     assert_eq!(app.sequence_pattern, first.sequence_pattern);
     assert_eq!(
-        crate::config::Config::load(&path).unwrap().sequence_pattern,
+        crate::status::Status::load(&path).unwrap().sequence_pattern,
         first.sequence_pattern
     );
     assert_eq!(app.effect_id(), Some(fx));
@@ -178,7 +180,7 @@ fn native_favorites_restore_both_slots_without_overwriting_snapshots() {
         playback
     );
     assert_eq!(
-        crate::config::Config::load(&path).unwrap().sequence_pattern,
+        crate::status::Status::load(&path).unwrap().sequence_pattern,
         playback.0
     );
     assert_eq!(app.instrument_id(), Some(source));
@@ -257,7 +259,10 @@ fn native_favorites_restore_both_slots_without_overwriting_snapshots() {
             .unwrap(),
         fx_state
     );
-    assert!(crate::config::Config::load(&path).unwrap().effect.is_none());
+    assert!(crate::status::Status::load(&path)
+        .unwrap()
+        .effects
+        .is_empty());
     assert!(!app.instances.iter().any(|i| i.id == effect));
 
     // Once removed, the same row recalls the effect rather than removing the
@@ -313,7 +318,7 @@ fn native_favorites_restore_both_slots_without_overwriting_snapshots() {
     std::fs::remove_dir_all(dir).unwrap();
 }
 
-fn click_favorite(app: &mut App, name: &str, width: f32, connected: bool) {
+pub(super) fn click_favorite(app: &mut App, name: &str, width: f32, connected: bool) {
     let ctx = eframe::egui::Context::default();
     app.filter = name.to_owned();
     let input = || eframe::egui::RawInput {
@@ -398,9 +403,10 @@ fn restored_selection_requires_the_saved_slot_and_plugin_identity() {
     };
     let mut favorites = Favorites::default();
     favorites.library.entries = vec![instrument, effect];
-    favorites.restore = crate::config::FavoriteSelection {
+    favorites.restore = crate::status::FavoriteSelection {
         instrument: Some("instrument".into()),
-        effect: Some("effect".into()),
+        effects: vec!["effect".into()],
+        ..Default::default()
     };
     assert_eq!(
         favorites

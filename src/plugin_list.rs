@@ -1,7 +1,7 @@
 //! Presentation order is separate from the native catalog indices used to load plugins.
 use crate::{config::PluginKey, ffi::PluginInfo};
 use eframe::egui::Color32;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PluginKind {
@@ -46,6 +46,16 @@ fn group_key(plugin: &PluginInfo) -> (String, String) {
     )
 }
 
+/// The same relation used to hide a VST3 entry behind its CLAP counterpart.
+pub(crate) fn represents_hidden_vst3(clap: &PluginInfo, vst3: &PluginInfo) -> bool {
+    clap.format.eq_ignore_ascii_case("CLAP")
+        && vst3.format.eq_ignore_ascii_case("VST3")
+        && !clap.name.trim().is_empty()
+        && !clap.vendor.trim().is_empty()
+        && clap.kind == vst3.kind
+        && group_key(clap) == group_key(vst3)
+}
+
 pub fn ordered_indices(plugins: &[PluginInfo], restored: Option<&PluginKey>) -> Vec<usize> {
     let restored_index = restored.and_then(|key| key.find(plugins));
     let restored_group = restored_index.map(|index| group_key(&plugins[index]));
@@ -72,6 +82,32 @@ pub fn ordered_indices(plugins: &[PluginInfo], restored: Option<&PluginKey>) -> 
                 )
             });
             indices
+        })
+        .collect()
+}
+
+/// Filter presentation only; catalog indices and saved format identities stay intact.
+pub fn visible_indices(
+    plugins: &[PluginInfo],
+    restored: Option<&PluginKey>,
+    prefer_clap: bool,
+) -> Vec<usize> {
+    let clap_groups: BTreeSet<_> = plugins
+        .iter()
+        .filter(|plugin| {
+            plugin.format.eq_ignore_ascii_case("CLAP")
+                && !plugin.name.trim().is_empty()
+                && !plugin.vendor.trim().is_empty()
+        })
+        .map(|plugin| (group_key(plugin), plugin.kind))
+        .collect();
+    ordered_indices(plugins, restored)
+        .into_iter()
+        .filter(|&index| {
+            let plugin = &plugins[index];
+            !prefer_clap
+                || !plugin.format.eq_ignore_ascii_case("VST3")
+                || !clap_groups.contains(&(group_key(plugin), plugin.kind))
         })
         .collect()
 }
@@ -117,5 +153,50 @@ mod tests {
         plugins[2].vendor = "Other".into();
         let restored = PluginKey::from_plugin(&plugins[0]);
         assert_eq!(ordered_indices(&plugins, Some(&restored)), [0, 2, 1]);
+    }
+
+    #[test]
+    fn clap_preference_hides_only_matching_vst3_and_preserves_catalog_indices() {
+        let mut plugins = vec![
+            plugin(19, "Synth", "VST3", PluginKind::Instrument),
+            plugin(28, " synth ", "CLAP", PluginKind::Instrument),
+            plugin(37, "Synth", "VST3", PluginKind::Effect),
+            plugin(46, "Synth", "VST3", PluginKind::Instrument),
+            plugin(55, "Other", "VST3", PluginKind::Instrument),
+            plugin(64, "Synth", "AU", PluginKind::Instrument),
+        ];
+        plugins[1].vendor = " vendor ".into();
+        plugins[3].vendor = "Another vendor".into();
+        let restored = PluginKey::from_plugin(&plugins[0]);
+        let all = ordered_indices(&plugins, Some(&restored));
+        assert_eq!(visible_indices(&plugins, Some(&restored), false), all);
+        let visible = visible_indices(&plugins, Some(&restored), true);
+        assert_eq!(
+            visible,
+            all.into_iter().filter(|&i| i != 0).collect::<Vec<_>>()
+        );
+        assert_eq!(restored.find(&plugins), Some(0));
+        assert_eq!(
+            plugins[*visible.iter().find(|&&i| i == 1).unwrap()].index,
+            28
+        );
+    }
+
+    #[test]
+    fn missing_metadata_does_not_hide_vst3() {
+        for missing_name in [false, true] {
+            let mut plugins = vec![
+                plugin(0, "Synth", "CLAP", PluginKind::Unknown),
+                plugin(1, "Synth", "VST3", PluginKind::Unknown),
+            ];
+            for plugin in &mut plugins {
+                if missing_name {
+                    plugin.name.clear();
+                } else {
+                    plugin.vendor.clear();
+                }
+            }
+            assert_eq!(visible_indices(&plugins, None, true).len(), 2);
+        }
     }
 }

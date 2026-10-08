@@ -52,6 +52,21 @@ pub struct Library {
     pub entries: Vec<Favorite>,
 }
 
+#[derive(Clone, Copy)]
+pub(crate) struct FavoriteCapture {
+    pub sequence_pattern: SequencePattern,
+    pub sweep_cc1: bool,
+}
+
+impl From<SequencePattern> for FavoriteCapture {
+    fn from(sequence_pattern: SequencePattern) -> Self {
+        Self {
+            sequence_pattern,
+            sweep_cc1: false,
+        }
+    }
+}
+
 fn directory(config: &Path) -> Result<PathBuf, String> {
     Ok(config
         .parent()
@@ -116,14 +131,34 @@ impl Library {
         atomic_write(&directory(config)?.join("index.toml"), text.as_bytes())
     }
 
+    pub fn record_use(&mut self, config: &Path, id: &str) -> Result<(), String> {
+        let index = self
+            .entries
+            .iter()
+            .position(|favorite| favorite.id == id)
+            .ok_or("favorite not found")?;
+        if index == 0 {
+            return Ok(());
+        }
+        let favorite = self.entries.remove(index);
+        self.entries.insert(0, favorite);
+        if let Err(error) = self.save(config) {
+            let favorite = self.entries.remove(0);
+            self.entries.insert(index, favorite);
+            return Err(error);
+        }
+        Ok(())
+    }
+
     pub fn add(
         &mut self,
         config: &Path,
         plugin: PluginKey,
         effect: bool,
         state: &[u8],
-        sequence_pattern: SequencePattern,
+        capture: impl Into<FavoriteCapture>,
     ) -> Result<Favorite, String> {
+        let capture = capture.into();
         let name = plugin.name.clone();
         self.add_snapshot(
             config,
@@ -135,10 +170,12 @@ impl Library {
                 sequence_pattern: if effect {
                     SequencePattern::Off
                 } else {
-                    sequence_pattern
+                    capture.sequence_pattern
                 },
             },
             state,
+            capture.sweep_cc1,
+            false,
         )
     }
 
@@ -148,8 +185,9 @@ impl Library {
         plugin: PluginKey,
         effect: bool,
         state: &[u8],
-        sequence_pattern: SequencePattern,
+        capture: impl Into<FavoriteCapture>,
     ) -> Result<Favorite, String> {
+        let capture = capture.into();
         let name = format!("auto {}", plugin.name);
         self.add_snapshot(
             config,
@@ -161,10 +199,12 @@ impl Library {
                 sequence_pattern: if effect {
                     SequencePattern::Off
                 } else {
-                    sequence_pattern
+                    capture.sequence_pattern
                 },
             },
             state,
+            capture.sweep_cc1,
+            true,
         )
     }
 
@@ -173,21 +213,31 @@ impl Library {
         config: &Path,
         mut favorite: Favorite,
         state: &[u8],
+        sweep_cc1: bool,
+        automatic: bool,
     ) -> Result<Favorite, String> {
         for entry in &self.entries {
             if entry.plugin.format == favorite.plugin.format
                 && entry.plugin.id == favorite.plugin.id
                 && entry.effect == favorite.effect
-                && (favorite.effect || entry.sequence_pattern == favorite.sequence_pattern)
-                && crate::plugin_specific::same_favorite_state(
+                && (favorite.effect
+                    || entry.sequence_pattern == favorite.sequence_pattern
+                    // Stop is transport state, not a new automatic favorite.
+                    || (automatic
+                        && (entry.sequence_pattern == SequencePattern::Off
+                            || favorite.sequence_pattern == SequencePattern::Off)))
+                && crate::plugin_specific::same_favorite_state_with_sweep(
                     &favorite.plugin,
                     &self.state(config, &entry.id)?,
                     state,
+                    sweep_cc1 && !favorite.effect,
                 )
             {
                 // Reuse the immutable snapshot, including a user-assigned name.
                 // Replacing it would churn both its ID and its automatic number.
-                return Ok(entry.clone());
+                let favorite = entry.clone();
+                self.record_use(config, &favorite.id)?;
+                return Ok(favorite);
             }
         }
         use std::sync::atomic::{AtomicU64, Ordering};

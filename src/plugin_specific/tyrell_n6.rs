@@ -16,9 +16,34 @@ pub(crate) fn same_sound(plugin: &PluginKey, left: &[u8], right: &[u8]) -> bool 
         return false;
     }
     match (tyrell_settings(left), tyrell_settings(right)) {
-        (Some(left), Some(right)) => left == right,
+        (Some(left), Some(right)) => {
+            let left = left.trim_end_matches('\n');
+            let right = right.trim_end_matches('\n');
+            left == right
+                || matches!((ui_operation(left), ui_operation(right)),
+                    (Some(left), Some(right)) if left == right)
+        }
         _ => false,
     }
+}
+
+// Build 16976 can change PCore UI_op from 9 to 10 after processing a
+// restored state. Only this observed pair is equivalent; retain other values,
+// sections, metadata, and every sound parameter in the comparison.
+fn ui_operation(settings: &str) -> Option<(&str, &str)> {
+    let (before, rest) = settings.split_once("\nUI_op=")?;
+    let (value, after) = rest.split_once('\n')?;
+    if !matches!(value, "9" | "10")
+        || before.lines().rev().find(|line| line.starts_with("#cm=")) != Some("#cm=PCore")
+        || settings
+            .lines()
+            .filter(|line| line.starts_with("UI_op="))
+            .count()
+            != 1
+    {
+        return None;
+    }
+    Some((before, after))
 }
 
 fn tyrell_settings(state: &[u8]) -> Option<&str> {
@@ -26,7 +51,8 @@ fn tyrell_settings(state: &[u8]) -> Option<&str> {
     let (settings, compressed) = text.split_once(COMPRESSED)?;
     // This layout was verified with TyrellN6 CLAP build 16976. Playing notes
     // and CC1 changes the compressed section without changing sound settings.
-    // Keep all text (including metadata and every parameter) in the comparison.
+    // Keep metadata and sound parameters; same_sound handles the observed
+    // PCore UI_op 9/10 transition and trailing empty lines separately.
     // Unknown revisions/layouts fall back to exact bytes, rather than guessing.
     if !settings.starts_with("#pgm=")
         || !settings.lines().any(|line| line == "#AM=TyrellN6")
@@ -67,10 +93,33 @@ mod tests {
     fn state(cutoff: u32, runtime: &str) -> Vec<u8> {
         format!(
             "#pgm=Test.h2p\n#AM=TyrellN6\n#Vers=10010\n#Endian=little\n\
-             #cm=PCore\nRev=16976\n#cm=Tyrell\nCutoff={cutoff}.00\n\n\
+             #cm=PCore\nRev=16976\nUI_op=9\n#cm=Tyrell\nCutoff={cutoff}.00\n\n\
              {COMPRESSED}?abcdefghij{runtime}=81976\n\0\0"
         )
         .into_bytes()
+    }
+
+    #[test]
+    fn observed_ui_transition_and_trailing_empty_lines_match() {
+        let first = state(85, "one");
+        let second = String::from_utf8(state(85, "two"))
+            .unwrap()
+            .replace("UI_op=9", "UI_op=10")
+            .replace(&format!("\n\n{COMPRESSED}"), &format!("\n\n\n{COMPRESSED}"));
+        assert!(same_sound(&plugin(), &first, second.as_bytes()));
+        assert!(same_sound(&plugin(), second.as_bytes(), &first));
+        assert!(!same_sound(&plugin(), &state(84, "one"), second.as_bytes()));
+        for (from, to) in [
+            ("UI_op=10", "UI_op=11"),
+            ("UI_op=10", "UI_op=09"),
+            ("UI_op=10", "UI_op=10\nUI_op=9"),
+            ("UI_op=10", "#cm=Tyrell\nUI_op=10"),
+            ("Rev=16976", "Rev=16976\n"),
+            ("Test.h2p", "Other.h2p"),
+        ] {
+            let changed = second.replace(from, to);
+            assert!(!same_sound(&plugin(), &first, changed.as_bytes()), "{to}");
+        }
     }
 
     #[test]

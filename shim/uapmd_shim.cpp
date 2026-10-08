@@ -7,6 +7,7 @@
 #include "plugin_catalog.h"
 #include "plugin_specific/shu_ui.h"
 #include "ui_thumbnail.h"
+#include "window_placement.h"
 #if _WIN32
 #include <Windows.h>
 #endif
@@ -105,6 +106,8 @@ struct UhHost {
     int32_t next_instance_id{0};
     int32_t pending_instances{0};
     std::map<int32_t, std::unique_ptr<remidy::gui::ContainerWindow>> windows;
+    void* main_window{};
+    bool placing_editor{};
     std::set<int32_t> ui_created;
     std::set<int32_t> ui_visible;
     std::thread scan_thread;
@@ -261,7 +264,9 @@ void uh_pump_startup(UhHost* host) {
     uh_pump(host);
 #if _WIN32
     MSG message;
-    while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
+    // An editor can invalidate itself continuously. Return to the caller so
+    // startup deadlines and shutdown completion checks still get a turn.
+    for (int count = 0; count < 32 && PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE); ++count) {
         if (message.message == WM_QUIT) {
             PostQuitMessage(static_cast<int>(message.wParam));
             break;
@@ -684,6 +689,22 @@ int32_t uh_processor_process(UhProcessor* processor,
     return 0;
 }
 
+void uh_ui_set_main_window(UhHost* host, void* hwnd) {
+    if (host) host->main_window = hwnd;
+}
+
+int32_t uh_ui_place_window(UhHost* host, void* hwnd) {
+#if _WIN32
+    if (!host || host->placing_editor) return UH_ERR_NO_INSTANCE;
+    host->placing_editor = true;
+    const bool placed = uh::placeEditor(static_cast<HWND>(host->main_window), static_cast<HWND>(hwnd));
+    host->placing_editor = false;
+    return placed ? UH_OK : UH_ERR_NO_INSTANCE;
+#else
+    return UH_OK;
+#endif
+}
+
 int32_t uh_ui_show(UhHost* host, int32_t instance_id) {
     if (!host)
         return UH_ERR_NO_INSTANCE;
@@ -714,8 +735,9 @@ int32_t uh_ui_show(UhHost* host, int32_t instance_id) {
         container->show(true);
 
         if (!host->ui_created.contains(instance_id)) {
-            auto onPluginResize = [container](uint32_t width, uint32_t height) {
+            auto onPluginResize = [host, container](uint32_t width, uint32_t height) {
                 container->resize(static_cast<int>(width), static_cast<int>(height));
+                uh_ui_place_window(host, container->getHandle());
                 return true;
             };
             if (!instance->createUI(false, container->getHandle(), onPluginResize)) {
@@ -737,6 +759,7 @@ int32_t uh_ui_show(UhHost* host, int32_t instance_id) {
             container->show(false);
             return UH_ERR_SHOW_UI;
         }
+        uh_ui_place_window(host, container->getHandle());
         host->ui_visible.insert(instance_id);
         return UH_OK;
     } catch (...) {

@@ -86,15 +86,15 @@ fn sweep_stops_and_restarts_from_zero_and_choice_survives_serialization() {
     assert_eq!(render(&mut seq, P::Steps, 1, 1)[0], (0, cc1(0)));
     seq.set_modulation(M::Full);
     assert!(render(&mut seq, P::Off, 1, 1).contains(&(0, cc1(127))));
-    let old: crate::config::Config = toml::from_str("sequence_pattern = 'steps'").unwrap();
+    let old: crate::status::Status = toml::from_str("sequence_pattern = 'steps'").unwrap();
     assert_eq!(old.sequence_modulation, M::Zero);
     for &choice in M::TYPES {
-        let config = crate::config::Config {
+        let config = crate::status::Status {
             sequence_modulation: choice,
             ..Default::default()
         };
-        let restored: crate::config::Config =
-            toml::from_str(&toml::to_string(&config).unwrap()).unwrap();
+        let restored: crate::status::Status =
+            serde_json::from_str(&serde_json::to_string(&config).unwrap()).unwrap();
         assert_eq!(restored.sequence_modulation, choice);
     }
 }

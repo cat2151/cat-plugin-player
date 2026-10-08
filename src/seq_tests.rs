@@ -1,6 +1,64 @@
 use super::*;
 
 #[test]
+fn startup_wait_preserves_first_note_and_phrase_timing_across_blocks() {
+    for rate in [44_100, 48_000] {
+        for block in [64, 256, 1024] {
+            let mut seq = Sequencer::new(rate);
+            seq.delay_start(std::time::Duration::from_millis(100));
+            let mut events = Vec::new();
+            let mut buf = EventBuf::new();
+            for start in (0..rate as usize / 2).step_by(block) {
+                buf.clear();
+                seq.render(
+                    SequencePattern::Steps,
+                    SequenceVelocity::V100,
+                    block,
+                    &mut buf,
+                );
+                let mut at = start;
+                for &word in buf.as_slice() {
+                    if word & 0xFFFF_0000 == 0x0020_0000 {
+                        at += (word & 0xFFFF) as usize;
+                    } else {
+                        events.push((at, word));
+                    }
+                }
+            }
+            assert_eq!(
+                note_ons(&events),
+                vec![
+                    (rate as usize / 10, NOTES[0]),
+                    (rate as usize * 35 / 100, NOTES[1])
+                ]
+            );
+        }
+    }
+}
+
+#[test]
+fn startup_wait_elapses_while_stopped_and_does_not_repeat_on_pattern_change() {
+    let mut seq = Sequencer::new(1000);
+    seq.delay_start(std::time::Duration::from_millis(100));
+    let mut buf = EventBuf::new();
+    seq.render(SequencePattern::Off, SequenceVelocity::V100, 100, &mut buf);
+    assert!(buf.as_slice().is_empty());
+    seq.render(SequencePattern::Steps, SequenceVelocity::V100, 1, &mut buf);
+    assert_eq!(buf.as_slice(), &[note_on(0, NOTES[0], 100)]);
+    buf.clear();
+    seq.render(
+        SequencePattern::GuitarArpeggio,
+        SequenceVelocity::V100,
+        1,
+        &mut buf,
+    );
+    assert_eq!(
+        buf.as_slice(),
+        &[note_off(0, NOTES[0]), note_on(0, GUITAR_NOTES[0], 100)]
+    );
+}
+
+#[test]
 fn velocity_changes_apply_to_next_notes_without_restarting_either_pattern() {
     for pattern in [SequencePattern::Steps, SequencePattern::GuitarArpeggio] {
         let mut seq = Sequencer::new(1000);
@@ -76,7 +134,7 @@ fn ranged_velocity_alternates_whole_phrases_independent_of_blocks() {
 
 #[test]
 fn old_random_velocity_migrates_to_upper_range() {
-    let config: crate::config::Config = toml::from_str("sequence_velocity = 'random'").unwrap();
+    let config: crate::status::Status = toml::from_str("sequence_velocity = 'random'").unwrap();
     assert_eq!(config.sequence_velocity, SequenceVelocity::Range80To127);
     assert!(!toml::to_string(&config).unwrap().contains("random"));
 }

@@ -75,6 +75,7 @@ impl EventBuf {
 }
 
 pub struct Sequencer {
+    startup_remaining: usize,
     sample_rate: u32,
     sample_remainder: u64,
     /// Samples from the start of the next block to the next step.
@@ -91,6 +92,7 @@ pub struct Sequencer {
 impl Sequencer {
     pub fn new(sample_rate: u32) -> Self {
         Self {
+            startup_remaining: 0,
             sample_rate,
             sample_remainder: 0,
             until_next_step: 0,
@@ -102,6 +104,11 @@ impl Sequencer {
             current_velocity: 0,
             current_modulation: 0,
         }
+    }
+
+    /// Delay only the initial phrase; audio processing continues during this interval.
+    pub fn delay_start(&mut self, delay: std::time::Duration) {
+        self.startup_remaining = (delay.as_secs_f64() * self.sample_rate as f64).ceil() as usize;
     }
 
     pub fn set_modulation(&mut self, modulation: SequenceModulation) {
@@ -162,6 +169,15 @@ impl Sequencer {
         frames: usize,
         out: &mut EventBuf,
     ) {
+        let skipped = frames.min(self.startup_remaining);
+        self.startup_remaining -= skipped;
+        if skipped > 0 && skipped == frames {
+            return;
+        }
+        if skipped > 0 {
+            out.push(jr_timestamp(skipped));
+        }
+        let frames = frames - skipped;
         if pattern != self.pattern {
             self.release(out);
             if self.pattern == SequencePattern::Off {

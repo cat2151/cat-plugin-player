@@ -17,6 +17,18 @@ user32.GetWindow.argtypes = [c.c_void_p, c.c_uint]
 user32.GetWindow.restype = c.c_void_p
 user32.IsWindowVisible.argtypes = [c.c_void_p]
 
+user32.SetThreadDpiAwarenessContext.argtypes = [c.c_void_p]
+user32.SetThreadDpiAwarenessContext.restype = c.c_void_p
+# Match native placement's physical coordinate system before creating windows.
+previous_dpi = user32.SetThreadDpiAwarenessContext(c.c_void_p(-4))
+user32.CreateWindowExW.argtypes = [c.c_ulong, c.c_wchar_p, c.c_wchar_p, c.c_ulong,
+                                  c.c_int, c.c_int, c.c_int, c.c_int] + [c.c_void_p] * 4
+user32.CreateWindowExW.restype = c.c_void_p
+user32.DestroyWindow.argtypes = [c.c_void_p]
+user32.SetWindowPos.argtypes = [c.c_void_p, c.c_void_p, c.c_int, c.c_int, c.c_int, c.c_int, c.c_uint]
+user32.MonitorFromWindow.argtypes = [c.c_void_p, c.c_ulong]
+user32.MonitorFromWindow.restype = c.c_void_p
+
 class Rect(c.Structure):
     _fields_ = [(field, c.c_long) for field in ("left", "top", "right", "bottom")]
 
@@ -25,6 +37,27 @@ user32.GetWindowRect.argtypes = [c.c_void_p, c.POINTER(Rect)]
 user32.MapWindowPoints.argtypes = [c.c_void_p, c.c_void_p, c.c_void_p, c.c_uint]
 user32.SendMessageW.argtypes = [c.c_void_p, c.c_uint, c.c_size_t, c.c_ssize_t]
 user32.SendMessageW.restype = c.c_ssize_t
+
+class Monitor(c.Structure):
+    _fields_ = [("size", c.c_ulong), ("monitor", Rect), ("work", Rect), ("flags", c.c_ulong)]
+
+user32.GetMonitorInfoW.argtypes = [c.c_void_p, c.POINTER(Monitor)]
+user32.AdjustWindowRectEx.argtypes = [c.POINTER(Rect), c.c_ulong, c.c_int, c.c_ulong]
+
+def outer(hwnd):
+    rect = Rect()
+    assert user32.GetWindowRect(hwnd, c.byref(rect))
+    return rect
+
+def check_placement(main, editor, work, right_fit):
+    source, target = outer(main), outer(editor)
+    width, height = target.right - target.left, target.bottom - target.top
+    expected = ((source.right, source.top) if right_fit else
+                (max(work.left, work.right - width), max(work.top, work.bottom - height)))
+    assert (target.left, target.top) == expected, (tuple(expected), target.left, target.top)
+    assert work.left <= target.left < target.right <= work.right
+    assert work.top <= target.top < target.bottom <= work.bottom
+    print(f"placement: {expected}, right_fit={right_fit}", flush=True)
 
 def check_editor_bounds():
     parent = None
@@ -55,6 +88,10 @@ for name in ("uh_ui_show", "uh_ui_hide", "uh_ui_is_visible"):
     getattr(dll, name).argtypes = [c.c_void_p, c.c_int32]
     getattr(dll, name).restype = c.c_int32 if name != "uh_ui_hide" else None
 
+dll.uh_ui_set_main_window.argtypes = [c.c_void_p, c.c_void_p]
+dll.uh_ui_place_window.argtypes = [c.c_void_p, c.c_void_p]
+dll.uh_ui_place_window.restype = c.c_int32
+
 dll.uh_ui_thumbnail.argtypes = [c.c_void_p, c.c_int32, c.POINTER(c.c_uint8), c.c_int32,
                                c.POINTER(c.c_int32), c.POINTER(c.c_int32)]
 dll.uh_ui_thumbnail.restype = c.c_int32
@@ -83,6 +120,7 @@ def wake(_):
     pass
 
 result = []
+capture_failures = []
 
 @DONE
 def done(_, instance, error):
@@ -90,7 +128,21 @@ def done(_, instance, error):
 
 host = dll.uh_create(wake, None)
 assert host, "host creation failed"
+main = None
 try:
+    main_frame = Rect(0, 0, 900, 600)
+    assert user32.AdjustWindowRectEx(c.byref(main_frame), 0x00CF0000, False, 0)
+    main_width, main_height = main_frame.right - main_frame.left, main_frame.bottom - main_frame.top
+    main = user32.CreateWindowExW(0, "STATIC", "placement test main", 0x00CF0000,
+                                  0, 0, main_width, main_height, None, None, None, None)
+    assert main
+    monitor = Monitor()
+    monitor.size = c.sizeof(Monitor)
+    assert user32.GetMonitorInfoW(user32.MonitorFromWindow(main, 2), c.byref(monitor))
+    work = monitor.work
+    # Outer-frame equivalent of the actual app: framed window, measured via HWND.
+    assert user32.SetWindowPos(main, None, work.left, work.top, main_width, main_height, 0x14)
+    dll.uh_ui_set_main_window(host, main)
     index = dll.uh_restore_plugin(host, b"CLAP", b"audio.mikey.Shu", b"Shu", b"Mikey Audio", str(SHU).encode())
     assert index >= 0, "Shu not installed"
     dll.uh_instance_create(host, index, 48000, 512, done, None)
@@ -101,22 +153,52 @@ try:
     assert result and result[0][0] >= 0, result
     instance = result[0][0]
     for attempt in range(3):
+        # Show again after moving the main window: only Show should reposition.
+        x = work.right - main_width if attempt == 1 else work.left
+        assert user32.SetWindowPos(main, None, x, work.top, 0, 0, 0x15)
         code = dll.uh_ui_show(host, instance)
         print(f"show #{attempt + 1}: {code}", flush=True)
         assert code == 0, f"uh_ui_show failed: {code}"
         parent = check_editor_bounds()
+        check_placement(main, parent, work, attempt != 1)
         deadline = time.monotonic() + 2
         while time.monotonic() < deadline:
             dll.uh_pump_startup(host)
             assert dll.uh_ui_is_visible(host, instance), "editor disappeared"
             time.sleep(0.01)
-        check_thumbnail(host, instance, True)
+        try:
+            check_thumbnail(host, instance, True)
+        except AssertionError as error:
+            # Keep independent placement/lifecycle evidence when capture fails.
+            capture_failures.append(str(error))
         if attempt == 1:
             user32.SendMessageW(parent, 0x10, 0, 0)  # WM_CLOSE
         else:
             dll.uh_ui_hide(host, instance)
         assert not dll.uh_ui_is_visible(host, instance), "editor did not hide"
         check_thumbnail(host, instance, False)
-    print("Shu editor visibility / bounds / hide / close / reopen: passed", flush=True)
+    # Exercise the same native positioning entry used by a plugin resize,
+    # without requesting unsupported resizing from Shu or altering its state.
+    resized = user32.CreateWindowExW(0, "STATIC", "placement resize test", 0x00CF0000,
+                                     0, 0, 100, 100, None, None, None, None)
+    assert resized
+    try:
+        assert user32.SetWindowPos(main, None, work.left, work.top, 0, 0, 0x15)
+        assert dll.uh_ui_place_window(host, resized) == 0
+        check_placement(main, resized, work, True)
+        width, height = work.right - work.left + 100, work.bottom - work.top + 100
+        assert user32.SetWindowPos(resized, None, 0, 0, width, height, 0x14)
+        assert dll.uh_ui_place_window(host, resized) == 0
+        large = outer(resized)
+        assert (large.left, large.top) == (work.left, work.top)
+        assert (large.right - large.left, large.bottom - large.top) == (width, height)
+    finally:
+        user32.DestroyWindow(resized)
+    print("Shu editor placement / visibility / bounds / hide / close / reopen: passed", flush=True)
+    assert not capture_failures, f"thumbnail failures: {capture_failures}"
 finally:
     dll.uh_destroy(host)
+    if main:
+        user32.DestroyWindow(main)
+    if previous_dpi:
+        user32.SetThreadDpiAwarenessContext(previous_dpi)

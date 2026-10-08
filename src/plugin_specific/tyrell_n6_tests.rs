@@ -5,6 +5,78 @@ use std::ffi::{c_char, c_void, CStr};
 
 unsafe extern "C" fn wake(_: *mut c_void) {}
 
+#[test]
+#[ignore = "requires saved TyrellN6 UI_op 9/10 favorites (read only)"]
+fn saved_tyrell_ui_transition_reuses_immutable_favorite() {
+    let user_config = crate::config::path().unwrap();
+    let user_library = Library::load(&user_config).unwrap();
+    let states: Vec<_> = user_library
+        .entries
+        .iter()
+        .filter(|f| f.plugin.format == "CLAP" && f.plugin.id == "com.u-he.TyrellN6")
+        .map(|f| (f, user_library.state(&user_config, &f.id).unwrap()))
+        .collect();
+    let pair = states
+        .iter()
+        .enumerate()
+        .find_map(|(i, (a, left))| {
+            states.iter().skip(i + 1).find_map(|(b, right)| {
+                let l = tyrell_settings(left)?;
+                let r = tyrell_settings(right)?;
+                (a.sequence_pattern == b.sequence_pattern
+                    && l != r
+                    && ui_operation(l.trim_end_matches('\n'))
+                        == ui_operation(r.trim_end_matches('\n'))
+                    && ui_operation(l.trim_end_matches('\n')).is_some())
+                .then_some((a, left, right))
+            })
+        })
+        .expect("save a matching UI_op 9/10 pair first");
+    let (favorite, left, right) = pair;
+    let directory = std::env::temp_dir().join(format!(
+        "cat-tyrell-ui-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let config = directory.join("config.toml");
+    let mut library = Library::default();
+    let first = library
+        .add_automatic(
+            &config,
+            favorite.plugin.clone(),
+            false,
+            left,
+            favorite.sequence_pattern,
+        )
+        .unwrap();
+    let second = library
+        .add_automatic(
+            &config,
+            favorite.plugin.clone(),
+            false,
+            right,
+            favorite.sequence_pattern,
+        )
+        .unwrap();
+    assert_eq!(library.entries.len(), 1);
+    assert_eq!(first.id, second.id);
+    assert_eq!(first.name, second.name);
+    assert_eq!(library.state(&config, &second.id).unwrap(), *left);
+    let pattern = if favorite.sequence_pattern == SequencePattern::Steps {
+        SequencePattern::Off
+    } else {
+        SequencePattern::Steps
+    };
+    library
+        .add_automatic(&config, favorite.plugin.clone(), false, right, pattern)
+        .unwrap();
+    assert_eq!(library.entries.len(), 2);
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
 unsafe extern "C" fn created(user: *mut c_void, id: i32, error: *const c_char) {
     let result = &mut *(user as *mut Option<Result<i32, String>>);
     *result = Some(if error.is_null() && id >= 0 {

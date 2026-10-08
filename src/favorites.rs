@@ -1,6 +1,6 @@
 //! Favorite actions run on the UI thread, with audio stopped for state APIs.
 use crate::{
-    favorites_store::{Favorite, Library},
+    favorites_store::{Favorite, FavoriteCapture, Library},
     plugin_list::PluginKind,
     App,
 };
@@ -11,8 +11,9 @@ pub struct Favorites {
     pub initialized: bool,
     pub error: Option<String>,
     pub show: bool,
+    pub restore_show: Option<bool>,
     pub active: Vec<(i32, String)>,
-    pub restore: crate::config::FavoriteSelection,
+    pub restore: crate::status::FavoriteSelection,
     pub pending: Option<(Favorite, Vec<u8>)>,
     pub rename: Option<(String, String)>,
 }
@@ -38,7 +39,11 @@ impl App {
             .and_then(|path| Library::load(path))
         {
             Ok(library) => {
-                self.favorites.show = !library.entries.is_empty();
+                self.favorites.show = self
+                    .favorites
+                    .restore_show
+                    .take()
+                    .unwrap_or(!library.entries.is_empty());
                 self.favorites.library = library;
             }
             Err(e) => self.favorites.error = Some(format!("Could not read favorites: {e}")),
@@ -49,6 +54,7 @@ impl App {
         if self.pending.is_some() || self.restoring || self.favorites.error.is_some() {
             return;
         }
+        let previous_count = self.favorites.library.entries.len();
         self.pause_audio();
         let result = (|| {
             let instance = self
@@ -63,7 +69,10 @@ impl App {
                 instance.plugin.clone(),
                 instance.kind == PluginKind::Effect,
                 &state,
-                self.sequence_pattern,
+                FavoriteCapture {
+                    sequence_pattern: self.sequence_pattern,
+                    sweep_cc1: instance.sweep_cc1,
+                },
             )
         })();
         let resumed = self.resume_audio();
@@ -73,7 +82,11 @@ impl App {
                 self.favorites.show = true;
                 self.filter.clear();
                 self.save_session();
-                format!("Added favorite: {}", favorite.name)
+                if self.favorites.library.entries.len() == previous_count {
+                    format!("Favorite already saved: {}", favorite.name)
+                } else {
+                    format!("Added favorite: {}", favorite.name)
+                }
             }
             Err(e) => format!("Could not add favorite: {e}"),
         };
@@ -127,7 +140,10 @@ impl App {
             instance.plugin.clone(),
             instance.kind == PluginKind::Effect,
             &state,
-            self.sequence_pattern,
+            FavoriteCapture {
+                sequence_pattern: self.sequence_pattern,
+                sweep_cc1: instance.sweep_cc1,
+            },
         )?;
         self.mark_favorite(id, &favorite);
         Ok(())
@@ -140,6 +156,18 @@ impl App {
         let result = self.prepare_favorite(favorite_id);
         if let Err(e) = result {
             self.status = format!("Could not load favorite: {e}");
+        }
+    }
+
+    pub(crate) fn record_favorite_use(&mut self, favorite_id: &str) {
+        let result = self
+            .config_path
+            .as_ref()
+            .map_err(Clone::clone)
+            .and_then(|path| self.favorites.library.record_use(path, favorite_id));
+        if let Err(error) = result {
+            self.status
+                .push_str(&format!("; could not save favorite order: {error}"));
         }
     }
 
@@ -193,16 +221,32 @@ impl App {
     fn apply_favorite(&mut self, id: i32, favorite: &Favorite, state: &[u8]) -> Result<(), String> {
         self.pause_audio();
         let old_sequence = self.sequence_pattern;
+        let old_sweep = self
+            .instances
+            .iter()
+            .find(|i| i.id == id)
+            .unwrap()
+            .sweep_cc1;
         let mut backup = None;
         let result = (|| {
             backup = Some(self.host.save_state(id)?);
             self.host.load_state(id, state)?;
+            self.instances
+                .iter_mut()
+                .find(|i| i.id == id)
+                .unwrap()
+                .sweep_cc1 = false;
             self.sequence_pattern = favorite.playback_pattern(self.sequence_pattern);
             self.resume_audio()
         })();
         if let Err(e) = result {
             self.pause_audio();
             self.sequence_pattern = old_sequence;
+            self.instances
+                .iter_mut()
+                .find(|i| i.id == id)
+                .unwrap()
+                .sweep_cc1 = old_sweep;
             let rollback = backup
                 .as_ref()
                 .map(|data| self.host.load_state(id, data))
@@ -228,6 +272,7 @@ impl App {
                 ""
             }
         );
+        self.record_favorite_use(&favorite.id);
         self.save_session();
         Ok(())
     }
@@ -278,7 +323,13 @@ impl Favorites {
     ) -> Option<Favorite> {
         let id = match kind {
             PluginKind::Instrument => self.restore.instrument.take(),
-            PluginKind::Effect => self.restore.effect.take(),
+            PluginKind::Effect => {
+                if self.restore.effects.is_empty() {
+                    None
+                } else {
+                    Some(self.restore.effects.remove(0))
+                }
+            }
             PluginKind::Unknown => return None,
         }?;
         self.library

@@ -11,9 +11,19 @@ impl App {
             self.status = "Load an instrument first".into();
             return;
         }
+        if plugin.kind == PluginKind::Effect
+            && self
+                .connected_effect(&config::PluginKey::from_plugin(&plugin))
+                .is_some()
+        {
+            if self.restoring {
+                self.load_failed("Duplicate saved effect identity".into());
+            }
+            return;
+        }
         self.pause_audio();
         let previous = if plugin.kind == PluginKind::Effect {
-            self.effect_id()
+            None
         } else {
             self.instrument_id()
         };
@@ -63,7 +73,7 @@ impl App {
                 self.load_plugin(index);
             }
             None => {
-                self.restore_effect = None;
+                self.restore_effect.clear();
                 self.status = format!("Previous instrument not found: {} [{}]", key.id, key.format);
             }
         }
@@ -100,33 +110,17 @@ impl App {
         } else {
             self.instrument_id().unwrap()
         };
-        let effect = if kind == PluginKind::Effect {
-            Some(id)
-        } else {
-            self.effect_id()
-        };
-        let wait_for_effect =
-            self.restoring && kind == PluginKind::Instrument && self.restore_effect.is_some();
+        let mut effects = self.effect_ids();
+        if kind == PluginKind::Effect {
+            effects.push(id);
+        }
+        let wait_for_effect = self.restoring && !self.restore_effect.is_empty();
         let old_sequence = self.sequence_pattern;
         if let Some((favorite, _)) = &favorite {
             self.sequence_pattern = favorite.playback_pattern(self.sequence_pattern);
         }
-        let prepared = self
-            .chain_processor(instrument, effect)
-            .and_then(|processor| {
-                if wait_for_effect || self.output.is_none() {
-                    return Ok(None);
-                }
-                startup::mark(startup::Stage::ProcessorReady);
-                audio::Voice::start(
-                    self.output.as_ref().unwrap(),
-                    processor,
-                    self.sequence_pattern,
-                    self.sequence_velocity,
-                    self.sequence_modulation,
-                )
-                .map(Some)
-            });
+        let new_instrument = (kind == PluginKind::Instrument).then_some(&key);
+        let prepared = self.prepare_voice(instrument, &effects, wait_for_effect, new_instrument);
         let voice = match prepared {
             Ok(voice) => voice,
             Err(error) => {
@@ -136,7 +130,12 @@ impl App {
                 return;
             }
         };
-        if let Some(previous) = self.instances.iter().find(|i| i.kind == kind).map(|i| i.id) {
+        if let Some(previous) = self
+            .instances
+            .iter()
+            .find(|i| kind == PluginKind::Instrument && i.kind == kind)
+            .map(|i| i.id)
+        {
             self.instances.retain(|i| i.id != previous);
             self.host.destroy_instance(previous);
         }
@@ -146,8 +145,13 @@ impl App {
             plugin: key.clone(),
             kind,
             voice: None,
+            sweep_cc1: false,
         });
-        self.instances.sort_by_key(|i| i.kind);
+        // Keep source at index zero without changing the effect order.
+        if kind == PluginKind::Instrument {
+            let source = self.instances.pop().unwrap();
+            self.instances.insert(0, source);
+        }
         self.instances
             .iter_mut()
             .find(|i| i.id == instrument)
@@ -176,6 +180,7 @@ impl App {
                     ""
                 }
             );
+            self.record_favorite_use(&favorite.id);
         } else if self.restoring {
             self.restore_favorite_selection(id);
         }
@@ -191,10 +196,22 @@ impl App {
     pub(crate) fn load_failed(&mut self, message: String) {
         self.favorites.pending = None;
         self.pending = None;
+        if self.restoring {
+            self.pause_audio();
+            let effects = self.effect_ids();
+            self.instances.retain(|i| i.kind != PluginKind::Effect);
+            for id in effects {
+                self.host.destroy_instance(id);
+            }
+            self.favorites
+                .active
+                .retain(|(id, _)| self.instances.iter().any(|i| i.id == *id));
+            self.effect_bypassed = false;
+        }
         self.fast_restore = false;
         self.restoring = false;
         self.restore = None;
-        self.restore_effect = None;
+        self.restore_effect.clear();
         if self.effect_id().is_none() {
             self.effect_bypassed = false;
         }
@@ -207,7 +224,7 @@ impl App {
     }
 
     fn restore_effect_after_instrument(&mut self) {
-        let Some(key) = self.restore_effect.clone() else {
+        let Some(key) = self.restore_effect.front().cloned() else {
             return;
         };
         let index = key.find(&self.plugins).or_else(|| {
@@ -218,7 +235,7 @@ impl App {
         });
         if let Some(index) = index {
             self.plugins[index].kind = PluginKind::Effect;
-            self.restore_effect = None;
+            self.restore_effect.pop_front();
             self.load_plugin(index);
         } else if self.fast_restore {
             // A relocated bundle may still be found by the deferred scan. Keep

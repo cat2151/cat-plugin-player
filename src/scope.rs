@@ -21,6 +21,7 @@ struct Shared {
     stop: AtomicBool,
     display: Mutex<Option<Arc<Display>>>,
     spectrum: Mutex<Option<Arc<crate::spectrum::Display>>>,
+    lissajous: Mutex<Option<Arc<crate::lissajous::Display>>>,
 }
 
 pub struct Scope {
@@ -45,6 +46,7 @@ impl Scope {
             stop: AtomicBool::new(false),
             display: Mutex::new(None),
             spectrum: Mutex::new(None),
+            lissajous: Mutex::new(None),
         });
         let worker_shared = Arc::clone(&shared);
         let worker_queue = Arc::clone(&queue);
@@ -74,6 +76,10 @@ impl Scope {
     pub fn spectrum(&self) -> Option<Arc<crate::spectrum::Display>> {
         self.shared.spectrum.try_lock().ok()?.clone()
     }
+
+    pub fn lissajous(&self) -> Option<Arc<crate::lissajous::Display>> {
+        self.shared.lissajous.try_lock().ok()?.clone()
+    }
 }
 
 impl Drop for Scope {
@@ -95,6 +101,7 @@ fn run(queue: Arc<Queue>, shared: Arc<Shared>, sample_rate: u32) {
     let mut dirty = false;
     let mut stream = crate::scope_stream::Stream::new(sample_rate, 0);
     let mut spectrum = crate::spectrum::Analyzer::new(sample_rate);
+    let mut lissajous = crate::lissajous::Analyzer::new(sample_rate);
     let mut last_spectrum = Instant::now();
     while !shared.stop.load(Ordering::Relaxed) {
         let settings = shared.settings.load(Ordering::Relaxed);
@@ -120,8 +127,11 @@ fn run(queue: Arc<Queue>, shared: Arc<Shared>, sample_rate: u32) {
             if gap {
                 spectrum.clear();
                 *shared.spectrum.lock().unwrap() = None;
+                lissajous.clear();
+                *shared.lissajous.lock().unwrap() = None;
             }
             spectrum.push(sample.stereo);
+            lissajous.push(sample.stereo);
             if epoch != Some(sample.epoch) || note != sample.note || gap {
                 samples.clear();
                 if trigger == Trigger::ZeroCross || gap || sample.note >= 128 {
@@ -149,6 +159,9 @@ fn run(queue: Arc<Queue>, shared: Arc<Shared>, sample_rate: u32) {
             }
         }
         if last_spectrum.elapsed() >= Duration::from_millis(50) {
+            if let Some(frame) = lissajous.display() {
+                *shared.lissajous.lock().unwrap() = Some(Arc::new(frame));
+            }
             if let Some(frame) = spectrum.display() {
                 *shared.spectrum.lock().unwrap() = Some(Arc::new(frame));
             }
@@ -202,6 +215,10 @@ mod tests {
             thread::sleep(Duration::from_millis(5));
         }
         assert!(scope.display().is_none());
+        let stereo = scope.lissajous().unwrap();
+        assert_eq!(stereo.samples.len(), 2400);
+        assert!(stereo.samples.iter().all(|s| s[0] == s[1]));
+        assert!(stereo.samples.iter().any(|s| s[0].abs() > 0.5));
         scope.configure(1, Trigger::ZeroCross);
         capture.record(&vec![0.0; crate::spectrum::FFT_SIZE], 1, &[]);
         loop {
@@ -216,6 +233,12 @@ mod tests {
             assert!(Instant::now() < deadline);
             thread::sleep(Duration::from_millis(5));
         }
+        assert!(scope
+            .lissajous()
+            .unwrap()
+            .samples
+            .iter()
+            .all(|s| *s == [0.0; 2]));
     }
 
     #[test]

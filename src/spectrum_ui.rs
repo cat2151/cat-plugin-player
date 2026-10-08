@@ -6,19 +6,27 @@ const MIN_HZ: f32 = 20.0;
 const SPLIT_HZ: f32 = 1_000.0;
 const MAX_HZ: f32 = 20_000.0;
 
-pub fn panel(ui: &mut egui::Ui, frame: Option<&Display>, has_audio: bool, plot_height: f32) {
-    ui.horizontal_wrapped(|ui| {
-        ui.label("Spectrum | Output");
-        ui.colored_label(egui::Color32::LIGHT_GREEN, "L");
-        ui.colored_label(egui::Color32::LIGHT_BLUE, "R");
-    });
-    ui.label(if frame.is_some() {
-        "Semilog | Log <= 1 kHz / Linear >= 1 kHz"
-    } else if has_audio {
-        "Waiting for audio..."
-    } else {
-        "Load an instrument with audio to view its spectrum"
-    });
+pub fn panel(
+    ui: &mut egui::Ui,
+    frame: Option<&Display>,
+    has_audio: bool,
+    plot_height: f32,
+    show_labels: bool,
+) {
+    if show_labels {
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Spectrum | Output");
+            ui.colored_label(egui::Color32::LIGHT_GREEN, "L");
+            ui.colored_label(egui::Color32::LIGHT_BLUE, "R");
+        });
+        ui.label(if frame.is_some() {
+            "Semilog | Log <= 1 kHz / Linear >= 1 kHz"
+        } else if has_audio {
+            "Waiting for audio..."
+        } else {
+            "Load an instrument with audio to view its spectrum"
+        });
+    }
     let (rect, _) = ui.allocate_exact_size(
         egui::vec2(ui.available_width(), plot_height),
         egui::Sense::hover(),

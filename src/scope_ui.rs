@@ -6,6 +6,7 @@ pub struct ScopeUi {
     cycles: u8,
     trigger: Trigger,
     guides: bool,
+    show_labels: bool,
     pub(crate) on_right: bool,
 }
 
@@ -15,7 +16,17 @@ impl Default for ScopeUi {
             cycles: 4,
             trigger: Trigger::Similarity,
             guides: false,
-            on_right: true,
+            show_labels: false,
+            on_right: crate::status::Status::default().on_right,
+        }
+    }
+}
+
+impl ScopeUi {
+    pub(crate) fn with_on_right(on_right: bool) -> Self {
+        Self {
+            on_right,
+            ..Default::default()
         }
     }
 }
@@ -34,37 +45,84 @@ impl App {
         ctx: &egui::Context,
         on_right: bool,
     ) {
-        ui.horizontal(|ui| {
+        if self.scope_ui.show_labels {
             ui.heading("Audio analysis");
-            ui.checkbox(&mut self.scope_ui.on_right, "On right")
-                .on_hover_text(
-                    "Move spectrum and oscilloscope between the right sidebar and bottom",
-                );
-        });
+        }
         let scope = self
             .instances
             .iter()
             .find_map(|instance| instance.voice.as_ref().map(|voice| voice.scope()));
         let spectrum = scope.and_then(|scope| scope.spectrum());
+        let lissajous = scope.and_then(|scope| scope.lissajous());
         let has_audio = scope.is_some();
         if on_right {
-            crate::spectrum_ui::panel(ui, spectrum.as_deref(), has_audio, 100.0);
+            crate::spectrum_ui::panel(
+                ui,
+                spectrum.as_deref(),
+                has_audio,
+                100.0,
+                self.scope_ui.show_labels,
+            );
             ui.separator();
             self.scope_contents(ui, ctx, 100.0);
+            ui.separator();
+            crate::lissajous_ui::panel(
+                ui,
+                lissajous.as_deref(),
+                has_audio,
+                150.0,
+                self.scope_ui.show_labels,
+            );
+            crate::correlation_ui::panel(
+                ui,
+                lissajous.as_ref().and_then(|f| f.correlation),
+                self.scope_ui.show_labels,
+            );
         } else {
-            ui.columns(2, |columns| {
-                crate::spectrum_ui::panel(&mut columns[0], spectrum.as_deref(), has_audio, 180.0);
+            ui.columns(3, |columns| {
+                crate::spectrum_ui::panel(
+                    &mut columns[0],
+                    spectrum.as_deref(),
+                    has_audio,
+                    180.0,
+                    self.scope_ui.show_labels,
+                );
                 self.scope_contents(&mut columns[1], ctx, 180.0);
+                crate::lissajous_ui::panel(
+                    &mut columns[2],
+                    lissajous.as_deref(),
+                    has_audio,
+                    180.0,
+                    self.scope_ui.show_labels,
+                );
+                crate::correlation_ui::panel(
+                    &mut columns[2],
+                    lissajous.as_ref().and_then(|f| f.correlation),
+                    self.scope_ui.show_labels,
+                );
             });
+        }
+        if has_audio {
+            ctx.request_repaint_after(std::time::Duration::from_millis(50));
         }
     }
 
     fn scope_contents(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, plot_height: f32) {
         ui.horizontal_wrapped(|ui| {
-            ui.label("Oscilloscope | Output");
-            ui.colored_label(egui::Color32::LIGHT_GREEN, "L");
-            ui.colored_label(egui::Color32::LIGHT_BLUE, "R");
+            if self.scope_ui.show_labels {
+                ui.label("Oscilloscope | Output");
+                ui.colored_label(egui::Color32::LIGHT_GREEN, "L");
+                ui.colored_label(egui::Color32::LIGHT_BLUE, "R");
+            }
             ui.menu_button("☰", |ui| {
+                ui.checkbox(&mut self.scope_ui.show_labels, "Show analysis labels");
+                if ui.checkbox(&mut self.scope_ui.on_right, "On right")
+                    .on_hover_text(
+                        "Move spectrum, oscilloscope and Lissajous between the right sidebar and bottom",
+                    ).changed() {
+                    self.save_session();
+                }
+                ui.separator();
                 ui.label("Display cycles");
                 ui.horizontal(|ui| {
                     for cycles in [1, 2, 4, 8] {
@@ -97,7 +155,7 @@ impl App {
                 ui.checkbox(&mut self.scope_ui.guides, "Show red guides");
             })
             .response
-            .on_hover_text("Waveform display settings");
+            .on_hover_text("Analysis display settings");
         });
         let scope = self
             .instances
@@ -111,12 +169,14 @@ impl App {
         });
         if let Some(frame) = &frame {
             ctx.request_repaint_after(std::time::Duration::from_secs_f64(1.0 / 60.0));
-            ui.label(format!(
-                "Note {} | {:.2} ms",
-                frame.note,
-                1000.0 * frame.samples.len() as f64 / f64::from(frame.sample_rate),
-            ));
-        } else {
+            if self.scope_ui.show_labels {
+                ui.label(format!(
+                    "Note {} | {:.2} ms",
+                    frame.note,
+                    1000.0 * frame.samples.len() as f64 / f64::from(frame.sample_rate),
+                ));
+            }
+        } else if self.scope_ui.show_labels {
             ui.label(if scope.is_some() {
                 "Waiting for note and waveform..."
             } else {

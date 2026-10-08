@@ -9,7 +9,7 @@ fn native_effect_routing_and_session_restore() {
     let _library = crate::native_library::load().unwrap();
     let mut app = App::prepare();
     app.restore = None;
-    app.restore_effect = None;
+    app.restore_effect = Default::default();
     app.output = None;
     app.deferred_scan = false;
     let directory = std::env::temp_dir().join(format!("cat-routing-{}", std::process::id()));
@@ -54,9 +54,9 @@ fn native_effect_routing_and_session_restore() {
     let fx = app.effect_id().unwrap();
     let fx_key = app.instances[1].plugin.clone();
     assert_eq!(app.instances.len(), 2);
-    let session = config::Config::load(&path).unwrap();
+    let session = crate::status::Status::load(&path).unwrap();
     assert_eq!(session.last_played, Some(source_key.clone()));
-    assert_eq!(session.effect, Some(fx_key.clone()));
+    assert_eq!(session.effects, vec![fx_key.clone()]);
     let wet = capture(&app, source, Some(fx), false);
     let bypassed = capture(&app, source, Some(fx), true);
     let energy = |samples: &[f32]| samples.iter().map(|x| f64::from(*x).powi(2)).sum::<f64>();
@@ -93,11 +93,12 @@ fn native_effect_routing_and_session_restore() {
     );
     app.load_plugin(vst_effect);
     settle(&mut app);
-    assert_ne!(app.effect_id(), Some(fx));
-    assert_eq!(app.instances.len(), 2);
+    assert_eq!(app.effect_id(), Some(fx));
+    assert_eq!(app.instances.len(), 3);
+    let vst_fx = app.effect_ids()[1];
     app.load_plugin(instrument);
     settle(&mut app);
-    let cross = capture(&app, app.instrument_id().unwrap(), app.effect_id(), false);
+    let cross = capture(&app, app.instrument_id().unwrap(), Some(vst_fx), false);
     assert!(
         energy(&cross) > 0.001,
         "CLAP instrument -> VST3 effect failed"
@@ -106,15 +107,19 @@ fn native_effect_routing_and_session_restore() {
     // Reject a missing native index without destroying either old slot or history.
     let old_source = app.instrument_id();
     let old_fx = app.effect_id();
-    let previous_config = std::fs::read(&path).unwrap();
+    let previous_config = std::fs::read(crate::status::path(&path)).unwrap();
     let mut invalid = app.plugins[effect].clone();
     invalid.index = i32::MAX;
+    invalid.id = "missing.invalid.effect".into();
     app.plugins.push(invalid);
     app.load_plugin(app.plugins.len() - 1);
     settle(&mut app);
     assert_eq!(app.instrument_id(), old_source);
     assert_eq!(app.effect_id(), old_fx);
-    assert_eq!(std::fs::read(&path).unwrap(), previous_config);
+    assert_eq!(
+        std::fs::read(crate::status::path(&path)).unwrap(),
+        previous_config
+    );
     assert!(app.status.contains("Could not load"));
 
     // Metadata alone cannot make an input-less synth a valid audio effect.
@@ -126,7 +131,10 @@ fn native_effect_routing_and_session_restore() {
     assert_eq!(app.instrument_id(), old_source);
     assert_eq!(app.effect_id(), old_fx);
     assert!(app.status.contains("Could not connect"));
-    assert_eq!(std::fs::read(&path).unwrap(), previous_config);
+    assert_eq!(
+        std::fs::read(crate::status::path(&path)).unwrap(),
+        previous_config
+    );
     assert!(app
         .host
         .create_chain(
@@ -146,12 +154,17 @@ fn native_effect_routing_and_session_restore() {
     assert_eq!(app.effect_id(), old_fx);
     app.config_path = Ok(path.clone());
     assert!(app.remove_plugin(old_fx.unwrap()));
-    assert!(app.effect_id().is_none());
-    assert!(config::Config::load(&path).unwrap().effect.is_none());
+    assert_eq!(app.effect_ids(), vec![vst_fx]);
+    assert!(app.remove_plugin(vst_fx));
+    assert!(app.effect_ids().is_empty());
+    assert!(crate::status::Status::load(&path)
+        .unwrap()
+        .effects
+        .is_empty());
     app.load_plugin(effect);
     settle(&mut app);
     app.set_effect_bypass(true);
-    let saved = config::Config::load(&path).unwrap();
+    let saved = crate::status::Status::load(&path).unwrap();
     assert!(saved.effect_bypassed);
     let fx_state = app.host.save_state(app.effect_id().unwrap()).unwrap();
     let source_state = app.host.save_state(app.instrument_id().unwrap()).unwrap();
@@ -162,7 +175,7 @@ fn native_effect_routing_and_session_restore() {
     next.deferred_scan = false;
     next.config_path = Ok(path.clone());
     next.restore = saved.last_played;
-    next.restore_effect = saved.effect;
+    next.restore_effect = saved.effects.into();
     next.effect_bypassed = saved.effect_bypassed;
     next.restore_before_gui();
     settle(&mut next);
@@ -178,7 +191,7 @@ fn native_effect_routing_and_session_restore() {
         next.host.save_state(next.effect_id().unwrap()).unwrap(),
         fx_state
     );
-    assert!(next.restore.is_none() && next.restore_effect.is_none() && !next.restoring);
+    assert!(next.restore.is_none() && next.restore_effect.is_empty() && !next.restoring);
     drop(next);
     // The live WASAPI callback owns one stream for both slots. Rebuilding it
     // for Bypass and Remove must not leave a held note or race a state API.
@@ -204,13 +217,13 @@ fn native_effect_routing_and_session_restore() {
     drop(live);
 
     // A moved effect uses catalog fallback before the chain is ready to play.
-    let mut relocated = config::Config::load(&path).unwrap();
-    relocated.effect.as_mut().unwrap().bundle_path = "X:/missing/reverb.clap".into();
+    let mut relocated = crate::status::Status::load(&path).unwrap();
+    relocated.effects[0].bundle_path = "X:/missing/reverb.clap".into();
     relocated.save(&path).unwrap();
     let mut moved = restore_app(&path);
     moved.output = None;
     moved.restore_before_gui();
-    assert!(moved.restoring && moved.restore_effect.is_some());
+    assert!(moved.restoring && !moved.restore_effect.is_empty());
     moved.start_scan(false);
     settle(&mut moved);
     assert_eq!(moved.instances.len(), 2, "{}", moved.status);
@@ -219,13 +232,13 @@ fn native_effect_routing_and_session_restore() {
 
     // A genuinely missing effect reports the failure, plays the instrument
     // directly and preserves the saved session instead of overwriting it.
-    let mut missing = config::Config::load(&path).unwrap();
-    let key = missing.effect.as_mut().unwrap();
+    let mut missing = crate::status::Status::load(&path).unwrap();
+    let key = &mut missing.effects[0];
     key.id = "missing.effect.for.test".into();
     key.bundle_path = "X:/missing/effect.clap".into();
     missing.effect_bypassed = true;
     missing.save(&path).unwrap();
-    let bytes = std::fs::read(&path).unwrap();
+    let bytes = std::fs::read(crate::status::path(&path)).unwrap();
     let mut absent = restore_app(&path);
     absent.output = None;
     absent.restore_before_gui();
@@ -238,7 +251,7 @@ fn native_effect_routing_and_session_restore() {
         .as_ref()
         .unwrap()
         .contains("Previous effect not found"));
-    assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    assert_eq!(std::fs::read(crate::status::path(&path)).unwrap(), bytes);
     drop(absent);
     std::fs::remove_dir_all(directory).unwrap();
 }
@@ -281,12 +294,15 @@ fn capture(app: &App, source: i32, effect: Option<i32>, bypass: bool) -> Vec<f32
 }
 
 fn restore_app(path: &std::path::Path) -> App {
-    let saved = config::Config::load(path).unwrap();
+    let saved = crate::status::Status::load(path).unwrap();
     let mut app = App::prepare();
     app.config_path = Ok(path.to_owned());
     app.restore = saved.last_played;
-    app.restore_effect = saved.effect;
+    app.restore_effect = saved.effects.into();
     app.effect_bypassed = saved.effect_bypassed;
     app.deferred_scan = false;
     app
 }
+
+#[path = "routing_chain_tests.rs"]
+mod chain_tests;

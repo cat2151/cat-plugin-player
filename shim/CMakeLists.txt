@@ -28,6 +28,7 @@ set(UAPMD_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 # uapmd_shim links against gets compiled.
 add_subdirectory("${UAPMD_DIR}" uapmd EXCLUDE_FROM_ALL)
 include("${CMAKE_CURRENT_SOURCE_DIR}/../patches/uapmd/windows-vst3-loader/CMakeLists.cmake")
+include("${CMAKE_CURRENT_SOURCE_DIR}/../patches/uapmd/clap-note-dialect/CMakeLists.cmake")
 
 add_library(uapmd_shim SHARED uapmd_shim.cpp uapmd_shim.h plugin_catalog.cpp plugin_catalog.h)
 if(WIN32)

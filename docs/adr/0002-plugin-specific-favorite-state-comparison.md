@@ -19,15 +19,20 @@ Auto FavoでTyrellN6の同じ音色が繰り返し追加される。
 固有処理の追加・撤去はADRに記録し、本ADRを置き換える場合は後続ADRへの参照を残す。
 新しい例外を増やす前に、プラグイン形式の標準APIで解決できるか確認する。
 
-## 現在の本番処理：3件
+## 現在の本番処理：6件
 
 | 対象 | 処理・場所 | 必要な理由 | 適用範囲・撤去条件 |
 | --- | --- | --- | --- |
 | Shu CLAP (`audio.mikey.Shu`) | GUI表示：[shu_ui.h](../../shim/plugin_specific/shu_ui.h) | 埋め込み成功後も `gui.show()` が `false` を返し、ホストが親を隠す | Windows CLAPで可視かつ非ゼロサイズの子GUIがある場合だけ成功扱い。標準APIで正常表示できれば撤去。詳細はADR 0004 |
 | TyrellN6 CLAP (`com.u-he.TyrellN6`) | Favoritesの重複判定：[tyrell_n6.rs](../../src/plugin_specific/tyrell_n6.rs) | ノート・CC1の受信だけでstate末尾の圧縮データが変わり、バイト完全一致では同じ設定が増殖する | 実機確認済みのbuild 16976 / `#Vers=10010` / little endian / `$$$$1924`形式のみ。標準APIで安定した音色stateを取得できるようになれば撤去を検討 |
 | Vaporizer2 CLAP (`com.vastdynamics.VAST2`) | Favoritesの重複判定：[vaporizer2.rs](../../src/plugin_specific/vaporizer2.rs) | stateの読み込み・保存でMSEGの時間・座標に微小な数値差が生じ、同じ設定が増殖する | `VC2!`ラッパーと`VASTVaporizerParamsV2.20000`の確認済み形式のみ。安定したstateが取得できるようになれば撤去を検討 |
+| Floe CLAP (`com.floe-audio.floe`) | sweep中のFavorite重複判定：[floe.rs](../../src/plugin_specific/floe.rs) | 自動CC1がMacro 1とpreset変更フラグに保存される | Floe 2.0.2 / state schema 30、CC1→Macro 1だけの割り当てを確認。詳細は[ADR 0009](0009-sweep-cc1-favorite-comparison.md)。Vaporizer2のsweep対応も同ADR参照 |
+| sforzando CLAP (`com.Plogue Art et Technologie, Inc.sforzando`) | Favoritesの重複判定：[sforzando.rs](../../src/plugin_specific/sforzando.rs) | 保存だけで`sc`が増え、ノート・CC1の演奏値もstateに残る | `CEGP`とARIA schema 1982/1014の確認済み形式のみ。CC1と最後のvelocityは別音色としない。詳細と撤去条件は[ADR 0006](0006-sforzando-favorite-state-comparison.md) |
+| Surge XT CLAP / VST3 | Favoritesの重複判定：[surge_xt.rs](../../src/plugin_specific/surge_xt.rs) | editor拡大率と演奏中のCC1値がstateに残る | `sub3` / patch revision 24、実機確認済み1.3.4。詳細と撤去条件は[ADR 0007](0007-surge-xt-favorite-state-comparison.md) |
 
 ### Vaporizer2の判定と制限（2026-10-06追加）
+
+現在のMSEG許容幅は時間`0.00011` ms、座標`0.000001`。以下の`1e-9`と検証数は初回実装時のもの。現在の根拠・制限は[ADR 0010](0010-vaporizer2-mseg-recalculation-drift.md)参照。
 
 - 保存済み6件はCLAP・`steps`で、XML構造と他の設定が一致した。差はMSEGの15〜22項目、最大絶対差は約`4.0011e-10`だった。
 - ローカル実機では保存stateの読み込み直後に14項目の差を再現した。連続保存、続く3回の再読み込み、ノート・CC1後の保存では差を確認しなかった。TyrellN6の圧縮部分を除外する方式とは原因・対応を分ける。
@@ -41,6 +46,9 @@ Auto FavoでTyrellN6の同じ音色が繰り返し追加される。
 - 追加後の検証：通常テスト63件成功（実機依存5件は通常実行では除外）、Vaporizer2の実機テスト1件成功、`cargo clippy --all-targets -- -D warnings`、`cargo fmt --check`、`cargo build --release`成功。既定の既存ビルドキャッシュを使用し、新規環境でのビルド再現性は未確認。
 
 ### TyrellN6の判定と制限
+
+PCoreの確認済み`UI_op=9/10`とテキスト末尾の空行は比較から除外する。
+以下の全テキスト完全一致は初回実装時の記録。現在の根拠・制限は[ADR 0011](0011-tyrell-n6-ui-operation-favorite-comparison.md)参照。
 
 - プラグイン形式・ID・役割・演奏パターンの一致は従来どおり必要。
 - メタデータ、プリセット名、テキストに記録された全設定を完全一致で比較する。

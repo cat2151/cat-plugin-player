@@ -54,6 +54,7 @@ fn main() {
         "uapmd_shim.cpp",
         "uapmd_shim.h",
         "ui_thumbnail.h",
+        "window_placement.h",
         "owned_instance.h",
         "plugin_catalog.cpp",
         "plugin_catalog.h",
@@ -81,6 +82,16 @@ fn main() {
     ] {
         println!("cargo:rerun-if-env-changed={v}");
     }
+    println!(
+        "cargo:rerun-if-changed={}",
+        manifest_dir
+            .join("patches/uapmd/clap-note-dialect")
+            .display()
+    );
+    println!(
+        "cargo:rerun-if-changed={}",
+        uapmd_dir.join("source/remidy/src/clap").display()
+    );
 
     if env::var_os("UH_SKIP_CMAKE").is_none() {
         let generator =

@@ -16,35 +16,45 @@ impl App {
             .map(|i| i.id)
     }
 
+    pub(crate) fn effect_ids(&self) -> Vec<i32> {
+        self.instances
+            .iter()
+            .filter(|i| i.kind == PluginKind::Effect)
+            .map(|i| i.id)
+            .collect()
+    }
+
+    pub(crate) fn connected_effect(&self, key: &config::PluginKey) -> Option<i32> {
+        self.instances
+            .iter()
+            .find(|i| {
+                i.kind == PluginKind::Effect
+                    && i.plugin.format == key.format
+                    && i.plugin.id == key.id
+            })
+            .map(|i| i.id)
+    }
+
     pub(crate) fn routing_label(&self) -> String {
-        let label = |kind| {
-            self.instances
-                .iter()
-                .find(|i| i.kind == kind)
-                .map_or("(empty)", |i| i.label.as_str())
-        };
-        format!(
-            "{} -> {}{} -> Output",
-            label(PluginKind::Instrument),
-            label(PluginKind::Effect),
-            if self.effect_bypassed {
-                " [bypassed]"
-            } else {
-                ""
-            }
-        )
+        let mut labels: Vec<_> = self
+            .instances
+            .iter()
+            .filter(|i| !self.effect_bypassed || i.kind != PluginKind::Effect)
+            .map(|i| i.label.as_str())
+            .collect();
+        labels.push("Output");
+        labels.join(" -> ")
     }
 
     pub(crate) fn chain_processor(
         &self,
         instrument: i32,
-        effect: Option<i32>,
+        effects: &[i32],
     ) -> Result<ffi::Processor, String> {
-        let effects: Vec<_> = effect.into_iter().collect();
         self.host
             .create_chain(
                 instrument,
-                &effects,
+                effects,
                 self.effect_bypassed,
                 self.sample_rate(),
                 audio::MAX_BLOCK_FRAMES,
@@ -54,25 +64,51 @@ impl App {
             })
     }
 
-    pub(crate) fn start_voice(&self, id: i32) -> Result<audio::Voice, String> {
-        let output = self.output.as_ref().ok_or("no audio device")?;
-        let processor = self.chain_processor(id, self.effect_id())?;
+    pub(crate) fn prepare_voice(
+        &self,
+        instrument: i32,
+        effects: &[i32],
+        waiting: bool,
+        new_instrument: Option<&config::PluginKey>,
+    ) -> Result<Option<audio::Voice>, String> {
+        let processor = self.chain_processor(instrument, effects)?;
+        if waiting || self.output.is_none() {
+            return Ok(None);
+        }
         startup::mark(startup::Stage::ProcessorReady);
+        let instrument_plugin = new_instrument.or_else(|| {
+            self.instances
+                .iter()
+                .find(|i| i.id == instrument)
+                .map(|i| &i.plugin)
+        });
+        let start_delay = instrument_plugin
+            .map(crate::plugin_specific::automatic_note_start_delay)
+            .unwrap_or_default();
         audio::Voice::start(
-            output,
+            self.output.as_ref().unwrap(),
             processor,
             self.sequence_pattern,
             self.sequence_velocity,
             self.sequence_modulation,
+            start_delay,
         )
+        .map(Some)
+    }
+
+    pub(crate) fn start_voice(&self, id: i32) -> Result<audio::Voice, String> {
+        self.prepare_voice(id, &self.effect_ids(), false, None)?
+            .ok_or_else(|| "no audio device".into())
     }
 
     pub(crate) fn pause_audio(&mut self) {
         for instance in &mut self.instances {
-            if let Some(voice) = &instance.voice {
+            if let Some(mut voice) = instance.voice.take() {
                 self.sequence_pattern = voice.sequence_pattern();
+                if let Some(sweep) = voice.stop_and_capture_sweep() {
+                    instance.sweep_cc1 = sweep;
+                }
             }
-            instance.voice = None;
         }
     }
 
@@ -102,17 +138,33 @@ impl App {
             .find(|i| i.kind == PluginKind::Instrument)
             .map(|i| i.plugin.clone())
             .or_else(|| self.restored.clone());
-        let mut config = config::Config {
+        let status = crate::status::Status {
+            show_favorites: Some(self.favorites.show),
+            on_right: self.scope_ui.on_right,
             last_played,
-            effect: self
+            effects: self
                 .instances
                 .iter()
-                .find(|i| i.kind == PluginKind::Effect)
-                .map(|i| i.plugin.clone()),
+                .filter(|i| i.kind == PluginKind::Effect)
+                .map(|i| i.plugin.clone())
+                .collect(),
             effect_bypassed: self.effect_bypassed,
-            favorites: config::FavoriteSelection {
+            favorites: crate::status::FavoriteSelection {
                 instrument: self.active_favorite_id(PluginKind::Instrument),
-                effect: self.active_favorite_id(PluginKind::Effect),
+                effects: self
+                    .instances
+                    .iter()
+                    .filter(|i| i.kind == PluginKind::Effect)
+                    .map(|i| {
+                        self.favorites
+                            .active
+                            .iter()
+                            .find(|(id, _)| *id == i.id)
+                            .map(|(_, favorite)| favorite.clone())
+                            .unwrap_or_default()
+                    })
+                    .collect(),
+                ..Default::default()
             },
             sequence_pattern: self.sequence_pattern,
             selected_sequence: self.sequence_pattern.selection(self.selected_sequence),
@@ -124,7 +176,7 @@ impl App {
             .config_path
             .as_ref()
             .map_err(Clone::clone)
-            .and_then(|path| config.save_session(path))
+            .and_then(|path| status.save(path))
             .err()
             .map(|error| format!("Could not save session: {error}"));
     }
@@ -182,15 +234,87 @@ impl App {
             );
             return false;
         }
-        self.instances.retain(|i| i.id != id);
-        self.host.destroy_instance(id);
-        if self.effect_id().is_none() {
+        let effects: Vec<_> = self
+            .effect_ids()
+            .into_iter()
+            .filter(|effect| *effect != id)
+            .collect();
+        let source = self.instrument_id().filter(|source| *source != id);
+        let old_bypass = self.effect_bypassed;
+        if effects.is_empty() {
             self.effect_bypassed = false;
         }
-        self.status = match self.resume_audio() {
-            Ok(()) => "Plugin state saved; removed".into(),
-            Err(e) => format!("Removed, but no audio: {e}"),
+        let prepared = source
+            .map(|source| self.prepare_voice(source, &effects, false, None))
+            .transpose();
+        let voice = match prepared {
+            Ok(voice) => voice.flatten(),
+            Err(error) => {
+                self.effect_bypassed = old_bypass;
+                self.load_failed(format!("Could not remove plugin: {error}"));
+                return false;
+            }
         };
+        self.instances.retain(|i| i.id != id);
+        self.favorites
+            .active
+            .retain(|(instance, _)| *instance != id);
+        self.host.destroy_instance(id);
+        if let Some(source) = source {
+            self.instances
+                .iter_mut()
+                .find(|i| i.id == source)
+                .unwrap()
+                .voice = voice;
+        }
+        self.status = "Plugin state saved; removed".into();
+        self.save_session();
+        true
+    }
+
+    pub(crate) fn reorder_effect(&mut self, id: i32, target: i32, after: bool) -> bool {
+        if self.pending.is_some() || self.restoring || id == target {
+            return false;
+        }
+        let mut effects = self.effect_ids();
+        let Some(from) = effects.iter().position(|effect| *effect == id) else {
+            return false;
+        };
+        if !effects.contains(&target) {
+            return false;
+        }
+        effects.remove(from);
+        let to = effects.iter().position(|effect| *effect == target).unwrap() + usize::from(after);
+        effects.insert(to, id);
+        if effects == self.effect_ids() {
+            return false;
+        }
+        self.pause_audio();
+        let voice = match self
+            .instrument_id()
+            .map(|source| self.prepare_voice(source, &effects, false, None))
+            .transpose()
+        {
+            Ok(voice) => voice.flatten(),
+            Err(error) => {
+                self.load_failed(format!("Could not reorder effects: {error}"));
+                return false;
+            }
+        };
+        self.instances.sort_by_key(|instance| {
+            if instance.kind == PluginKind::Instrument {
+                0
+            } else {
+                effects.iter().position(|id| *id == instance.id).unwrap() + 1
+            }
+        });
+        if let Some(source) = self.instrument_id() {
+            self.instances
+                .iter_mut()
+                .find(|i| i.id == source)
+                .unwrap()
+                .voice = voice;
+        }
         self.save_session();
         true
     }
@@ -219,6 +343,8 @@ impl App {
 
 impl Drop for App {
     fn drop(&mut self) {
+        // Stop native repaint requests before saving or destroying plugin UIs.
+        self.repaint_heartbeat.take();
         self.pause_audio();
         let ids: Vec<_> = self.instances.iter().map(|i| i.id).collect();
         for id in ids {

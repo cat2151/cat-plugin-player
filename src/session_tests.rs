@@ -18,7 +18,7 @@ fn native_session_saves_on_replace_remove_and_exit_then_restores() {
     ));
     let path = directory.join("config.toml");
     app.config_path = Ok(path.clone());
-    app.restore_effect = None;
+    app.restore_effect = Default::default();
     app.output = None; // No sound or audio-device dependency in this check.
     app.deferred_scan = false;
     app.plugins = vec![app.host.restore_plugin(&key).expect("plugin missing")];
@@ -89,13 +89,13 @@ fn native_session_saves_on_replace_remove_and_exit_then_restores() {
     drop(app); // Exit must replace the stale disk snapshot with live state.
     assert!(state_store::load(&path, &key).unwrap() == Some(live));
     assert_eq!(
-        config::Config::load(&path).unwrap().last_played,
+        crate::status::Status::load(&path).unwrap().last_played,
         Some(key.clone())
     );
     let mut next = App::prepare();
     next.config_path = Ok(path.clone());
-    next.restore = config::Config::load(&path).unwrap().last_played;
-    next.restore_effect = None;
+    next.restore = crate::status::Status::load(&path).unwrap().last_played;
+    next.restore_effect = Default::default();
     next.output = None;
     next.deferred_scan = false;
     next.restore_before_gui();

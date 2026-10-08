@@ -59,6 +59,7 @@ pub struct Voice {
     sequence_modulation: Arc<AtomicU8>,
     current_velocity: Arc<AtomicU8>,
     current_modulation: Arc<AtomicU8>,
+    cc1_source: Arc<AtomicU8>,
     rendered: Arc<AtomicBool>,
     scope: crate::scope::Scope,
 }
@@ -71,6 +72,7 @@ impl Voice {
         sequence_pattern: SequencePattern,
         velocity: SequenceVelocity,
         modulation: SequenceModulation,
+        start_delay: std::time::Duration,
     ) -> Result<Self, String> {
         let channels = output.config.channels as usize;
         let sequence_pattern = Arc::new(AtomicU8::new(sequence_pattern as u8));
@@ -81,9 +83,13 @@ impl Voice {
         let modulation_flag = Arc::clone(&sequence_modulation);
         let current_velocity = Arc::new(AtomicU8::new(0));
         let current_modulation = Arc::new(AtomicU8::new(0));
+        // 0: no CC1 delivered, 1: fixed modulation, 2: sweep.
+        let cc1_source = Arc::new(AtomicU8::new(0));
+        let cc1_source_flag = Arc::clone(&cc1_source);
         let velocity_meter = Arc::clone(&current_velocity);
         let modulation_meter = Arc::clone(&current_modulation);
         let mut sequencer = Sequencer::new(output.sample_rate());
+        sequencer.delay_start(start_delay);
         let mut ump = EventBuf::new();
         // SAFETY: `_stream` is declared before `_processor`, so the callback is
         // gone before the processor is; only this one callback renders.
@@ -114,14 +120,19 @@ impl Voice {
                         captured_pattern = pattern;
                     }
                     let velocity = SequenceVelocity::from_u8(velocity_flag.load(Ordering::Relaxed));
-                    sequencer.set_modulation(SequenceModulation::from_u8(
-                        modulation_flag.load(Ordering::Relaxed),
-                    ));
+                    let modulation =
+                        SequenceModulation::from_u8(modulation_flag.load(Ordering::Relaxed));
+                    sequencer.set_modulation(modulation);
                     let block = MAX_BLOCK_FRAMES as usize * channels;
                     for chunk in data.chunks_mut(block) {
                         ump.clear();
                         sequencer.render(pattern, velocity, chunk.len() / channels, &mut ump);
-                        render.process(ump.as_slice(), chunk, channels);
+                        let rendered = render.process(ump.as_slice(), chunk, channels);
+                        if let Some(source) =
+                            delivered_cc1_source(ump.as_slice(), modulation, rendered)
+                        {
+                            cc1_source_flag.store(source, Ordering::Release);
+                        }
                         let (velocity, modulation) = sequencer.current_values();
                         velocity_meter.store(velocity, Ordering::Relaxed);
                         modulation_meter.store(modulation, Ordering::Relaxed);
@@ -154,6 +165,7 @@ impl Voice {
             sequence_modulation,
             current_velocity,
             current_modulation,
+            cc1_source,
             rendered,
             scope,
         })
@@ -161,6 +173,16 @@ impl Voice {
 
     pub fn sequence_pattern(&self) -> SequencePattern {
         SequencePattern::from_u8(self.sequence_pattern.load(Ordering::Relaxed))
+    }
+
+    /// Join the callback before capturing the origin of its last delivered CC1.
+    pub(crate) fn stop_and_capture_sweep(&mut self) -> Option<bool> {
+        self._stream = None;
+        match self.cc1_source.load(Ordering::Acquire) {
+            1 => Some(false),
+            2 => Some(true),
+            _ => None,
+        }
     }
 
     pub fn current_values(&self) -> (u8, u8) {
@@ -210,8 +232,8 @@ impl Drop for Voice {
 }
 
 fn shutdown_events() -> [u32; 144] {
-    // CLAP's native note dispatcher does not implement CC 120. Explicit note
-    // offs cover sequence notes on channel 0 after losing tracking.
+    // Native-only CLAP ports cannot carry MIDI CC 120. Explicit note offs
+    // cover sequence notes on channel 0 after losing tracking.
     std::array::from_fn(|index| {
         if index < 128 {
             note_off(0, index as u8)
@@ -221,9 +243,58 @@ fn shutdown_events() -> [u32; 144] {
     })
 }
 
+fn delivered_cc1_source(
+    events: &[u32],
+    modulation: SequenceModulation,
+    rendered: bool,
+) -> Option<u8> {
+    (rendered
+        && events
+            .iter()
+            .any(|event| event & 0xffff_ff00 == 0x20b0_0100))
+    .then_some(if modulation == SequenceModulation::Sweep {
+        2
+    } else {
+        1
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_successfully_delivered_cc1_changes_automation_origin() {
+        let events = [
+            0x0020_0001,
+            0x2090_3064,
+            crate::sequence_modulation::cc1(64),
+        ];
+        assert_eq!(
+            delivered_cc1_source(&events, SequenceModulation::Sweep, true),
+            Some(2)
+        );
+        assert_eq!(
+            delivered_cc1_source(&events, SequenceModulation::Full, true),
+            Some(1)
+        );
+        assert_eq!(
+            delivered_cc1_source(&events, SequenceModulation::Zero, true),
+            Some(1)
+        );
+        assert_eq!(
+            delivered_cc1_source(&events, SequenceModulation::Sweep, false),
+            None
+        );
+        assert_eq!(
+            delivered_cc1_source(&events[..2], SequenceModulation::Sweep, true),
+            None
+        );
+        assert_eq!(
+            delivered_cc1_source(&[0x20b0_027f], SequenceModulation::Sweep, true),
+            None
+        );
+    }
 
     #[test]
     fn rebuilding_stream_releases_notes_without_requiring_cc_support() {

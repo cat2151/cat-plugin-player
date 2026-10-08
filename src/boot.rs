@@ -15,32 +15,44 @@ impl App {
             sequence_velocity,
             sequence_modulation,
             favorite_selection,
+            show_favorites,
+            on_right,
+            window_config,
+            prefer_clap,
             config_error,
-        ) = match config_path
-            .as_ref()
-            .map_err(Clone::clone)
-            .and_then(|path| config::Config::load(path))
-        {
-            Ok(config) => (
-                config.last_played,
-                config.effect,
-                config.effect_bypassed,
-                config.sequence_pattern,
-                config.sequence_pattern.selection(config.selected_sequence),
-                config.sequence_velocity,
-                config.sequence_modulation,
-                config.favorites,
+        ) = match config_path.as_ref().map_err(Clone::clone).and_then(|path| {
+            let settings = config::Config::load(path)?;
+            let status = crate::status::Status::load(path)?;
+            Ok((settings, status))
+        }) {
+            Ok((settings, status)) => (
+                status.last_played,
+                status.effects.into(),
+                status.effect_bypassed,
+                status.sequence_pattern,
+                status.sequence_pattern.selection(status.selected_sequence),
+                status.sequence_velocity,
+                status.sequence_modulation,
+                status.favorites,
+                status.show_favorites,
+                status.on_right,
+                settings.window,
+                settings.plugins.prefer_clap,
                 None,
             ),
             Err(error) => (
                 None,
-                None,
+                Default::default(),
                 false,
                 crate::SequencePattern::default(),
                 crate::SequencePattern::default(),
                 crate::SequenceVelocity::default(),
                 crate::SequenceModulation::default(),
-                config::FavoriteSelection::default(),
+                crate::status::FavoriteSelection::default(),
+                None,
+                crate::status::Status::default().on_right,
+                Default::default(),
+                true,
                 Some(format!("Could not read session: {error}")),
             ),
         };
@@ -55,9 +67,11 @@ impl App {
         startup::mark(Stage::DeviceReady);
         Self {
             instances: Vec::new(),
+            window_config,
             host,
             output,
             plugins: Vec::new(),
+            prefer_clap,
             pending: None,
             restore_effect,
             effect_bypassed,
@@ -78,10 +92,13 @@ impl App {
             status,
             favorites: crate::favorites::Favorites {
                 restore: favorite_selection,
+                show: show_favorites.unwrap_or_default(),
+                restore_show: show_favorites,
                 ..Default::default()
             },
-            scope_ui: Default::default(),
+            scope_ui: crate::scope_ui::ScopeUi::with_on_right(on_right),
             plugin_icons: Default::default(),
+            repaint_heartbeat: None,
         }
     }
 

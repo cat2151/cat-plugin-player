@@ -87,6 +87,7 @@ extern "C" {
         out_channels: i32,
         frames: i32,
     ) -> i32;
+    fn uh_ui_set_main_window(host: *mut UhHost, hwnd: *mut c_void);
     fn uh_ui_show(host: *mut UhHost, instance_id: i32) -> i32;
     fn uh_ui_hide(host: *mut UhHost, instance_id: i32);
     fn uh_ui_is_visible(host: *mut UhHost, instance_id: i32) -> i32;
@@ -136,6 +137,25 @@ impl Host {
             None
         } else {
             Some(Self { raw })
+        }
+    }
+
+    pub fn configure_editor_placement(
+        &self,
+        context: &eframe::CreationContext<'_>,
+        placement: crate::window_config::Placement,
+    ) {
+        use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+        match placement {
+            crate::window_config::Placement::RightThenBottomRight => {
+                if let Ok(handle) = context.window_handle() {
+                    if let RawWindowHandle::Win32(handle) = handle.as_raw() {
+                        unsafe {
+                            uh_ui_set_main_window(self.raw, handle.hwnd.get() as *mut c_void)
+                        };
+                    }
+                }
+            }
         }
     }
 

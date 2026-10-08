@@ -1,6 +1,82 @@
 use super::*;
 
 #[test]
+fn automatic_saves_ignore_stop_in_both_directions_but_keep_other_differences() {
+    let dir = std::env::temp_dir().join(format!(
+        "cat-auto-favorite-stop-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let config = dir.join("config.toml");
+    let plugin = PluginKey {
+        format: "CLAP".into(),
+        id: "synth".into(),
+        name: "Synth".into(),
+        vendor: String::new(),
+        bundle_path: "X:/plugins/synth.clap".into(),
+    };
+    for (i, &pattern) in SequencePattern::TYPES.iter().enumerate() {
+        for (first_pattern, second_pattern) in [
+            (pattern, SequencePattern::Off),
+            (SequencePattern::Off, pattern),
+        ] {
+            let config = config.with_file_name(format!("case-{i}-{first_pattern:?}/config.toml"));
+            let mut library = Library::default();
+            // Automatic saves must also reuse manually saved and renamed entries.
+            let first = library
+                .add(&config, plugin.clone(), false, &[1], first_pattern)
+                .unwrap();
+            library.rename(&config, &first.id, "My sound").unwrap();
+            let mut library = Library::load(&config).unwrap();
+            let saved = library
+                .add_automatic(&config, plugin.clone(), false, &[1], second_pattern)
+                .unwrap();
+            assert_eq!(saved.id, first.id);
+            assert_eq!(saved.name, "My sound");
+            assert_eq!(saved.sequence_pattern, first_pattern);
+            assert_eq!(library.entries.len(), 1);
+            assert_eq!(library.state(&config, &first.id).unwrap(), [1]);
+            assert_eq!(
+                std::fs::read_dir(directory(&config).unwrap())
+                    .unwrap()
+                    .count(),
+                2
+            );
+            // A sound change still creates an automatic snapshot while stopped.
+            library
+                .add_automatic(&config, plugin.clone(), false, &[2], SequencePattern::Off)
+                .unwrap();
+            assert_eq!(library.entries.len(), 2);
+            // Manual saves still distinguish stopped and playing snapshots.
+            let manual = library
+                .add(&config, plugin.clone(), false, &[1], second_pattern)
+                .unwrap();
+            assert_ne!(manual.id, first.id);
+            assert_eq!(library.entries.len(), 3);
+        }
+    }
+    let mut library = Library::default();
+    let playing = library
+        .add_automatic(&config, plugin.clone(), false, &[1], SequencePattern::Steps)
+        .unwrap();
+    let other_pattern = library
+        .add_automatic(
+            &config,
+            plugin.clone(),
+            false,
+            &[1],
+            SequencePattern::GuitarArpeggio,
+        )
+        .unwrap();
+    assert_ne!(playing.id, other_pattern.id);
+    assert_eq!(library.entries.len(), 2);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn repeated_automatic_saves_preserve_numbers_and_renamed_favorites() {
     let dir = std::env::temp_dir().join(format!(
         "cat-auto-favorite-name-{}-{}",
@@ -48,7 +124,8 @@ fn repeated_automatic_saves_preserve_numbers_and_renamed_favorites() {
     assert_eq!(saved.name, "My Dexed sound");
     assert_eq!(std::fs::read(index).unwrap(), before);
     assert_eq!(library.state(&config, &first.id).unwrap(), [1]);
-    assert_eq!(library.entries[0].id, second.id);
+    assert_eq!(library.entries[0].id, first.id);
+    assert_eq!(library.entries[1].id, second.id);
     assert_eq!(
         std::fs::read_dir(directory(&config).unwrap())
             .unwrap()
@@ -101,7 +178,12 @@ fn duplicate_snapshots_keep_the_existing_name_and_rollback_on_index_failure() {
     // Different state, pattern, role or plugin identity must survive.
     for (key, effect, state, pattern) in [
         (plugin.clone(), false, vec![2], SequencePattern::Steps),
-        (plugin.clone(), false, vec![1], SequencePattern::Off),
+        (
+            plugin.clone(),
+            false,
+            vec![1],
+            SequencePattern::GuitarArpeggio,
+        ),
         (plugin.clone(), true, vec![1], SequencePattern::Steps),
         (
             PluginKey {
@@ -197,6 +279,23 @@ fn favorites_survive_autosave_rename_delete_and_reload() {
     assert_eq!(library.entries[0].sequence_pattern, SequencePattern::Off);
     assert_eq!(library.state(&config, &first.id).unwrap(), [0, 255, 1]);
     assert!(library.state(&config, "../outside").is_err());
+    library.record_use(&config, &first.id).unwrap();
+    let mut library = Library::load(&config).unwrap();
+    assert_eq!(library.entries[0].id, first.id);
+    assert_eq!(library.entries[1].id, second.id);
+    library.record_use(&config, &second.id).unwrap();
+    assert_eq!(Library::load(&config).unwrap().entries[0].id, second.id);
+    // Failed persistence must roll back the order and leave snapshots intact.
+    let index = directory(&config).unwrap().join("index.toml");
+    let metadata = std::fs::read(&index).unwrap();
+    std::fs::remove_file(&index).unwrap();
+    std::fs::create_dir(&index).unwrap();
+    assert!(library.record_use(&config, &first.id).is_err());
+    assert_eq!(library.entries[0].id, second.id);
+    assert_eq!(library.entries[1].id, first.id);
+    assert_eq!(library.state(&config, &first.id).unwrap(), [0, 255, 1]);
+    std::fs::remove_dir(&index).unwrap();
+    std::fs::write(&index, metadata).unwrap();
     library.delete(&config, &second.id).unwrap();
     assert_eq!(Library::load(&config).unwrap().entries.len(), 1);
     assert!(!state_path(&config, &second.id).unwrap().exists());

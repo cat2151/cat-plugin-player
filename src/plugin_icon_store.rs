@@ -78,9 +78,14 @@ pub(super) fn load(
     config: &Path,
     key: &PluginKey,
     aliases: &[PluginKey],
+    bounds: (u32, u32),
 ) -> Result<Option<image::RgbaImage>, String> {
     if let Some(image) = read(&path(config, key)?)? {
-        return Ok(Some(image));
+        let thumbnail = fit(&image, bounds);
+        if thumbnail.dimensions() != image.dimensions() {
+            save(config, key, &image, bounds)?;
+        }
+        return Ok(Some(thumbnail));
     }
     // Existing format/ID images carry no metadata: resolve them only through known keys.
     // Sort candidates so the chosen image does not depend on which row is drawn first.
@@ -93,22 +98,41 @@ pub(super) fn load(
     candidates.dedup_by(|a, b| a.format == b.format && a.id == b.id);
     for candidate in candidates {
         if let Some(image) = read(&legacy_path(config, candidate)?)? {
-            save(config, key, &image)?;
-            return Ok(Some(image));
+            return save(config, key, &image, bounds).map(Some);
         }
     }
     Ok(None)
 }
 
-pub(super) fn save(config: &Path, key: &PluginKey, image: &image::RgbaImage) -> Result<(), String> {
+fn fit(image: &image::RgbaImage, bounds: (u32, u32)) -> image::RgbaImage {
+    let width = bounds.0.max(1).min(image.width());
+    let height = bounds.1.max(1).min(image.height());
+    if (width, height) == image.dimensions() {
+        return image.clone();
+    }
+    let scale = (f64::from(width) / f64::from(image.width()))
+        .min(f64::from(height) / f64::from(image.height()));
+    let width = (f64::from(image.width()) * scale).floor().max(1.0) as u32;
+    let height = (f64::from(image.height()) * scale).floor().max(1.0) as u32;
+    image::imageops::thumbnail(image, width, height)
+}
+
+pub(super) fn save(
+    config: &Path,
+    key: &PluginKey,
+    image: &image::RgbaImage,
+    bounds: (u32, u32),
+) -> Result<image::RgbaImage, String> {
     if is_blank(image) {
         return Err("Plugin UI is still blank".into());
     }
+    let image = fit(image, bounds);
     let mut bytes = std::io::Cursor::new(Vec::new());
     image
         .write_to(&mut bytes, image::ImageFormat::Png)
         .map_err(|error| error.to_string())?;
-    state_store::atomic_write(&path(config, key)?, bytes.get_ref())
+    state_store::atomic_write(&path(config, key)?, bytes.get_ref())?;
+    Ok(image)
 }
 
 #[cfg(test)]
@@ -122,6 +146,19 @@ mod tests {
             name: "Synth".into(),
             vendor: "Vendor".into(),
             bundle_path: "X:/plugins/synth.clap".into(),
+        }
+    }
+
+    #[test]
+    fn thumbnails_fit_wide_tall_and_small_images_without_upscaling() {
+        for (source, expected) in [
+            ((192, 96), (27, 13)),
+            ((64, 128), (9, 18)),
+            ((8, 4), (8, 4)),
+        ] {
+            let image =
+                image::RgbaImage::from_pixel(source.0, source.1, image::Rgba([30, 60, 90, 255]));
+            assert_eq!(fit(&image, (27, 18)).dimensions(), expected);
         }
     }
 
@@ -164,11 +201,11 @@ mod tests {
             }
         });
         assert!(is_blank(&blank));
-        assert!(save(&config, &key, &blank).is_err());
+        assert!(save(&config, &key, &blank, (27, 18)).is_err());
         std::fs::create_dir_all(directory.join("plugin-icons")).unwrap();
         blank.save(path(&config, &key).unwrap()).unwrap();
         blank.save(legacy_path(&config, &key).unwrap()).unwrap();
-        assert!(load(&config, &key, &[]).unwrap().is_none());
+        assert!(load(&config, &key, &[], (27, 18)).unwrap().is_none());
         let ready = image::RgbaImage::from_fn(192, 115, |x, _| {
             if x < 15 {
                 image::Rgba([30, 30, 30, 255])
@@ -177,8 +214,16 @@ mod tests {
             }
         });
         assert!(!is_blank(&ready));
-        save(&config, &key, &ready).unwrap();
-        assert_eq!(load(&config, &key, &[]).unwrap().unwrap(), ready);
+        let saved = save(&config, &key, &ready, (27, 18)).unwrap();
+        assert_eq!(saved.dimensions(), (27, 16));
+        assert_eq!(
+            image::image_dimensions(path(&config, &key).unwrap()).unwrap(),
+            (27, 16)
+        );
+        assert_eq!(
+            load(&config, &key, &[], (27, 18)).unwrap().unwrap(),
+            fit(&ready, (27, 18))
+        );
         std::fs::remove_dir_all(directory).unwrap();
     }
 
@@ -195,27 +240,47 @@ mod tests {
         let config = directory.join("config.toml");
         let clap = key("CLAP");
         let vst = key("VST3");
-        assert!(load(&config, &clap, &[]).unwrap().is_none());
+        assert!(load(&config, &clap, &[], (27, 18)).unwrap().is_none());
         let image =
             image::RgbaImage::from_fn(192, 96, |x, y| image::Rgba([x as u8, y as u8, 50, 255]));
         std::fs::create_dir_all(directory.join("plugin-icons")).unwrap();
         image.save(legacy_path(&config, &vst).unwrap()).unwrap();
+        // Shared images from previous versions are also rewritten on first load.
+        image.save(path(&config, &clap).unwrap()).unwrap();
+        assert_eq!(
+            load(&config, &clap, &[], (27, 18))
+                .unwrap()
+                .unwrap()
+                .dimensions(),
+            (27, 13)
+        );
+        assert_eq!(
+            image::image_dimensions(path(&config, &clap).unwrap()).unwrap(),
+            (27, 13)
+        );
+        std::fs::remove_file(path(&config, &clap).unwrap()).unwrap();
         let mut other = clap.clone();
         other.vendor = "Other".into();
-        assert!(load(&config, &other, std::slice::from_ref(&vst))
+        assert!(load(&config, &other, std::slice::from_ref(&vst), (27, 18))
             .unwrap()
             .is_none());
         assert_eq!(
-            load(&config, &clap, std::slice::from_ref(&vst))
+            load(&config, &clap, std::slice::from_ref(&vst), (27, 18))
                 .unwrap()
                 .unwrap(),
-            image
+            fit(&image, (27, 18))
         );
         std::fs::remove_file(legacy_path(&config, &vst).unwrap()).unwrap();
-        assert_eq!(load(&config, &clap, &[]).unwrap().unwrap(), image);
-        assert_eq!(load(&config, &vst, &[]).unwrap().unwrap(), image);
+        assert_eq!(
+            load(&config, &clap, &[], (27, 18)).unwrap().unwrap(),
+            fit(&image, (27, 18))
+        );
+        assert_eq!(
+            load(&config, &vst, &[], (27, 18)).unwrap().unwrap(),
+            fit(&image, (27, 18))
+        );
         std::fs::write(path(&config, &clap).unwrap(), b"broken PNG").unwrap();
-        assert!(load(&config, &clap, &[]).is_err());
+        assert!(load(&config, &clap, &[], (27, 18)).is_err());
         std::fs::remove_dir_all(directory).unwrap();
     }
 }

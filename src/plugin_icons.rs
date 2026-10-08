@@ -11,6 +11,10 @@ const CAPTURE_DELAY: Duration = Duration::from_secs(2);
 const RETRY_INTERVAL: Duration = Duration::from_secs(1);
 const CAPTURE_TIMEOUT: Duration = Duration::from_secs(20);
 
+#[cfg(test)]
+#[path = "plugin_icon_ui_tests.rs"]
+mod ui_tests;
+
 #[path = "plugin_icon_store.rs"]
 mod store;
 use store::{identity, is_blank, load, save};
@@ -34,6 +38,18 @@ fn texture(ctx: &egui::Context, key: &PluginKey, image: &image::RgbaImage) -> eg
             image.as_raw(),
         ),
         egui::TextureOptions::LINEAR,
+    )
+}
+
+fn display_size(height: f32) -> egui::Vec2 {
+    egui::vec2(height * 1.5, height)
+}
+
+fn pixel_bounds(height: f32, pixels_per_point: f32) -> (u32, u32) {
+    let size = display_size(height) * pixels_per_point;
+    (
+        size.x.round().max(1.0) as u32,
+        size.y.round().max(1.0) as u32,
     )
 }
 
@@ -69,6 +85,26 @@ impl PluginIcons {
         key: &PluginKey,
         config: &Result<PathBuf, String>,
     ) {
+        self.draw_with_sense(ui, key, config, egui::Sense::hover());
+    }
+
+    pub(crate) fn button(
+        &mut self,
+        ui: &mut egui::Ui,
+        key: &PluginKey,
+        config: &Result<PathBuf, String>,
+    ) -> egui::Response {
+        self.draw_with_sense(ui, key, config, egui::Sense::click())
+            .on_hover_cursor(egui::CursorIcon::PointingHand)
+    }
+
+    fn draw_with_sense(
+        &mut self,
+        ui: &mut egui::Ui,
+        key: &PluginKey,
+        config: &Result<PathBuf, String>,
+        sense: egui::Sense,
+    ) -> egui::Response {
         let id = identity(key);
         if !self.textures.contains_key(&id) {
             let loaded = config.as_ref().map_err(Clone::clone).and_then(|config| {
@@ -76,6 +112,7 @@ impl PluginIcons {
                     config,
                     key,
                     self.aliases.get(&id).map_or(&[], Vec::as_slice),
+                    pixel_bounds(ui.spacing().interact_size.y, ui.ctx().pixels_per_point()),
                 )
             });
             let handle = match loaded {
@@ -91,18 +128,19 @@ impl PluginIcons {
         // Match the controls' height so screenshots do not make the list rows taller.
         // Every row reserves the same space so names stay aligned.
         let height = ui.spacing().interact_size.y;
-        let (rect, _) =
-            ui.allocate_exact_size(egui::vec2(height * 1.5, height), egui::Sense::hover());
+        let (rect, response) = ui.allocate_exact_size(display_size(height), sense);
         if let Some(Some(handle)) = self.textures.get(&id) {
             let size = handle.size_vec2();
             let scale = (rect.width() / size.x).min(rect.height() / size.y);
-            ui.put(
+            ui.painter().image(
+                handle.id(),
                 egui::Rect::from_center_size(rect.center(), size * scale),
-                egui::Image::new(handle).fit_to_exact_size(size * scale),
-            )
-            .on_hover_ui(|ui| {
+                egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
+                egui::Color32::WHITE,
+            );
+            response.on_hover_ui(|ui| {
                 ui.add(egui::Image::new(handle));
-            });
+            })
         } else {
             ui.painter()
                 .rect_filled(rect.shrink(2.0), 4.0, ui.visuals().faint_bg_color);
@@ -113,6 +151,7 @@ impl PluginIcons {
                 egui::FontId::proportional((height - 4.0).min(22.0)),
                 ui.visuals().weak_text_color(),
             );
+            response
         }
     }
 
@@ -172,6 +211,7 @@ impl App {
         let Ok(config) = &self.config_path else {
             return;
         };
+        let bounds = pixel_bounds(ctx.style().spacing.interact_size.y, ctx.pixels_per_point());
         for instance in &self.instances {
             if !self.host.ui_is_visible(instance.id)
                 || !self.plugin_icons.due(instance.id, Instant::now())
@@ -187,6 +227,7 @@ impl App {
                         .aliases
                         .get(&identity(&instance.plugin))
                         .map_or(&[], Vec::as_slice),
+                    bounds,
                 )
                 .map_err(CaptureError::Stop)?
                 {
@@ -199,8 +240,8 @@ impl App {
                         if is_blank(&image) {
                             return Err(CaptureError::Retry("Plugin UI is still blank".into()));
                         }
-                        save(config, &instance.plugin, &image).map_err(CaptureError::Stop)?;
-                        image
+                        save(config, &instance.plugin, &image, bounds)
+                            .map_err(CaptureError::Stop)?
                     }
                 };
                 Ok::<_, CaptureError>(texture(ctx, &instance.plugin, &image))
@@ -237,6 +278,13 @@ mod tests {
             vendor: "Vendor".into(),
             bundle_path: String::new(),
         }
+    }
+
+    #[test]
+    fn saved_pixel_bounds_follow_control_size_and_screen_scale() {
+        assert_eq!(pixel_bounds(18.0, 1.0), (27, 18));
+        assert_eq!(pixel_bounds(18.0, 2.0), (54, 36));
+        assert_eq!(pixel_bounds(20.0, 1.5), (45, 30));
     }
 
     #[test]

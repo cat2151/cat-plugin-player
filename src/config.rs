@@ -1,6 +1,5 @@
-use crate::sequence_modulation::SequenceModulation;
-use crate::sequence_velocity::SequenceVelocity;
-use crate::{ffi::PluginInfo, sequence_pattern::SequencePattern};
+//! User-owned settings. Application status is stored separately.
+use crate::ffi::PluginInfo;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -34,31 +33,44 @@ impl PluginKey {
     }
 }
 
-#[derive(Default, Deserialize, Serialize)]
+#[derive(Default, Deserialize)]
 pub struct Config {
     #[serde(default)]
-    pub sequence_pattern: SequencePattern,
+    pub plugins: PluginDisplayConfig,
     #[serde(default)]
-    pub selected_sequence: SequencePattern,
-    #[serde(default)]
-    pub sequence_velocity: SequenceVelocity,
-    #[serde(default)]
-    pub sequence_modulation: SequenceModulation,
-    pub last_played: Option<PluginKey>,
-    #[serde(default)]
-    pub effect: Option<PluginKey>,
-    #[serde(default)]
-    pub effect_bypassed: bool,
-    #[serde(default)]
-    pub favorites: FavoriteSelection,
+    pub window: crate::window_config::WindowConfig,
     #[serde(default)]
     pub build: BuildConfig,
 }
 
-#[derive(Default, Deserialize, Serialize)]
-pub struct FavoriteSelection {
-    pub instrument: Option<String>,
-    pub effect: Option<String>,
+#[derive(Deserialize)]
+pub struct PluginDisplayConfig {
+    #[serde(default = "default_prefer_clap")]
+    pub prefer_clap: bool,
+}
+
+fn default_prefer_clap() -> bool {
+    true
+}
+
+impl Default for PluginDisplayConfig {
+    fn default() -> Self {
+        Self { prefer_clap: true }
+    }
+}
+
+pub fn save_prefer_clap(path: &Path, enabled: bool) -> Result<(), String> {
+    let contents = match std::fs::read_to_string(path) {
+        Ok(contents) => contents,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => return Err(error.to_string()),
+    };
+    let _: Config = toml::from_str(&contents).map_err(|error| error.to_string())?;
+    let mut document = contents
+        .parse::<toml_edit::DocumentMut>()
+        .map_err(|error| error.to_string())?;
+    document["plugins"]["prefer_clap"] = toml_edit::value(enabled);
+    crate::state_store::atomic_write(path, document.to_string().as_bytes())
 }
 
 #[derive(Default, Deserialize, Serialize)]
@@ -81,19 +93,6 @@ impl Config {
             Err(error) => Err(error.to_string()),
         }
     }
-
-    pub fn save(&self, path: &Path) -> Result<(), String> {
-        let contents = toml::to_string_pretty(self).map_err(|error| error.to_string())?;
-        let parent = path.parent().ok_or("config path has no parent")?;
-        std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-        std::fs::write(path, contents).map_err(|error| error.to_string())
-    }
-
-    /// Keep the current build settings, including edits made while the GUI is open.
-    pub fn save_session(&mut self, path: &Path) -> Result<(), String> {
-        self.build = Self::load(path)?.build;
-        self.save(path)
-    }
 }
 
 #[cfg(test)]
@@ -101,72 +100,49 @@ mod tests {
     use super::*;
 
     #[test]
-    fn velocity_roundtrips_and_old_sessions_default_to_100() {
-        let old: Config = toml::from_str("sequence_pattern = 'steps'").unwrap();
-        assert_eq!(old.sequence_velocity, SequenceVelocity::V100);
-        for &velocity in SequenceVelocity::TYPES {
-            let config = Config {
-                sequence_velocity: velocity,
-                ..Default::default()
-            };
-            let restored: Config = toml::from_str(&toml::to_string(&config).unwrap()).unwrap();
-            assert_eq!(restored.sequence_velocity, velocity);
+    fn plugin_display_defaults_to_on_in_old_and_new_configs() {
+        assert!(Config::default().plugins.prefer_clap);
+        for source in ["", "[window.main]\nx = 100.0", "[plugins]"] {
+            assert!(
+                toml::from_str::<Config>(source)
+                    .unwrap()
+                    .plugins
+                    .prefer_clap
+            );
         }
+        assert!(
+            !toml::from_str::<Config>("[plugins]\nprefer_clap = false")
+                .unwrap()
+                .plugins
+                .prefer_clap
+        );
     }
 
     #[test]
-    fn every_pattern_including_stopped_survives_serialization() {
-        for pattern in
-            std::iter::once(SequencePattern::Off).chain(SequencePattern::TYPES.iter().copied())
-        {
-            let config = Config {
-                sequence_pattern: pattern,
-                selected_sequence: pattern,
-                ..Default::default()
-            };
-            let saved = toml::to_string(&config).unwrap();
-            let restored: Config = toml::from_str(&saved).unwrap();
-            assert_eq!(restored.sequence_pattern, pattern);
-            assert_eq!(restored.selected_sequence, pattern);
-        }
-    }
-
-    #[test]
-    fn stopped_selection_survives_and_legacy_history_keeps_transport() {
-        let config = Config {
-            sequence_pattern: SequencePattern::Off,
-            selected_sequence: SequencePattern::GuitarArpeggio,
-            ..Default::default()
-        };
-        let saved = toml::to_string(&config).unwrap();
-        let restored: Config = toml::from_str(&saved).unwrap();
-        assert_eq!(restored.sequence_pattern, SequencePattern::Off);
+    fn display_setting_save_preserves_other_settings_and_rejects_invalid_config() {
+        let directory =
+            std::env::temp_dir().join(format!("cat-plugin-display-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("config.toml");
+        let original =
+            "# user notes\n[window.main]\nx = 42.0 # position\n[custom]\nvalue = 'keep'\n";
+        std::fs::write(&path, original).unwrap();
+        save_prefer_clap(&path, false).unwrap();
+        let saved = std::fs::read_to_string(&path).unwrap();
+        assert!(saved.contains(original));
+        assert!(!Config::load(&path).unwrap().plugins.prefer_clap);
+        save_prefer_clap(&path, true).unwrap();
+        assert!(Config::load(&path).unwrap().plugins.prefer_clap);
+        std::fs::write(&path, "[plugins]\nprefer_clap = 'invalid'").unwrap();
+        assert!(save_prefer_clap(&path, false).is_err());
         assert_eq!(
-            restored
-                .sequence_pattern
-                .selection(restored.selected_sequence),
-            SequencePattern::GuitarArpeggio
+            std::fs::read_to_string(&path).unwrap(),
+            "[plugins]\nprefer_clap = 'invalid'"
         );
-        for pattern in ["off", "steps", "guitar_arpeggio"] {
-            let old: Config = toml::from_str(&format!("sequence_pattern = '{pattern}'")).unwrap();
-            let expected = if pattern == "guitar_arpeggio" {
-                SequencePattern::GuitarArpeggio
-            } else {
-                SequencePattern::Steps
-            };
-            assert_eq!(
-                old.sequence_pattern.selection(old.selected_sequence),
-                expected
-            );
-            assert_eq!(
-                old.sequence_pattern == SequencePattern::Off,
-                pattern == "off"
-            );
-        }
-        assert_eq!(
-            SequencePattern::Off.selection(SequencePattern::Off),
-            SequencePattern::Steps
-        );
+        std::fs::remove_file(&path).unwrap();
+        save_prefer_clap(&path, false).unwrap();
+        assert!(!Config::load(&path).unwrap().plugins.prefer_clap);
+        std::fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
@@ -184,82 +160,5 @@ mod tests {
         let plugins = [plugin(0, "VST3", "synth"), plugin(8, "CLAP", "synth")];
         assert_eq!(key.find(&plugins), Some(1));
         assert_eq!(key.find(&plugins[..1]), None);
-    }
-
-    #[test]
-    fn config_round_trip_missing_and_invalid_file() {
-        let directory = std::env::temp_dir().join(format!(
-            "cat-plugin-player-config-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        let path = directory.join("nested").join("config.toml");
-        assert!(Config::load(&path).unwrap().last_played.is_none());
-        let config = Config {
-            last_played: Some(PluginKey {
-                format: "CLAP".into(),
-                id: "X:/plugins/音源\".clap".into(),
-                name: "音源".into(),
-                vendor: "Vendor".into(),
-                bundle_path: "X:/plugins/音源.clap".into(),
-            }),
-            effect: Some(PluginKey {
-                format: "VST3".into(),
-                id: "reverb".into(),
-                name: "Reverb".into(),
-                vendor: String::new(),
-                bundle_path: "X:/plugins/reverb.vst3".into(),
-            }),
-            effect_bypassed: true,
-            favorites: FavoriteSelection {
-                instrument: Some("instrument-favorite".into()),
-                effect: Some("effect-favorite".into()),
-            },
-            sequence_pattern: SequencePattern::GuitarArpeggio,
-            selected_sequence: SequencePattern::GuitarArpeggio,
-            build: BuildConfig {
-                uapmd_dir: Some("X:/dependencies/UAPMD 日本語".into()),
-            },
-            sequence_velocity: SequenceVelocity::Range80To127,
-            sequence_modulation: SequenceModulation::Sweep,
-        };
-        config.save(&path).unwrap();
-        let loaded = Config::load(&path).unwrap();
-        assert_eq!(loaded.last_played, config.last_played);
-        assert_eq!(loaded.effect, config.effect);
-        assert!(loaded.effect_bypassed);
-        assert_eq!(loaded.favorites.instrument, config.favorites.instrument);
-        assert_eq!(loaded.favorites.effect, config.favorites.effect);
-        assert_eq!(loaded.sequence_pattern, SequencePattern::GuitarArpeggio);
-        assert_eq!(loaded.build.uapmd_dir, config.build.uapmd_dir);
-        let mut session = Config::default();
-        session.save_session(&path).unwrap();
-        assert_eq!(
-            Config::load(&path).unwrap().build.uapmd_dir,
-            config.build.uapmd_dir
-        );
-        std::fs::write(&path, "[invalid").unwrap();
-        assert!(session.save_session(&path).is_err());
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), "[invalid");
-        assert!(Config::load(&path).is_err());
-        std::fs::remove_dir_all(directory).unwrap();
-    }
-
-    #[test]
-    fn old_history_can_fall_back_to_scanning() {
-        let config: Config =
-            toml::from_str("[last_played]\nformat = 'CLAP'\nid = 'synth'\n").unwrap();
-        assert_eq!(config.sequence_pattern, SequencePattern::Steps);
-        assert!(config.effect.is_none());
-        assert!(!config.effect_bypassed);
-        assert!(config.favorites.instrument.is_none());
-        assert!(config.favorites.effect.is_none());
-        assert!(config.build.uapmd_dir.is_none());
-        let key = config.last_played.unwrap();
-        assert!(key.bundle_path.is_empty());
-        assert_eq!(key.id, "synth");
     }
 }

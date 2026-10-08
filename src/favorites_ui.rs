@@ -1,9 +1,42 @@
 //! Central favorite/plugin tabs and the favorite naming dialog.
-use crate::{
-    plugin_list::{self, PluginKind},
-    App,
-};
+use crate::{plugin_list::PluginKind, App};
 use eframe::egui;
+
+#[cfg(test)]
+#[path = "library_ui_tests.rs"]
+mod tests;
+
+// Paint behind the whole row without making its menu or metadata clickable.
+pub(super) fn library_row<R>(
+    ui: &mut egui::Ui,
+    selected: bool,
+    enabled: bool,
+    contents: impl FnOnce(&mut egui::Ui) -> R,
+) -> egui::InnerResponse<R> {
+    let background = ui.painter().add(egui::Shape::Noop);
+    let row = ui.horizontal(|ui| {
+        ui.set_min_width(ui.available_width());
+        contents(ui)
+    });
+    let hovered = enabled && row.response.contains_pointer();
+    let fill = if selected {
+        let fill = ui.visuals().selection.bg_fill;
+        if hovered {
+            fill.linear_multiply(1.2)
+        } else {
+            fill
+        }
+    } else if hovered {
+        ui.visuals().widgets.hovered.weak_bg_fill
+    } else {
+        egui::Color32::TRANSPARENT
+    };
+    ui.painter().set(
+        background,
+        egui::Shape::rect_filled(row.response.rect, 4.0, fill),
+    );
+    row
+}
 
 impl App {
     pub(crate) fn library_panel(&mut self, ctx: &egui::Context) {
@@ -13,11 +46,31 @@ impl App {
         let mut delete = None;
         let mut rename = None;
         egui::CentralPanel::default().show(ctx, |ui| {
+            // Reserve a fixed gutter so the scrollbar cannot cover row actions.
+            ui.style_mut().spacing.scroll = egui::style::ScrollStyle {
+                bar_width: 10.0,
+                ..egui::style::ScrollStyle::solid()
+            };
+            let previous_tab = self.favorites.show;
             ui.horizontal(|ui| {
                 ui.selectable_value(&mut self.favorites.show, true, "Favorites");
                 ui.selectable_value(&mut self.favorites.show, false, "Plugins");
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.menu_button("...", |ui| {
+                    ui.menu_button("☰", |ui| {
+                        ui.label("Settings");
+                        let mut prefer_clap = self.prefer_clap;
+                        if ui.checkbox(&mut prefer_clap, "Show only CLAP for duplicate plugins")
+                            .on_hover_text("Hide VST3 when CLAP has the same name, vendor and kind. Turn off to show both formats.")
+                            .changed()
+                        {
+                            let result = self.config_path.as_ref().map_err(Clone::clone)
+                                .and_then(|path| crate::config::save_prefer_clap(path, prefer_clap));
+                            match result {
+                                Ok(()) => self.prefer_clap = prefer_clap,
+                                Err(error) => self.status = format!("Could not save plugin display setting: {error}"),
+                            }
+                        }
+                        ui.separator();
                         if ui
                             .add_enabled(
                                 !self.scanning && self.pending.is_none() && !self.restoring,
@@ -30,9 +83,20 @@ impl App {
                         }
                     })
                     .response
-                    .on_hover_text("Plugin list options");
+                    .on_hover_text("Settings");
                 });
             });
+            if self.favorites.show != previous_tab {
+                // A tab switch during startup must preserve slots still restoring.
+                self.config_error = self.config_path.as_ref().map_err(Clone::clone)
+                    .and_then(|path| {
+                        let mut status = crate::status::Status::load(path)?;
+                        status.show_favorites = Some(self.favorites.show);
+                        status.save(path)
+                    })
+                    .err()
+                    .map(|error| format!("Could not save library tab: {error}"));
+            }
             ui.horizontal(|ui| {
                 ui.label("Filter:");
                 ui.add(
@@ -40,7 +104,9 @@ impl App {
                         .desired_width(ui.available_width()),
                 );
             });
-            ui.label(&self.status);
+            if !self.status.is_empty() {
+                ui.label(&self.status);
+            }
             if let Some(error) = &self.plugin_icons.error {
                 ui.colored_label(egui::Color32::YELLOW, error);
             }
@@ -48,7 +114,6 @@ impl App {
             let filter = self.filter.to_lowercase();
             let can_load = self.pending.is_none() && !self.scanning && !self.restoring;
             let has_instrument = self.instrument_id().is_some();
-            let effect_id = self.effect_id();
             if self.favorites.show {
                 if let Some(error) = &self.favorites.error {
                     ui.colored_label(egui::Color32::YELLOW, error);
@@ -56,7 +121,10 @@ impl App {
                     ui.label("Use 'Add favorite' on a loaded plugin to save its current sound.");
                 }
                 let mut matches = 0;
-                egui::ScrollArea::vertical().show(ui, |ui| {
+                egui::ScrollArea::vertical()
+                    .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
                     for favorite in &self.favorites.library.entries {
                         let description = format!("{} | {} | {}", favorite.plugin.name,
                             favorite.plugin.format, if favorite.effect { "Effect" } else { "Instrument" });
@@ -64,13 +132,23 @@ impl App {
                         matches += 1;
                         let selected = self.favorites.active.iter().any(|(instance, id)| id == &favorite.id
                             && self.instances.iter().any(|i| i.id == *instance));
-                        let connected_effect = favorite.effect && self.favorites.active.iter().any(
-                            |(instance, id)| id == &favorite.id && Some(*instance) == effect_id,
-                        );
+                        let connected_id = self.favorites.active.iter().find(|(instance, id)| favorite.effect && id == &favorite.id && self.instances.iter().any(|i| i.id == *instance && i.kind == PluginKind::Effect)).map(|(instance, _)| *instance);
+                        let connected_effect = connected_id.is_some();
                         let kind = if favorite.effect { PluginKind::Effect } else { PluginKind::Instrument };
+                        let enabled = can_load && (connected_effect || !favorite.effect || has_instrument);
+                        let action = if connected_effect {
+                            "Click again to remove the connected effect. The instrument and saved favorite are kept."
+                        } else {
+                            "Restore this snapshot. Edited sounds do not overwrite it."
+                        };
+                        let tooltip = format!("{}\n{}\n{action}", favorite.name, description);
+                        let disabled_reason = if !can_load { "Wait for loading or scanning to finish" } else { "Load an instrument first" };
+                        let mut clicked = false;
                         ui.push_id(&favorite.id, |ui| {
-                            ui.horizontal(|ui| {
-                                self.plugin_icons.draw(ui, &favorite.plugin, &self.config_path);
+                            library_row(ui, selected, enabled, |ui| {
+                                clicked |= ui.add_enabled_ui(enabled, |ui| {
+                                    self.plugin_icons.button(ui, &favorite.plugin, &self.config_path)
+                                }).inner.on_hover_text(&tooltip).on_disabled_hover_text(disabled_reason).clicked();
                                 ui.colored_label(kind.color(ui.visuals().dark_mode), kind.label());
                             ui.allocate_ui_with_layout(
                                 egui::vec2(ui.available_width(), ui.spacing().interact_size.y),
@@ -94,25 +172,13 @@ impl App {
                                     ).on_hover_text(&description);
                                 }
                                 let response = ui.add_enabled_ui(
-                                    can_load && (connected_effect || !favorite.effect || has_instrument),
+                                    enabled,
                                     |ui| ui.add_sized(
                                         [ui.available_width(), ui.spacing().interact_size.y],
-                                        egui::Button::new(&favorite.name).selected(selected).frame(false).truncate(),
+                                        egui::Button::new(&favorite.name).frame(false).truncate(),
                                     ),
                                 ).inner;
-                                let action = if connected_effect {
-                                    "Click again to remove the connected effect. The instrument and saved favorite are kept."
-                                } else {
-                                    "Restore this snapshot. Edited sounds do not overwrite it."
-                                };
-                                let tooltip = format!("{}\n{}\n{action}", favorite.name, description);
-                                if response.on_hover_text(&tooltip).on_disabled_hover_text(&tooltip).clicked() {
-                                    if connected_effect {
-                                        remove_effect = effect_id;
-                                    } else {
-                                        load_favorite = Some(favorite.id.clone());
-                                    }
-                                }
+                                clicked |= response.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(&tooltip).on_disabled_hover_text(disabled_reason).clicked();
                             });
                             });
                             if connected_effect {
@@ -124,29 +190,20 @@ impl App {
                                     });
                             }
                         });
+                        if clicked {
+                            if connected_effect { remove_effect = connected_id; } else { load_favorite = Some(favorite.id.clone()); }
+                        }
                     }
+                    if matches == 0 && !self.favorites.library.entries.is_empty() { ui.label("No matching favorites"); }
                 });
-                if matches == 0 && !self.favorites.library.entries.is_empty() { ui.label("No matching favorites"); }
             } else {
-                ui.horizontal(|ui| {
-                    for kind in [PluginKind::Instrument, PluginKind::Effect, PluginKind::Unknown] {
-                        ui.colored_label(kind.color(ui.visuals().dark_mode), kind.label());
-                    }
-                });
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    for i in plugin_list::ordered_indices(&self.plugins, self.restored.as_ref()) {
-                        let plugin = &self.plugins[i];
-                        if !plugin.name.to_lowercase().contains(&filter) { continue; }
-                        ui.horizontal(|ui| {
-                            self.plugin_icons.draw(ui, &crate::config::PluginKey::from_plugin(plugin), &self.config_path);
-                            if ui.add_enabled(can_load && (plugin.kind != PluginKind::Effect || has_instrument),
-                                egui::Button::new("Load")).on_disabled_hover_text("Load an instrument first").clicked() {
-                                load_plugin = Some(i);
-                            }
-                            ui.colored_label(plugin.kind.color(ui.visuals().dark_mode),
-                                format!("{} - {} [{}]", plugin.name, plugin.vendor, plugin.format)).on_hover_text(&plugin.id);
-                        });
-                    }
+                egui::ScrollArea::vertical()
+                    .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                    let (plugin, effect) = self.plugins_list(ui, &filter, can_load);
+                    load_plugin = plugin;
+                    remove_effect = effect;
                 });
             }
         });

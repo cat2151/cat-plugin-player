@@ -6,14 +6,20 @@ mod audio;
 mod boot;
 mod cli;
 mod config;
+mod correlation;
+mod correlation_ui;
 mod favorites;
 mod favorites_store;
 mod favorites_ui;
 mod ffi;
+mod lissajous;
+mod lissajous_ui;
 mod native_library;
 mod plugin_icons;
 mod plugin_list;
 mod plugin_specific;
+mod plugins_ui;
+mod repaint_heartbeat;
 mod routing_ui;
 mod scope;
 mod scope_boundary;
@@ -36,14 +42,17 @@ mod session;
 mod session_load;
 mod startup;
 mod state_store;
+mod status;
+mod status_migration;
 mod updater;
+mod window_config;
 
 use clap::Parser;
 use eframe::egui;
 use startup::Stage;
 use std::ffi::{c_char, c_void};
 use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 /// Used when there is no audio device to take the rate from.
 const FALLBACK_SAMPLE_RATE: u32 = 48_000;
@@ -90,18 +99,22 @@ struct Instance {
     kind: plugin_list::PluginKind,
     /// Only the instrument owns the chain audio stream.
     voice: Option<audio::Voice>,
+    /// Whether the most recently delivered automatic CC1 came from sweep.
+    sweep_cc1: bool,
 }
 
 struct App {
     // Declared before `host` so that it drops first: the audio streams and
     // processors in here must be gone before the host is destroyed.
     instances: Vec<Instance>,
+    window_config: window_config::WindowConfig,
     host: ffi::Host,
     /// None if no usable audio device was found; plugins still load, silently.
     output: Option<audio::Output>,
     plugins: Vec<ffi::PluginInfo>,
+    prefer_clap: bool,
     pending: Option<ffi::PluginInfo>,
-    restore_effect: Option<config::PluginKey>,
+    restore_effect: std::collections::VecDeque<config::PluginKey>,
     effect_bypassed: bool,
     sequence_pattern: SequencePattern,
     selected_sequence: SequencePattern,
@@ -121,6 +134,7 @@ struct App {
     favorites: favorites::Favorites,
     scope_ui: scope_ui::ScopeUi,
     plugin_icons: plugin_icons::PluginIcons,
+    repaint_heartbeat: Option<repaint_heartbeat::RepaintHeartbeat>,
 }
 
 impl App {
@@ -156,7 +170,7 @@ impl App {
                     let scan_succeeded = error.is_none();
                     self.status = match error {
                         Some(e) => format!("Scan failed: {e}"),
-                        None => format!("{} plugins", self.plugins.len()),
+                        None => String::new(),
                     };
                     if scan_succeeded {
                         self.restore_session();
@@ -176,6 +190,10 @@ impl App {
 }
 
 impl eframe::App for App {
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.repaint_heartbeat.take();
+    }
+
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Run what uapmd and the plugins queued for the main thread.
         self.host.pump();
@@ -187,9 +205,6 @@ impl eframe::App for App {
             self.start_scan(false);
         }
         startup::flush_if_ready();
-        // egui only repaints on input. Plugins need the main thread at any time,
-        // so keep a slow heartbeat going in addition to on_wake().
-        ctx.request_repaint_after(Duration::from_millis(50));
 
         // Placement lives here; sequence_controls only draws the pane contents.
         egui::TopBottomPanel::top("sequence_controls").show(ctx, |ui| {
@@ -227,8 +242,13 @@ fn main() -> eframe::Result {
     let mut app = App::prepare();
     app.restore_before_gui();
     startup::mark(Stage::GuiRequested);
+    let mut viewport =
+        egui::ViewportBuilder::default().with_inner_size(app.window_config.main.inner_size());
+    if let Some(position) = app.window_config.main.position() {
+        viewport = viewport.with_position(position);
+    }
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([900.0, 600.0]),
+        viewport,
         ..Default::default()
     };
     let result = eframe::run_native(
@@ -236,7 +256,10 @@ fn main() -> eframe::Result {
         options,
         Box::new(move |cc| {
             startup::mark(Stage::AppCreation);
+            app.host
+                .configure_editor_placement(cc, app.window_config.plugin.placement);
             *GUI_CONTEXT.lock().unwrap() = Some(cc.egui_ctx.clone());
+            app.repaint_heartbeat = Some(repaint_heartbeat::RepaintHeartbeat::start(cc));
             Ok(Box::new(app))
         }),
     );

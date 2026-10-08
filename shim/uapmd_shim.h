@@ -127,6 +127,13 @@ UH_API int32_t uh_processor_process(UhProcessor* processor,
                                     const uint32_t* ump_words, int32_t ump_word_count,
                                     float* out_interleaved, int32_t out_channels, int32_t frames);
 
+/* Main-thread native placement. The main HWND must belong to this process and
+ * outlive its configured use. Null leaves editors at their OS position.
+ * Placement uses actual outer frames in physical pixels on the main monitor.
+ * place_window preserves dimensions, and is also used on plugin resize. */
+UH_API void uh_ui_set_main_window(UhHost* host, void* hwnd);
+UH_API int32_t uh_ui_place_window(UhHost* host, void* hwnd);
+
 /* Shows the plugin editor in its own top-level window. Returns UH_OK or UH_ERR_*. */
 UH_API int32_t uh_ui_show(UhHost* host, int32_t instance_id);
 UH_API void uh_ui_hide(UhHost* host, int32_t instance_id);
