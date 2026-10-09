@@ -32,7 +32,7 @@ pub fn note_off(channel: u8, note: u8) -> u32 {
 
 /// JR Timestamp UMP. remidy reads it as "the following events happen this many
 /// samples after the previous ones" within the block being rendered.
-fn jr_timestamp(delta_samples: usize) -> u32 {
+pub(crate) fn jr_timestamp(delta_samples: usize) -> u32 {
     0x0020_0000 | (delta_samples as u32 & 0xFFFF)
 }
 
@@ -68,7 +68,6 @@ impl EventBuf {
         &self.words[..self.len]
     }
 
-    #[cfg(test)]
     pub fn remaining(&self) -> usize {
         self.words.len() - self.len
     }
@@ -83,6 +82,8 @@ pub struct Sequencer {
     step: usize,
     sounding: [bool; 128],
     pattern: SequencePattern,
+    restart_pending: bool,
+    timed: crate::timed_sequence::TimedPlayer,
     velocity_down: bool,
     current_velocity: u8,
     current_modulation: u8,
@@ -99,6 +100,8 @@ impl Sequencer {
             step: 0,
             sounding: [false; 128],
             pattern: SequencePattern::Off,
+            restart_pending: false,
+            timed: crate::timed_sequence::TimedPlayer::default(),
             modulation: Modulation::default(),
             velocity_down: false,
             current_velocity: 0,
@@ -117,6 +120,15 @@ impl Sequencer {
 
     pub fn current_values(&self) -> (u8, u8) {
         (self.current_velocity, self.current_modulation)
+    }
+
+    /// Restart even an unchanged pattern at the next block; preserve Off.
+    pub fn restart(&mut self) {
+        self.restart_pending = true;
+    }
+
+    pub fn set_phrase(&mut self, phrase: Option<std::sync::Arc<crate::timed_sequence::Phrase>>) {
+        self.timed.set_phrase(phrase);
     }
 
     fn samples(&mut self, micros: u32) -> usize {
@@ -178,7 +190,11 @@ impl Sequencer {
             out.push(jr_timestamp(skipped));
         }
         let frames = frames - skipped;
-        if pattern != self.pattern {
+        if pattern != self.pattern || self.restart_pending {
+            if !self.timed.reset(out) {
+                return;
+            }
+            self.restart_pending = false;
             self.release(out);
             if self.pattern == SequencePattern::Off {
                 self.modulation.restart();
@@ -203,6 +219,20 @@ impl Sequencer {
             return;
         }
 
+        if pattern == SequencePattern::Custom {
+            // Fixed CC1 may already have been delivered by a built-in pattern.
+            self.timed.modulation = self.current_modulation;
+            self.timed.render(
+                velocity,
+                self.sample_rate,
+                frames,
+                out,
+                &mut self.modulation,
+            );
+            self.current_velocity = self.timed.velocity;
+            self.current_modulation = self.timed.modulation;
+            return;
+        }
         let mut at = self.until_next_step; // sample offset of the next step in this block
         let mut cursor = 0; // offset the events emitted so far are at
         loop {
@@ -235,7 +265,7 @@ impl Sequencer {
                 SequencePattern::GuitarArpeggio => (self.step, GUITAR_NOTES.len()),
                 SequencePattern::Csus4CArpeggio => (self.step / 4 * 3 + self.step % 4, 6),
                 SequencePattern::Fmaj7G6Arpeggio => (self.step / 5 * 4 + self.step % 5, 8),
-                SequencePattern::Off => unreachable!(),
+                SequencePattern::Off | SequencePattern::Custom => unreachable!(),
             };
             let (note, delay) = match pattern {
                 SequencePattern::Steps => {
@@ -251,7 +281,7 @@ impl Sequencer {
                 SequencePattern::Fmaj7G6Arpeggio => {
                     self.arpeggio(out, &[&[53, 69, 72, 76], &[55, 71, 74, 76]], 2)
                 }
-                SequencePattern::Off => unreachable!(),
+                SequencePattern::Off | SequencePattern::Custom => unreachable!(),
             };
             if let Some(note) = note {
                 let velocity = velocity.value(index, count, self.velocity_down);

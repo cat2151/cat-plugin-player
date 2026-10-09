@@ -11,6 +11,7 @@ pub enum SequencePattern {
     GuitarArpeggio,
     Csus4CArpeggio,
     Fmaj7G6Arpeggio,
+    Custom,
 }
 
 impl SequencePattern {
@@ -24,7 +25,7 @@ impl SequencePattern {
 
     pub fn selection(self, remembered: Self) -> Self {
         let candidate = if self == Self::Off { remembered } else { self };
-        if Self::TYPES.contains(&candidate) {
+        if Self::TYPES.contains(&candidate) || candidate == Self::Custom {
             candidate
         } else {
             Self::default()
@@ -44,6 +45,7 @@ impl SequencePattern {
             Self::GuitarArpeggio => "Em7(add11)",
             Self::Csus4CArpeggio => "Csus4-C",
             Self::Fmaj7G6Arpeggio => "FM7-G6",
+            Self::Custom => "MML / Chord",
         }
     }
 
@@ -53,7 +55,16 @@ impl SequencePattern {
             2 => Self::GuitarArpeggio,
             3 => Self::Csus4CArpeggio,
             4 => Self::Fmaj7G6Arpeggio,
+            5 => Self::Custom,
             _ => Self::Steps,
+        }
+    }
+    /// Input phrases are transient, so their identity is not persisted.
+    pub fn persisted(self) -> Self {
+        if self == Self::Custom {
+            Self::Steps
+        } else {
+            self
         }
     }
 }

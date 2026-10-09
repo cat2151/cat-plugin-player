@@ -7,7 +7,7 @@ use crate::sequence_velocity::SequenceVelocity;
 use crate::startup::{self, Stage};
 use crate::{ffi, sequence_pattern::SequencePattern};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
 use std::sync::Arc;
 
 use crate::seq::note_off;
@@ -54,7 +54,8 @@ impl Output {
 pub struct Voice {
     _stream: Option<cpal::Stream>,
     _processor: ffi::Processor,
-    sequence_pattern: Arc<AtomicU8>,
+    // Low byte: pattern. High bytes: restart generation, published atomically.
+    sequence_pattern: Arc<AtomicU64>,
     sequence_velocity: Arc<AtomicU8>,
     sequence_modulation: Arc<AtomicU8>,
     current_velocity: Arc<AtomicU8>,
@@ -73,10 +74,12 @@ impl Voice {
         velocity: SequenceVelocity,
         modulation: SequenceModulation,
         start_delay: std::time::Duration,
+        phrase: Option<Arc<crate::timed_sequence::Phrase>>,
     ) -> Result<Self, String> {
         let channels = output.config.channels as usize;
-        let sequence_pattern = Arc::new(AtomicU8::new(sequence_pattern as u8));
+        let sequence_pattern = Arc::new(AtomicU64::new(sequence_pattern as u64));
         let sequence_flag = Arc::clone(&sequence_pattern);
+        let mut seen_restart = 0;
         let sequence_velocity = Arc::new(AtomicU8::new(velocity as u8));
         let velocity_flag = Arc::clone(&sequence_velocity);
         let sequence_modulation = Arc::new(AtomicU8::new(modulation as u8));
@@ -89,6 +92,7 @@ impl Voice {
         let velocity_meter = Arc::clone(&current_velocity);
         let modulation_meter = Arc::clone(&current_modulation);
         let mut sequencer = Sequencer::new(output.sample_rate());
+        sequencer.set_phrase(phrase);
         sequencer.delay_start(start_delay);
         let mut ump = EventBuf::new();
         // SAFETY: `_stream` is declared before `_processor`, so the callback is
@@ -101,7 +105,7 @@ impl Voice {
         let mut first_render = true;
         let (mut capture, scope) = crate::scope::Scope::start(output.sample_rate())?;
         let mut captured_pattern =
-            SequencePattern::from_u8(sequence_pattern.load(Ordering::Relaxed));
+            SequencePattern::from_u8(sequence_pattern.load(Ordering::Relaxed) as u8);
 
         startup::mark(Stage::StreamBuildRequested);
         let stream = output
@@ -114,7 +118,14 @@ impl Voice {
                         startup::mark(Stage::FirstAudioCallback);
                         trace_callback = false;
                     }
-                    let pattern = SequencePattern::from_u8(sequence_flag.load(Ordering::Relaxed));
+                    let command = sequence_flag.load(Ordering::Acquire);
+                    let pattern = SequencePattern::from_u8(command as u8);
+                    let restart = command >> 8;
+                    if restart != seen_restart {
+                        sequencer.restart();
+                        capture.reset();
+                        seen_restart = restart;
+                    }
                     if pattern != captured_pattern {
                         capture.reset();
                         captured_pattern = pattern;
@@ -172,7 +183,7 @@ impl Voice {
     }
 
     pub fn sequence_pattern(&self) -> SequencePattern {
-        SequencePattern::from_u8(self.sequence_pattern.load(Ordering::Relaxed))
+        SequencePattern::from_u8(self.sequence_pattern.load(Ordering::Acquire) as u8)
     }
 
     /// Join the callback before capturing the origin of its last delivered CC1.
@@ -204,7 +215,10 @@ impl Voice {
     /// notes and restarting the selected phrase from its first note.
     pub fn set_sequence(&self, pattern: SequencePattern) {
         self.sequence_pattern
-            .store(pattern as u8, Ordering::Relaxed);
+            .fetch_update(Ordering::Release, Ordering::Relaxed, |command| {
+                Some((command.wrapping_add(256) & !0xff) | pattern as u64)
+            })
+            .unwrap();
     }
 
     pub fn set_modulation(&self, modulation: SequenceModulation) {

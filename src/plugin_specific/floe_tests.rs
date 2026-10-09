@@ -190,3 +190,19 @@ fn saved_floe_sweep_snapshots_keep_two_patterns() {
     );
     std::fs::remove_dir_all(directory).unwrap();
 }
+
+#[test]
+fn startup_delay_uses_exact_clap_id_not_display_metadata() {
+    let mut key = plugin();
+    key.name = "Renamed".into();
+    assert_eq!(
+        crate::plugin_specific::automatic_note_start_delay(&key).as_millis(),
+        100
+    );
+    key.format = "VST3".into();
+    assert!(crate::plugin_specific::automatic_note_start_delay(&key).is_zero());
+    key.format = "CLAP".into();
+    key.id = "other".into();
+    key.name = "Floe".into();
+    assert!(crate::plugin_specific::automatic_note_start_delay(&key).is_zero());
+}

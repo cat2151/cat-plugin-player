@@ -26,7 +26,10 @@ fn default_favorite() -> bool {
 
 impl Favorite {
     pub fn playback_pattern(&self, current: SequencePattern) -> SequencePattern {
-        if self.effect {
+        if self.effect
+            || matches!(current, SequencePattern::Off | SequencePattern::Custom)
+            || self.sequence_pattern == SequencePattern::Off
+        {
             current
         } else {
             self.sequence_pattern
@@ -143,7 +146,7 @@ impl Library {
                 sequence_pattern: if effect {
                     SequencePattern::Off
                 } else {
-                    capture.sequence_pattern
+                    capture.sequence_pattern.persisted()
                 },
             },
             state,
@@ -175,7 +178,7 @@ impl Library {
                 sequence_pattern: if effect {
                     SequencePattern::Off
                 } else {
-                    capture.sequence_pattern
+                    capture.sequence_pattern.persisted()
                 },
             },
             state,

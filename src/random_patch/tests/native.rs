@@ -6,6 +6,7 @@ use crate::{
 };
 use std::path::{Path, PathBuf};
 
+mod editor;
 mod real_surge;
 
 fn key(mode: &str) -> PluginKey {
@@ -185,14 +186,7 @@ fn native_random_transaction_boundaries_and_preservation() {
             );
             let current = app.instrument_id().unwrap();
             assert_eq!(app.host.save_state(current).unwrap(), [5]);
-            assert_eq!(
-                app.sequence_pattern,
-                if stopped {
-                    SequencePattern::GuitarArpeggio
-                } else {
-                    pattern
-                }
-            );
+            assert_eq!(app.sequence_pattern, pattern);
             assert_eq!(
                 app.favorites.active,
                 vec![(effects[0], "effect-selection".into())]
@@ -328,7 +322,7 @@ fn native_rollback_recovery_and_button() {
     );
     let ctx = egui::Context::default();
     let output = ctx.run(Default::default(), |ctx| {
-        egui::CentralPanel::default().show(ctx, |ui| app.sequence_controls(ui));
+        egui::CentralPanel::default().show(ctx, |ui| app.playback_controls(ui));
     });
     let position = output
         .shapes
@@ -359,12 +353,12 @@ fn native_rollback_recovery_and_button() {
         ..Default::default()
     };
     let _ = ctx.run(click(), |ctx| {
-        egui::CentralPanel::default().show(ctx, |ui| app.sequence_controls(ui));
+        egui::CentralPanel::default().show(ctx, |ui| app.playback_controls(ui));
     });
     assert!(app.random_busy());
     let status = app.status.clone();
     let _ = ctx.run(click(), |ctx| {
-        egui::CentralPanel::default().show(ctx, |ui| app.sequence_controls(ui));
+        egui::CentralPanel::default().show(ctx, |ui| app.playback_controls(ui));
     });
     assert_eq!(app.status, status);
     assert!(app.random_busy());

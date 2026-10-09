@@ -83,6 +83,7 @@ impl App {
             sequence_velocity,
             sequence_modulation,
             restore,
+            mml_input: Default::default(),
             restored: None,
             restoring: false,
             config_error,

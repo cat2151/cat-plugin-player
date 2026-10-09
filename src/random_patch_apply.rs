@@ -93,7 +93,7 @@ impl App {
                 return;
             }
         };
-        self.sequence_pattern = old_pattern.selection(self.selected_sequence);
+        self.sequence_pattern = old_pattern;
         let replacement = Replacement {
             prepared,
             old_pattern,

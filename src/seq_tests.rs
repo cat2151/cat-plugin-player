@@ -400,3 +400,44 @@ fn stop_retries_note_offs_that_do_not_fit_in_the_buffer() {
     );
     assert!(buf.as_slice().is_empty());
 }
+
+#[test]
+fn same_pattern_restart_releases_hold_and_discards_remaining_wait() {
+    for elapsed in [700, 2850] {
+        let mut seq = Sequencer::new(1000);
+        let mut buf = EventBuf::new();
+        seq.render(
+            SequencePattern::GuitarArpeggio,
+            SequenceVelocity::V100,
+            elapsed,
+            &mut buf,
+        );
+        let sounding = seq.sounding;
+        buf.clear();
+        seq.restart();
+        seq.render(
+            SequencePattern::GuitarArpeggio,
+            SequenceVelocity::V100,
+            1,
+            &mut buf,
+        );
+        for (note, active) in sounding.iter().enumerate() {
+            if *active {
+                assert!(buf.as_slice().contains(&note_off(0, note as u8)));
+            }
+        }
+        assert_eq!(
+            buf.as_slice().last(),
+            Some(&note_on(0, GUITAR_NOTES[0], 100))
+        );
+        buf.clear();
+        seq.render(SequencePattern::Off, SequenceVelocity::V100, 1, &mut buf);
+        buf.clear();
+        seq.restart();
+        seq.render(SequencePattern::Off, SequenceVelocity::V100, 1000, &mut buf);
+        assert!(!buf
+            .as_slice()
+            .iter()
+            .any(|w| w & 0xfff0_0000 == 0x2090_0000));
+    }
+}

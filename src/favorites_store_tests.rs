@@ -374,6 +374,24 @@ fn effects_omit_playback_deduplicate_across_patterns_and_preserve_legacy_history
     let legacy = library
         .add(&config, plugin, true, &[3], SequencePattern::Off)
         .unwrap();
+    assert_eq!(
+        instrument.playback_pattern(SequencePattern::Off),
+        SequencePattern::Off
+    );
+    assert_eq!(
+        instrument.playback_pattern(SequencePattern::Custom),
+        SequencePattern::Custom
+    );
+    assert_eq!(
+        instrument.playback_pattern(SequencePattern::Steps),
+        SequencePattern::GuitarArpeggio
+    );
+    let mut stopped_snapshot = instrument.clone();
+    stopped_snapshot.sequence_pattern = SequencePattern::Off;
+    assert_eq!(
+        stopped_snapshot.playback_pattern(SequencePattern::Steps),
+        SequencePattern::Steps
+    );
     let index = directory(&config).unwrap().join("index.toml");
     let text = std::fs::read_to_string(&index).unwrap();
     // Simulate the old serializer, before history metadata existed.

@@ -68,7 +68,7 @@ fn native_real_surge_random_state_sound_and_stopped_play() {
     wait(&mut app);
     assert!(app.status.contains("Random patch:"), "{}", app.status);
     assert_eq!(app.instrument_id(), Some(id));
-    assert_eq!(app.sequence_pattern, SequencePattern::Steps);
+    assert_eq!(app.sequence_pattern, SequencePattern::Off);
     let saved = state_store::load(&path, &surge).unwrap().unwrap();
     assert_eq!(
         saved, second,

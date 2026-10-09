@@ -92,6 +92,7 @@ impl App {
             self.sequence_velocity,
             self.sequence_modulation,
             start_delay,
+            self.mml_input.phrase.clone(),
         )
         .map(Some)
     }
@@ -170,8 +171,11 @@ impl App {
                     .collect(),
                 ..Default::default()
             },
-            sequence_pattern: self.sequence_pattern,
-            selected_sequence: self.sequence_pattern.selection(self.selected_sequence),
+            sequence_pattern: self.sequence_pattern.persisted(),
+            selected_sequence: self
+                .sequence_pattern
+                .selection(self.selected_sequence)
+                .persisted(),
             sequence_velocity: self.sequence_velocity,
             sequence_modulation: self.sequence_modulation,
             ..Default::default()

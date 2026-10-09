@@ -25,6 +25,7 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 # Shared catalog reader and patch preparation from sibling checkouts (ADR 0012).
 clap-mml-render-tui = { path = "../clap-mml-render-tui/app" }
 cmrt-patches = { path = "../clap-mml-render-tui/patches" }
+cmrt-chord = { path = "../clap-mml-render-tui/chord" }
 rand = "0.8"
 
 [patch."https://github.com/cat2151/clap-mml-play-server"]

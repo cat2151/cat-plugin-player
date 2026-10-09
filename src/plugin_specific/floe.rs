@@ -5,6 +5,15 @@ use crate::config::PluginKey;
 #[path = "floe_tests.rs"]
 mod tests;
 
+// ADR 0018: provisional settling time; DSP continues before the first note.
+pub(super) fn automatic_note_start_delay(plugin: &PluginKey) -> std::time::Duration {
+    if plugin.format == "CLAP" && plugin.id == "com.floe-audio.floe" {
+        std::time::Duration::from_millis(100)
+    } else {
+        std::time::Duration::ZERO
+    }
+}
+
 struct Reader<'a> {
     data: &'a [u8],
     position: usize,

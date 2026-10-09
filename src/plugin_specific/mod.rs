@@ -9,7 +9,7 @@ mod tyrell_n6;
 mod vaporizer2;
 
 pub(crate) fn automatic_note_start_delay(plugin: &PluginKey) -> std::time::Duration {
-    surge_xt::automatic_note_start_delay(plugin)
+    surge_xt::automatic_note_start_delay(plugin).max(floe::automatic_note_start_delay(plugin))
 }
 
 pub(crate) fn same_favorite_state(plugin: &PluginKey, left: &[u8], right: &[u8]) -> bool {

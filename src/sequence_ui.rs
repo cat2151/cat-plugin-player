@@ -53,7 +53,8 @@ impl App {
         let mut modulation = original_modulation;
         let ready = !self.actions_busy();
         let has_audio = self.instances.iter().any(|i| i.voice.is_some());
-        let shortcut = take_transport_shortcut(ui.ctx(), ready && has_audio);
+        let shortcut =
+            take_transport_shortcut(ui.ctx(), ready && has_audio && !self.mml_input.open);
 
         let (velocity_value, modulation_value) = self
             .instances
@@ -64,6 +65,12 @@ impl App {
         ui.group(|ui| {
             ui.horizontal_wrapped(|ui| {
                 ui.label("Sequence");
+                if ui
+                    .add_enabled(ready, egui::Button::new("MML / Chord (i)"))
+                    .clicked()
+                {
+                    self.mml_input.open();
+                }
                 ui.add_enabled_ui(ready, |ui| {
                     if ui.button("<").on_hover_text("Previous sequence").clicked() {
                         selected = selected.adjacent(false);
@@ -74,6 +81,13 @@ impl App {
                         .show_ui(ui, |ui| {
                             for &pattern in SequencePattern::TYPES {
                                 ui.selectable_value(&mut selected, pattern, pattern.label());
+                            }
+                            if self.mml_input.phrase.is_some() {
+                                ui.selectable_value(
+                                    &mut selected,
+                                    SequencePattern::Custom,
+                                    SequencePattern::Custom.label(),
+                                );
                             }
                         });
                     if ui.button(">").on_hover_text("Next sequence").clicked() {
@@ -171,7 +185,9 @@ impl App {
             self.sequence_modulation = modulation;
             for instance in &self.instances {
                 if let Some(voice) = &instance.voice {
-                    voice.set_sequence(next);
+                    if next != current {
+                        voice.set_sequence(next);
+                    }
                     voice.set_velocity(velocity);
                     voice.set_modulation(modulation);
                 }

@@ -15,6 +15,7 @@ mod ffi;
 mod history;
 mod lissajous;
 mod lissajous_ui;
+mod mml_input;
 mod native_library;
 mod plugin_icons;
 mod plugin_list;
@@ -36,6 +37,7 @@ mod seq;
 mod sequence_modulation;
 mod spectrum;
 mod spectrum_ui;
+mod timed_sequence;
 use sequence_modulation::SequenceModulation;
 mod playback_ui;
 mod sequence_pattern;
@@ -125,6 +127,7 @@ struct App {
     selected_sequence: SequencePattern,
     sequence_velocity: SequenceVelocity,
     sequence_modulation: SequenceModulation,
+    mml_input: mml_input::MmlInput,
     restore: Option<config::PluginKey>,
     restored: Option<config::PluginKey>,
     restoring: bool,
@@ -242,6 +245,7 @@ impl eframe::App for App {
         }
         startup::flush_if_ready();
 
+        self.mml_editor(ctx);
         // Keep sound selection in its own pane beside the sequence controls.
         egui::TopBottomPanel::top("sequence_controls").show(ctx, |ui| {
             self.playback_controls(ui);

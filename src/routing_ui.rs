@@ -59,14 +59,39 @@ impl App {
                                     }
                                     self.plugin_icons
                                         .draw(ui, &instance.plugin, &self.config_path);
-                                    ui.add(
-                                        egui::Label::new(format!(
-                                            "{}: {}",
-                                            instance.kind.label(),
-                                            instance.label
-                                        ))
-                                        .wrap(),
+                                    let bypassed = self.effect_bypassed
+                                        && instance.kind == crate::plugin_list::PluginKind::Effect;
+                                    let color = if bypassed {
+                                        ui.visuals().weak_text_color()
+                                    } else {
+                                        instance.kind.color(ui.visuals().dark_mode)
+                                    };
+                                    let mut heading = egui::text::LayoutJob::default();
+                                    heading.append(
+                                        &format!("{}: ", instance.kind.label()),
+                                        0.0,
+                                        egui::TextFormat {
+                                            color,
+                                            ..Default::default()
+                                        },
                                     );
+                                    heading.append(
+                                        &format!(
+                                            "{}{}",
+                                            instance.label,
+                                            if bypassed { " (Bypassed)" } else { "" }
+                                        ),
+                                        0.0,
+                                        egui::TextFormat {
+                                            color: if bypassed {
+                                                color
+                                            } else {
+                                                ui.visuals().text_color()
+                                            },
+                                            ..Default::default()
+                                        },
+                                    );
+                                    ui.add(egui::Label::new(heading).wrap());
                                 });
                                 if let Some((_, favorite_id)) = self
                                     .favorites
