@@ -39,8 +39,6 @@ pub struct Config {
     pub plugins: PluginDisplayConfig,
     #[serde(default)]
     pub window: crate::window_config::WindowConfig,
-    #[serde(default)]
-    pub build: BuildConfig,
 }
 
 #[derive(Deserialize)]
@@ -71,12 +69,6 @@ pub fn save_prefer_clap(path: &Path, enabled: bool) -> Result<(), String> {
         .map_err(|error| error.to_string())?;
     document["plugins"]["prefer_clap"] = toml_edit::value(enabled);
     crate::state_store::atomic_write(path, document.to_string().as_bytes())
-}
-
-#[derive(Default, Deserialize, Serialize)]
-pub struct BuildConfig {
-    #[serde(default, alias = "UAPMD_DIR", skip_serializing_if = "Option::is_none")]
-    pub uapmd_dir: Option<PathBuf>,
 }
 
 pub fn path() -> Result<PathBuf, String> {

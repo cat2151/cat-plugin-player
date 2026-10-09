@@ -11,7 +11,17 @@ pub struct Favorite {
     pub plugin: PluginKey,
     pub effect: bool,
     #[serde(default)]
+    pub history: bool,
+    #[serde(default = "default_favorite")]
+    pub favorite: bool,
+    #[serde(default)]
+    pub registered_at: u64,
+    #[serde(default)]
     pub sequence_pattern: SequencePattern,
+}
+
+fn default_favorite() -> bool {
+    true
 }
 
 impl Favorite {
@@ -31,6 +41,9 @@ struct FavoriteMetadata {
     name: String,
     plugin: PluginKey,
     effect: bool,
+    history: bool,
+    favorite: bool,
+    registered_at: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     sequence_pattern: Option<SequencePattern>,
 }
@@ -42,6 +55,9 @@ impl From<Favorite> for FavoriteMetadata {
             name: favorite.name,
             plugin: favorite.plugin,
             effect: favorite.effect,
+            history: favorite.history,
+            favorite: favorite.favorite,
+            registered_at: favorite.registered_at,
             sequence_pattern: (!favorite.effect).then_some(favorite.sequence_pattern),
         }
     }
@@ -87,37 +103,10 @@ impl Library {
             Ok(text) => {
                 let mut library: Self = toml::from_str(&text).map_err(|e| e.to_string())?;
                 let metadata: toml::Value = toml::from_str(&text).map_err(|e| e.to_string())?;
-                // Old effect entries always serialized sequence_pattern.
-                // New entries omit it, making this migration repeat-safe.
-                if let Some(entries) = metadata.get("entries").and_then(toml::Value::as_array) {
-                    let legacy: Vec<_> = library
-                        .entries
-                        .iter()
-                        .zip(entries)
-                        .filter(|(favorite, entry)| {
-                            favorite.effect && entry.get("sequence_pattern").is_some()
-                        })
-                        .map(|(favorite, _)| favorite.id.clone())
-                        .collect();
-                    if !legacy.is_empty() {
-                        // Leave legacy metadata in place until every file is removed;
-                        // interruption or a write failure can safely retry migration.
-                        for id in &legacy {
-                            match std::fs::remove_file(state_path(config, id)?) {
-                                Ok(()) => {}
-                                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                                Err(e) => {
-                                    return Err(format!(
-                                        "Could not remove legacy effect favorite {id}: {e}"
-                                    ))
-                                }
-                            }
-                        }
-                        library
-                            .entries
-                            .retain(|favorite| !legacy.contains(&favorite.id));
-                        library.save(config)?;
-                    }
+                // Keep every legacy snapshot for history, including old effects.
+                // Serialization drops their obsolete playback controls without deleting state.
+                if crate::history::migrate(&mut library, &metadata, config)? {
+                    library.save(config)?;
                 }
                 Ok(library)
             }
@@ -129,25 +118,6 @@ impl Library {
     fn save(&self, config: &Path) -> Result<(), String> {
         let text = toml::to_string(self).map_err(|e| e.to_string())?;
         atomic_write(&directory(config)?.join("index.toml"), text.as_bytes())
-    }
-
-    pub fn record_use(&mut self, config: &Path, id: &str) -> Result<(), String> {
-        let index = self
-            .entries
-            .iter()
-            .position(|favorite| favorite.id == id)
-            .ok_or("favorite not found")?;
-        if index == 0 {
-            return Ok(());
-        }
-        let favorite = self.entries.remove(index);
-        self.entries.insert(0, favorite);
-        if let Err(error) = self.save(config) {
-            let favorite = self.entries.remove(0);
-            self.entries.insert(index, favorite);
-            return Err(error);
-        }
-        Ok(())
     }
 
     pub fn add(
@@ -167,6 +137,9 @@ impl Library {
                 name,
                 plugin,
                 effect,
+                history: false,
+                favorite: true,
+                registered_at: 0,
                 sequence_pattern: if effect {
                     SequencePattern::Off
                 } else {
@@ -188,7 +161,7 @@ impl Library {
         capture: impl Into<FavoriteCapture>,
     ) -> Result<Favorite, String> {
         let capture = capture.into();
-        let name = format!("auto {}", plugin.name);
+        let name = plugin.name.clone();
         self.add_snapshot(
             config,
             Favorite {
@@ -196,6 +169,9 @@ impl Library {
                 name,
                 plugin,
                 effect,
+                history: true,
+                favorite: false,
+                registered_at: crate::history::now(),
                 sequence_pattern: if effect {
                     SequencePattern::Off
                 } else {
@@ -235,9 +211,34 @@ impl Library {
             {
                 // Reuse the immutable snapshot, including a user-assigned name.
                 // Replacing it would churn both its ID and its automatic number.
-                let favorite = entry.clone();
-                self.record_use(config, &favorite.id)?;
-                return Ok(favorite);
+                let id = entry.id.clone();
+                let previous = self.entries.clone();
+                let index = self
+                    .entries
+                    .iter()
+                    .position(|entry| entry.id == id)
+                    .unwrap();
+                // Only a new Favorites membership goes to the front. Recall,
+                // re-saving and History registration preserve the manual order.
+                let index = if !automatic && !self.entries[index].favorite {
+                    let existing = self.entries.remove(index);
+                    self.entries.insert(0, existing);
+                    0
+                } else {
+                    index
+                };
+                let entry = &mut self.entries[index];
+                if automatic {
+                    entry.history = true;
+                    entry.registered_at = crate::history::now();
+                } else {
+                    entry.favorite = true;
+                }
+                if let Err(error) = self.save(config) {
+                    self.entries = previous;
+                    return Err(error);
+                }
+                return Ok(self.entries[index].clone());
             }
         }
         use std::sync::atomic::{AtomicU64, Ordering};
@@ -314,3 +315,6 @@ impl Library {
 #[cfg(test)]
 #[path = "favorites_store_tests.rs"]
 mod tests;
+
+#[path = "favorites_order.rs"]
+mod order;

@@ -129,6 +129,9 @@ impl App {
     }
 
     pub(crate) fn save_session(&mut self) {
+        if !self.unsafe_state.is_empty() || self.random_busy() {
+            return;
+        }
         self.selected_sequence = self.sequence_pattern.selection(self.selected_sequence);
         // Removing the source keeps its last identity, so the next launch can
         // still restore the last instrument, as it did before effect routing.
@@ -140,6 +143,7 @@ impl App {
             .or_else(|| self.restored.clone());
         let status = crate::status::Status {
             show_favorites: Some(self.favorites.show),
+            show_history: self.favorites.show_history,
             on_right: self.scope_ui.on_right,
             last_played,
             effects: self
@@ -206,6 +210,9 @@ impl App {
     }
 
     pub(crate) fn save_plugin_state(&mut self, id: i32) -> Result<(), String> {
+        if self.unsafe_state.contains(&id) {
+            return Err("state saving suppressed after failed rollback".into());
+        }
         // Any instance can be an effect in the instrument's stream. Stop the
         // whole stream before invoking a plugin state API.
         self.pause_audio();
@@ -220,7 +227,7 @@ impl App {
     }
 
     pub(crate) fn remove_plugin(&mut self, id: i32) -> bool {
-        if self.pending.is_some() {
+        if self.actions_busy() {
             return false;
         }
         if let Err(error) = self.save_plugin_state(id) {
@@ -273,7 +280,7 @@ impl App {
     }
 
     pub(crate) fn reorder_effect(&mut self, id: i32, target: i32, after: bool) -> bool {
-        if self.pending.is_some() || self.restoring || id == target {
+        if self.actions_busy() || self.restoring || id == target {
             return false;
         }
         let mut effects = self.effect_ids();
@@ -320,7 +327,7 @@ impl App {
     }
 
     pub(crate) fn set_effect_bypass(&mut self, bypass: bool) {
-        if self.pending.is_some() || self.effect_id().is_none() {
+        if self.actions_busy() || self.effect_id().is_none() {
             return;
         }
         self.pause_audio();
@@ -343,15 +350,7 @@ impl App {
 
 impl Drop for App {
     fn drop(&mut self) {
-        // Stop native repaint requests before saving or destroying plugin UIs.
-        self.repaint_heartbeat.take();
-        self.pause_audio();
-        let ids: Vec<_> = self.instances.iter().map(|i| i.id).collect();
-        for id in ids {
-            if let Err(error) = self.save_plugin_state(id) {
-                eprintln!("Could not save plugin state on exit: {error}");
-            }
-        }
+        self.save_on_shutdown();
     }
 }
 

@@ -86,8 +86,17 @@ fn native_session_saves_on_replace_remove_and_exit_then_restores() {
             .any(|bytes| bytes == changed_tuning));
     }
     state_store::save(&path, &key, b"stale snapshot").unwrap();
-    drop(app); // Exit must replace the stale disk snapshot with live state.
-    assert!(state_store::load(&path, &key).unwrap() == Some(live));
+    app.save_on_shutdown(); // Save while the main window would still be visible.
+    assert_eq!(state_store::load(&path, &key).unwrap(), Some(live.clone()));
+    // A second close notification and Drop must not recapture state.
+    state_store::save(&path, &key, b"already saved").unwrap();
+    app.save_on_shutdown();
+    drop(app);
+    assert_eq!(
+        state_store::load(&path, &key).unwrap(),
+        Some(b"already saved".to_vec())
+    );
+    state_store::save(&path, &key, &live).unwrap();
     assert_eq!(
         crate::status::Status::load(&path).unwrap().last_played,
         Some(key.clone())

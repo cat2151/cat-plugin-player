@@ -49,10 +49,25 @@ fn native_favorites_restore_both_slots_without_overwriting_snapshots() {
     let fx = app.effect_id().unwrap();
     app.add_favorite(fx);
     let effect_favorite = app.favorites.library.entries[0].clone();
+    let favorite_order = |app: &App| {
+        app.favorites
+            .library
+            .entries
+            .iter()
+            .filter(|entry| entry.favorite)
+            .map(|entry| entry.id.clone())
+            .collect::<Vec<_>>()
+    };
+    let manual_order = favorite_order(&app);
     let fx_state = app.host.save_state(fx).unwrap();
     app.effect_bypassed = true;
     app.sequence_pattern = crate::SequencePattern::Off;
     app.load_favorite(&first.id);
+    assert_eq!(
+        favorite_order(&app),
+        manual_order,
+        "same-instance recall preserves manual order"
+    );
     assert_eq!(
         app.instrument_id(),
         Some(source),
@@ -124,19 +139,28 @@ fn native_favorites_restore_both_slots_without_overwriting_snapshots() {
     app.save_session();
 
     let count = app.favorites.library.entries.len();
-    // A new playback pattern makes this snapshot distinct from existing favorites.
+    // Automatic registration reuses the stopped snapshot even with a different
+    // playing pattern (the existing automatic Stop deduplication policy).
     app.sequence_pattern = crate::SequencePattern::Csus4CArpeggio;
-    let outgoing_state = app.host.save_state(source).unwrap();
-    let outgoing_pattern = app.sequence_pattern;
+    let stopped_state = app.favorites.library.state(&path, &stopped.id).unwrap();
     app.load_plugin(surge);
     settle(&mut app);
-    assert_eq!(app.favorites.library.entries.len(), count + 1);
-    let automatic = &app.favorites.library.entries[0];
-    assert!(automatic.name.starts_with("auto Dexed "));
-    assert_eq!(automatic.sequence_pattern, outgoing_pattern);
+    assert_eq!(app.favorites.library.entries.len(), count);
+    assert_eq!(favorite_order(&app), manual_order);
+    let automatic = app
+        .favorites
+        .library
+        .entries
+        .iter()
+        .find(|entry| entry.id == stopped.id)
+        .unwrap();
+    assert!(automatic.history);
+    assert!(automatic.favorite);
+    assert!(automatic.registered_at > 0);
+    assert_eq!(automatic.sequence_pattern, stopped.sequence_pattern);
     assert_eq!(
         app.favorites.library.state(&path, &automatic.id).unwrap(),
-        outgoing_state
+        stopped_state
     );
     let other_source = app.instrument_id().unwrap();
     assert_ne!(other_source, source);
@@ -145,6 +169,11 @@ fn native_favorites_restore_both_slots_without_overwriting_snapshots() {
     app.load_favorite(&first.id);
     settle(&mut app);
     assert_ne!(app.instrument_id(), Some(other_source), "{}", app.status);
+    assert_eq!(
+        favorite_order(&app),
+        manual_order,
+        "asynchronous recall preserves manual order"
+    );
     assert_eq!(app.sequence_pattern, first.sequence_pattern);
     assert_eq!(
         crate::status::Status::load(&path).unwrap().sequence_pattern,
@@ -157,7 +186,7 @@ fn native_favorites_restore_both_slots_without_overwriting_snapshots() {
         snapshot
     );
     assert_eq!(app.host.save_state(fx).unwrap(), fx_state);
-    assert!(app.favorites.pending.is_none());
+    assert!(app.pending.is_none());
 
     // Recreate the effect slot from its favorite while retaining the instrument.
     let source = app.instrument_id().unwrap();
@@ -377,73 +406,5 @@ fn settle(app: &mut App) {
         app.host.pump_startup();
         app.handle_events();
         std::thread::sleep(std::time::Duration::from_millis(1));
-    }
-}
-
-#[test]
-fn restored_selection_requires_the_saved_slot_and_plugin_identity() {
-    let plugin = crate::config::PluginKey {
-        format: "CLAP".into(),
-        id: "synth".into(),
-        name: "New name".into(),
-        vendor: String::new(),
-        bundle_path: "X:/plugins/synth.clap".into(),
-    };
-    let instrument = Favorite {
-        id: "instrument".into(),
-        name: "Renamed favorite".into(),
-        plugin: plugin.clone(),
-        effect: false,
-        sequence_pattern: Default::default(),
-    };
-    let effect = Favorite {
-        id: "effect".into(),
-        effect: true,
-        ..instrument.clone()
-    };
-    let mut favorites = Favorites::default();
-    favorites.library.entries = vec![instrument, effect];
-    favorites.restore = crate::status::FavoriteSelection {
-        instrument: Some("instrument".into()),
-        effects: vec!["effect".into()],
-        ..Default::default()
-    };
-    assert_eq!(
-        favorites
-            .take_restored(PluginKind::Instrument, &plugin)
-            .unwrap()
-            .name,
-        "Renamed favorite"
-    );
-    assert_eq!(
-        favorites
-            .take_restored(PluginKind::Effect, &plugin)
-            .unwrap()
-            .id,
-        "effect"
-    );
-    assert!(favorites
-        .take_restored(PluginKind::Effect, &plugin)
-        .is_none());
-    for invalid in ["deleted", "effect"] {
-        favorites.restore.instrument = Some(invalid.into());
-        assert!(favorites
-            .take_restored(PluginKind::Instrument, &plugin)
-            .is_none());
-    }
-    for other in [
-        crate::config::PluginKey {
-            format: "VST3".into(),
-            ..plugin.clone()
-        },
-        crate::config::PluginKey {
-            id: "other".into(),
-            ..plugin.clone()
-        },
-    ] {
-        favorites.restore.instrument = Some("instrument".into());
-        assert!(favorites
-            .take_restored(PluginKind::Instrument, &other)
-            .is_none());
     }
 }

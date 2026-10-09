@@ -1,9 +1,20 @@
 //! Asynchronous loading and restoration of the instrument/effect slots.
 use crate::{audio, config, on_instance, plugin_list::PluginKind, startup, App, Instance};
 
+pub(crate) struct PendingLoad {
+    pub plugin: crate::ffi::PluginInfo,
+    pub purpose: LoadPurpose,
+}
+pub(crate) enum LoadPurpose {
+    Manual,
+    Restore,
+    Favorite(crate::favorites_store::Favorite, Vec<u8>),
+    Random(crate::random_patch_apply::Replacement),
+}
+
 impl App {
     pub(crate) fn load_plugin(&mut self, index: usize) {
-        if self.pending.is_some() || self.scanning {
+        if self.pending.is_some() || self.scanning || self.random_busy() {
             return;
         }
         let plugin = self.plugins[index].clone();
@@ -27,7 +38,7 @@ impl App {
         } else {
             self.instrument_id()
         };
-        if let Some(id) = previous {
+        if let Some(id) = previous.filter(|id| !self.unsafe_state.contains(id)) {
             if let Err(error) = self.save_plugin_state(id) {
                 self.load_failed(format!("Could not save previous plugin: {error}"));
                 return;
@@ -37,7 +48,7 @@ impl App {
             });
             if different_plugin && !self.restoring {
                 if let Err(error) = self.save_automatic_favorite(id) {
-                    self.load_failed(format!("Could not save automatic favorite: {error}"));
+                    self.load_failed(format!("Could not record history: {error}"));
                     return;
                 }
             }
@@ -45,7 +56,14 @@ impl App {
         self.status = format!("Loading {}...", plugin.name);
         // The old slot remains alive until creation, state restoration and chain
         // preparation all succeed. A failed replacement resumes that old chain.
-        self.pending = Some(plugin.clone());
+        self.pending = Some(PendingLoad {
+            plugin: plugin.clone(),
+            purpose: if self.restoring {
+                LoadPurpose::Restore
+            } else {
+                LoadPurpose::Manual
+            },
+        });
         startup::mark(startup::Stage::LoadRequested);
         self.host.create_instance(
             plugin.index,
@@ -81,10 +99,18 @@ impl App {
 
     pub(crate) fn instance_created(&mut self, id: i32, error: Option<String>) {
         startup::mark(startup::Stage::InstanceHandled);
-        let Some(plugin) = self.pending.take() else {
+        let Some(pending) = self.pending.take() else {
             return;
         };
-        let favorite = self.favorites.pending.take();
+        let plugin = pending.plugin;
+        let favorite = match pending.purpose {
+            LoadPurpose::Random(replacement) => {
+                self.random_instance_created(plugin, replacement, id, error);
+                return;
+            }
+            LoadPurpose::Favorite(favorite, state) => Some((favorite, state)),
+            LoadPurpose::Manual | LoadPurpose::Restore => None,
+        };
         let label = format!("{} [{}]", plugin.name, plugin.format);
         if let Some(error) = error.or_else(|| (id < 0).then(|| "creation failed".into())) {
             self.load_failed(format!("Could not load {label}: {error}"));
@@ -137,6 +163,7 @@ impl App {
             .map(|i| i.id)
         {
             self.instances.retain(|i| i.id != previous);
+            self.unsafe_state.remove(&previous);
             self.host.destroy_instance(previous);
         }
         self.instances.push(Instance {
@@ -180,7 +207,6 @@ impl App {
                     ""
                 }
             );
-            self.record_favorite_use(&favorite.id);
         } else if self.restoring {
             self.restore_favorite_selection(id);
         }
@@ -194,7 +220,6 @@ impl App {
     }
 
     pub(crate) fn load_failed(&mut self, message: String) {
-        self.favorites.pending = None;
         self.pending = None;
         if self.restoring {
             self.pause_audio();

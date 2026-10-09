@@ -1,7 +1,6 @@
 # ADR 0004: Shu の Windows CLAP GUI の表示失敗を限定対応する
 
 - 状態: 採用（実装・実機回帰テスト済み。userの画面操作による確認は未実施）
-- 日付: 2026-10-07
 - 関連: [ADR 0002](0002-plugin-specific-favorite-state-comparison.md)
 
 ## 問題と確認した事実

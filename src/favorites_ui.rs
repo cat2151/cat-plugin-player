@@ -6,6 +6,10 @@ use eframe::egui;
 #[path = "library_ui_tests.rs"]
 mod tests;
 
+#[cfg(test)]
+#[path = "favorites_order_ui_tests.rs"]
+mod order_tests;
+
 // Paint behind the whole row without making its menu or metadata clickable.
 pub(super) fn library_row<R>(
     ui: &mut egui::Ui,
@@ -45,19 +49,46 @@ impl App {
         let mut remove_effect = None;
         let mut delete = None;
         let mut rename = None;
+        let mut move_favorite = None;
+        let mut sort_favorites = false;
         egui::CentralPanel::default().show(ctx, |ui| {
             // Reserve a fixed gutter so the scrollbar cannot cover row actions.
             ui.style_mut().spacing.scroll = egui::style::ScrollStyle {
                 bar_width: 10.0,
                 ..egui::style::ScrollStyle::solid()
             };
-            let previous_tab = self.favorites.show;
+            let previous_tab = (self.favorites.show, self.favorites.show_history);
             ui.horizontal(|ui| {
-                ui.selectable_value(&mut self.favorites.show, true, "Favorites");
-                ui.selectable_value(&mut self.favorites.show, false, "Plugins");
+                if ui.selectable_label(self.favorites.show && !self.favorites.show_history, "Favorites").clicked() {
+                    self.favorites.show = true;
+                    self.favorites.show_history = false;
+                }
+                if ui.selectable_label(self.favorites.show_history, "History").clicked() {
+                    self.favorites.show = true;
+                    self.favorites.show_history = true;
+                }
+                if ui.selectable_label(!self.favorites.show, "Plugins").clicked() {
+                    self.favorites.show = false;
+                    self.favorites.show_history = false;
+                }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.menu_button("☰", |ui| {
                         ui.label("Settings");
+                        let favorites_tab = self.favorites.show && !self.favorites.show_history;
+                        ui.add_enabled_ui(favorites_tab, |ui| {
+                            ui.checkbox(&mut self.favorites.reorder_mode, "Reorder favorites");
+                        });
+                        let can_reorder = favorites_tab && self.filter.is_empty()
+                            && self.favorites.error.is_none() && !self.actions_busy()
+                            && !self.scanning && !self.restoring;
+                        if ui.add_enabled(can_reorder,
+                            egui::Button::new("Sort by plugin name"))
+                            .on_hover_text("Sort Favorites once in ascending plugin name order and save. Clear the filter first.")
+                            .clicked() {
+                            sort_favorites = true;
+                            ui.close_menu();
+                        }
+                        ui.separator();
                         let mut prefer_clap = self.prefer_clap;
                         if ui.checkbox(&mut prefer_clap, "Show only CLAP for duplicate plugins")
                             .on_hover_text("Hide VST3 when CLAP has the same name, vendor and kind. Turn off to show both formats.")
@@ -73,7 +104,7 @@ impl App {
                         ui.separator();
                         if ui
                             .add_enabled(
-                                !self.scanning && self.pending.is_none() && !self.restoring,
+                                !self.scanning && !self.actions_busy() && !self.restoring,
                                 egui::Button::new("Rescan plugins..."),
                             )
                             .clicked()
@@ -86,12 +117,13 @@ impl App {
                     .on_hover_text("Settings");
                 });
             });
-            if self.favorites.show != previous_tab {
+            if (self.favorites.show, self.favorites.show_history) != previous_tab {
                 // A tab switch during startup must preserve slots still restoring.
                 self.config_error = self.config_path.as_ref().map_err(Clone::clone)
                     .and_then(|path| {
                         let mut status = crate::status::Status::load(path)?;
                         status.show_favorites = Some(self.favorites.show);
+                        status.show_history = self.favorites.show_history;
                         status.save(path)
                     })
                     .err()
@@ -112,20 +144,28 @@ impl App {
             }
             ui.separator();
             let filter = self.filter.to_lowercase();
-            let can_load = self.pending.is_none() && !self.scanning && !self.restoring;
+            let can_load = !self.actions_busy() && !self.scanning && !self.restoring;
             let has_instrument = self.instrument_id().is_some();
             if self.favorites.show {
                 if let Some(error) = &self.favorites.error {
                     ui.colored_label(egui::Color32::YELLOW, error);
-                } else if self.favorites.library.entries.is_empty() {
+                } else if !self.favorites.show_history && !self.favorites.library.entries.iter().any(|entry| entry.favorite) {
                     ui.label("Use 'Add favorite' on a loaded plugin to save its current sound.");
+                }
+                let history = self.favorites.show_history;
+                let mut entries: Vec<_> = self.favorites.library.entries.iter()
+                    .filter(|entry| if history { entry.history } else { entry.favorite }).collect();
+                if history {
+                    entries.sort_by_key(|entry| std::cmp::Reverse(entry.registered_at));
+                    ctx.request_repaint_after(std::time::Duration::from_secs(1));
+                    if entries.is_empty() { ui.label("Sounds are recorded here when switching plugins."); }
                 }
                 let mut matches = 0;
                 egui::ScrollArea::vertical()
                     .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
-                    for favorite in &self.favorites.library.entries {
+                    for (position, favorite) in entries.iter().enumerate() {
                         let description = format!("{} | {} | {}", favorite.plugin.name,
                             favorite.plugin.format, if favorite.effect { "Effect" } else { "Instrument" });
                         if !format!("{} {description}", favorite.name).to_lowercase().contains(&filter) { continue; }
@@ -153,7 +193,8 @@ impl App {
                             ui.allocate_ui_with_layout(
                                 egui::vec2(ui.available_width(), ui.spacing().interact_size.y),
                                 egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                ui.menu_button("...", |ui| {
+                                if !history {
+                                    ui.menu_button("...", |ui| {
                                     if ui.button("Rename").clicked() {
                                         rename = Some((favorite.id.clone(), favorite.name.clone()));
                                         ui.close_menu();
@@ -162,7 +203,24 @@ impl App {
                                         delete = Some(favorite.id.clone());
                                         ui.close_menu();
                                     }
-                                });
+                                    });
+                                    if self.favorites.reorder_mode {
+                                        let can_move = self.filter.is_empty() && can_load
+                                            && self.favorites.error.is_none();
+                                        if ui.add_enabled(can_move && position + 1 < entries.len(), egui::Button::new("Down"))
+                                            .on_hover_text("Move down. Clear the filter first.").clicked() {
+                                            move_favorite = Some((favorite.id.clone(), false));
+                                        }
+                                        if ui.add_enabled(can_move && position > 0, egui::Button::new("Up"))
+                                            .on_hover_text("Move up. Clear the filter first.").clicked() {
+                                            move_favorite = Some((favorite.id.clone(), true));
+                                        }
+                                    }
+                                }
+                                if history {
+                                    ui.label(crate::history::age(favorite.registered_at, crate::history::now()))
+                                        .on_hover_text("Time since last history registration");
+                                }
                                 let width = ui.available_width();
                                 let details_width = if width >= 300.0 { width * 0.35 } else { 0.0 };
                                 if details_width > 0.0 {
@@ -194,7 +252,7 @@ impl App {
                             if connected_effect { remove_effect = connected_id; } else { load_favorite = Some(favorite.id.clone()); }
                         }
                     }
-                    if matches == 0 && !self.favorites.library.entries.is_empty() { ui.label("No matching favorites"); }
+                    if matches == 0 && !self.favorites.library.entries.is_empty() { ui.label(if history { "No matching history" } else { "No matching favorites" }); }
                 });
             } else {
                 egui::ScrollArea::vertical()
@@ -222,6 +280,23 @@ impl App {
         if let Some(rename) = rename {
             self.favorites.rename = Some(rename);
         }
+        if sort_favorites || move_favorite.is_some() {
+            let result = self
+                .config_path
+                .as_ref()
+                .map_err(Clone::clone)
+                .and_then(|path| {
+                    if let Some((id, up)) = move_favorite {
+                        self.favorites.library.move_favorite(path, &id, up)
+                    } else {
+                        self.favorites.library.sort_favorites_by_plugin(path)
+                    }
+                });
+            self.status = match result {
+                Ok(()) => "Favorite order saved".into(),
+                Err(error) => format!("Could not save favorite order: {error}"),
+            };
+        }
         self.favorite_name_dialog(ctx);
         self.rescan_confirmation(ctx);
     }
@@ -241,7 +316,7 @@ impl App {
                 cancel = ui.button("Cancel").clicked();
                 confirm = ui
                     .add_enabled(
-                        !self.scanning && self.pending.is_none() && !self.restoring,
+                        !self.scanning && !self.actions_busy() && !self.restoring,
                         egui::Button::new("Rescan plugins"),
                     )
                     .clicked();

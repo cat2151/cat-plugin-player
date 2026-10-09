@@ -63,10 +63,6 @@ fn migrates_legacy_session_preserves_settings_comments_and_backups() {
     );
     let settings = crate::config::Config::load(&config).unwrap();
     assert_eq!(settings.window.main.x, Some(-120.0));
-    assert_eq!(
-        settings.build.uapmd_dir.unwrap(),
-        PathBuf::from("X:/dependencies/uapmd")
-    );
     status.save(&config).unwrap();
     assert_eq!(std::fs::read_to_string(&config).unwrap(), cleaned);
     let json: serde_json::Value =

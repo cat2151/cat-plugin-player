@@ -1,7 +1,6 @@
 # ADR 0002: プラグイン固有処理を集約し、Favorite重複判定を限定対応する
 
 - 状態: 採用（実装済み。圧縮部分の設定差を区別できない制限あり）
-- 日付: 2026-10-06
 - 確認: userは「同じ音色なら重複をまとめ、違う音色は履歴として残す」を選択。固有処理をできるだけ少なくし、その有無を可視化するよう指示。
 
 ## 何の話か
@@ -30,7 +29,7 @@ Auto FavoでTyrellN6の同じ音色が繰り返し追加される。
 | sforzando CLAP (`com.Plogue Art et Technologie, Inc.sforzando`) | Favoritesの重複判定：[sforzando.rs](../../src/plugin_specific/sforzando.rs) | 保存だけで`sc`が増え、ノート・CC1の演奏値もstateに残る | `CEGP`とARIA schema 1982/1014の確認済み形式のみ。CC1と最後のvelocityは別音色としない。詳細と撤去条件は[ADR 0006](0006-sforzando-favorite-state-comparison.md) |
 | Surge XT CLAP / VST3 | Favoritesの重複判定：[surge_xt.rs](../../src/plugin_specific/surge_xt.rs) | editor拡大率と演奏中のCC1値がstateに残る | `sub3` / patch revision 24、実機確認済み1.3.4。詳細と撤去条件は[ADR 0007](0007-surge-xt-favorite-state-comparison.md) |
 
-### Vaporizer2の判定と制限（2026-10-06追加）
+### Vaporizer2の判定と制限
 
 現在のMSEG許容幅は時間`0.00011` ms、座標`0.000001`。以下の`1e-9`と検証数は初回実装時のもの。現在の根拠・制限は[ADR 0010](0010-vaporizer2-mseg-recalculation-drift.md)参照。
 
@@ -56,7 +55,7 @@ PCoreの確認済み`UI_op=9/10`とテキスト末尾の空行は比較から除
 - 未確認の版、別製品・形式、不正なデータは、従来のバイト完全一致に戻す。
 - 圧縮部分の独自フォーマット全体を解読したわけではない。圧縮部分だけに保持される設定の差は、この例外では区別できない。
 - 手動・自動Favorite保存時に一致する既存Favoriteがあれば再利用する。既存の重複を起動時に一括削除することはない。
-- 同じ設定の保存で名前と自動番号が変動しないよう、既存Favoriteの名前・ID・保存済みstateを維持する（2026-10-06変更）。手動で付けた名前も維持する。
+- 同じ設定の保存で名前と自動番号が変動しないよう、既存Favoriteの名前・ID・保存済みstateを維持する。手動で付けた名前も維持する。
 
 ## 見送ったもの
 
@@ -69,7 +68,7 @@ PCoreの確認済み`UI_op=9/10`とテキスト末尾の空行は比較から除
 
 ## 検証した根拠
 
-2026-10-06、ローカルのTyrellN6 CLAP build 16976で確認：
+ローカルのTyrellN6 CLAP build 16976で確認：
 
 1. 既存7件（手動1件、自動6件）はテキスト設定が完全一致し、圧縮部分だけ異なっていた。
 2. 同じstateをロードし直して保存するだけならバイト完全一致した。

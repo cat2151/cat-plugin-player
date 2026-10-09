@@ -12,6 +12,7 @@ mod favorites;
 mod favorites_store;
 mod favorites_ui;
 mod ffi;
+mod history;
 mod lissajous;
 mod lissajous_ui;
 mod native_library;
@@ -19,6 +20,9 @@ mod plugin_icons;
 mod plugin_list;
 mod plugin_specific;
 mod plugins_ui;
+mod random_patch;
+mod random_patch_apply;
+mod random_patch_catalog;
 mod repaint_heartbeat;
 mod routing_ui;
 mod scope;
@@ -33,6 +37,7 @@ mod sequence_modulation;
 mod spectrum;
 mod spectrum_ui;
 use sequence_modulation::SequenceModulation;
+mod playback_ui;
 mod sequence_pattern;
 mod sequence_ui;
 mod sequence_velocity;
@@ -40,11 +45,11 @@ use sequence_pattern::SequencePattern;
 use sequence_velocity::SequenceVelocity;
 mod session;
 mod session_load;
+mod shutdown;
 mod startup;
 mod state_store;
 mod status;
 mod status_migration;
-mod updater;
 mod window_config;
 
 use clap::Parser;
@@ -113,7 +118,7 @@ struct App {
     output: Option<audio::Output>,
     plugins: Vec<ffi::PluginInfo>,
     prefer_clap: bool,
-    pending: Option<ffi::PluginInfo>,
+    pending: Option<session_load::PendingLoad>,
     restore_effect: std::collections::VecDeque<config::PluginKey>,
     effect_bypassed: bool,
     sequence_pattern: SequencePattern,
@@ -135,6 +140,13 @@ struct App {
     scope_ui: scope_ui::ScopeUi,
     plugin_icons: plugin_icons::PluginIcons,
     repaint_heartbeat: Option<repaint_heartbeat::RepaintHeartbeat>,
+    random_patch_catalog: random_patch_catalog::Catalog,
+    random_patch: random_patch::Preparation,
+    unsafe_state: std::collections::HashSet<i32>,
+    #[cfg(test)]
+    random_failures: Vec<random_patch_apply::Operation>,
+    // Keep the overlay alive through native instance and host destruction.
+    shutdown: shutdown::Shutdown,
 }
 
 impl App {
@@ -145,6 +157,9 @@ impl App {
     }
 
     fn start_scan(&mut self, rescan: bool) {
+        if self.random_busy() {
+            return;
+        }
         startup::mark(Stage::ScanRequested);
         if self
             .host
@@ -166,6 +181,7 @@ impl App {
                 Event::ScanDone(error) => {
                     self.scanning = false;
                     self.plugins = self.host.plugins();
+                    self.random_patch_catalog.reconcile(&self.plugins);
                     startup::mark(Stage::CatalogReady);
                     let scan_succeeded = error.is_none();
                     self.status = match error {
@@ -191,24 +207,44 @@ impl App {
 
 impl eframe::App for App {
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.begin_shutdown();
         self.repaint_heartbeat.take();
     }
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if ctx.input(|input| input.viewport().close_requested()) {
+            self.begin_shutdown();
+            self.save_on_shutdown();
+            return;
+        }
         // Run what uapmd and the plugins queued for the main thread.
         self.host.pump();
         self.handle_events();
         self.initialize_favorites();
         self.capture_plugin_icons(ctx);
+        self.poll_random_patch();
+        let rendered = self.instances.iter().any(|instance| {
+            instance
+                .voice
+                .as_ref()
+                .is_some_and(audio::Voice::has_rendered)
+        });
+        if let Some(message) = self.random_patch_catalog.update(rendered, ctx) {
+            self.random_patch_catalog.reconcile(&self.plugins);
+            if !message.is_empty() {
+                eprintln!("{message}");
+                self.status = message;
+            }
+        }
         if self.deferred_scan && self.pending.is_none() {
             self.deferred_scan = false;
             self.start_scan(false);
         }
         startup::flush_if_ready();
 
-        // Placement lives here; sequence_controls only draws the pane contents.
+        // Keep sound selection in its own pane beside the sequence controls.
         egui::TopBottomPanel::top("sequence_controls").show(ctx, |ui| {
-            self.sequence_controls(ui);
+            self.playback_controls(ui);
         });
 
         if let Some(error) = &self.config_error {
@@ -226,17 +262,7 @@ impl eframe::App for App {
 }
 
 fn main() -> eframe::Result {
-    if let Some(command) = cli::Cli::parse().command {
-        let result = match command {
-            cli::Command::Check => updater::check(),
-            cli::Command::Update => updater::update(),
-        };
-        if let Err(error) = result {
-            eprintln!("{error}");
-            std::process::exit(1);
-        }
-        return Ok(());
-    }
+    cli::Cli::parse();
     startup::init(Instant::now());
     let _native_library = native_library::load().map_err(eframe::Error::AppCreation)?;
     let mut app = App::prepare();
@@ -256,6 +282,7 @@ fn main() -> eframe::Result {
         options,
         Box::new(move |cc| {
             startup::mark(Stage::AppCreation);
+            app.shutdown.set_window(cc);
             app.host
                 .configure_editor_placement(cc, app.window_config.plugin.placement);
             *GUI_CONTEXT.lock().unwrap() = Some(cc.egui_ctx.clone());
@@ -270,3 +297,6 @@ fn main() -> eframe::Result {
 
 #[cfg(test)]
 mod modulation_tests;
+
+#[cfg(test)]
+mod clap_state_tests;

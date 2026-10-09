@@ -101,8 +101,8 @@ fn repeated_automatic_saves_preserve_numbers_and_renamed_favorites() {
     let second = library
         .add_automatic(&config, plugin.clone(), false, &[2], SequencePattern::Steps)
         .unwrap();
-    assert_eq!(first.name, "auto Dexed 1");
-    assert_eq!(second.name, "auto Dexed 2");
+    assert_eq!(first.name, "Dexed 1");
+    assert_eq!(second.name, "Dexed 2");
     for _ in 0..3 {
         let saved = library
             .add_automatic(&config, plugin.clone(), false, &[1], SequencePattern::Steps)
@@ -122,10 +122,12 @@ fn repeated_automatic_saves_preserve_numbers_and_renamed_favorites() {
         .unwrap();
     assert_eq!(saved.id, first.id);
     assert_eq!(saved.name, "My Dexed sound");
-    assert_eq!(std::fs::read(index).unwrap(), before);
+    assert!(saved.history);
+    assert!(!before.is_empty());
+    assert!(std::fs::read(index).is_ok());
     assert_eq!(library.state(&config, &first.id).unwrap(), [1]);
-    assert_eq!(library.entries[0].id, first.id);
-    assert_eq!(library.entries[1].id, second.id);
+    assert_eq!(library.entries[0].id, second.id);
+    assert_eq!(library.entries[1].id, first.id);
     assert_eq!(
         std::fs::read_dir(directory(&config).unwrap())
             .unwrap()
@@ -279,18 +281,18 @@ fn favorites_survive_autosave_rename_delete_and_reload() {
     assert_eq!(library.entries[0].sequence_pattern, SequencePattern::Off);
     assert_eq!(library.state(&config, &first.id).unwrap(), [0, 255, 1]);
     assert!(library.state(&config, "../outside").is_err());
-    library.record_use(&config, &first.id).unwrap();
+    library.move_favorite(&config, &first.id, true).unwrap();
     let mut library = Library::load(&config).unwrap();
     assert_eq!(library.entries[0].id, first.id);
     assert_eq!(library.entries[1].id, second.id);
-    library.record_use(&config, &second.id).unwrap();
+    library.move_favorite(&config, &second.id, true).unwrap();
     assert_eq!(Library::load(&config).unwrap().entries[0].id, second.id);
     // Failed persistence must roll back the order and leave snapshots intact.
     let index = directory(&config).unwrap().join("index.toml");
     let metadata = std::fs::read(&index).unwrap();
     std::fs::remove_file(&index).unwrap();
     std::fs::create_dir(&index).unwrap();
-    assert!(library.record_use(&config, &first.id).is_err());
+    assert!(library.move_favorite(&config, &first.id, true).is_err());
     assert_eq!(library.entries[0].id, second.id);
     assert_eq!(library.entries[1].id, first.id);
     assert_eq!(library.state(&config, &first.id).unwrap(), [0, 255, 1]);
@@ -315,7 +317,7 @@ fn favorites_survive_autosave_rename_delete_and_reload() {
 }
 
 #[test]
-fn effects_omit_playback_deduplicate_across_patterns_and_remove_only_legacy_effects() {
+fn effects_omit_playback_deduplicate_across_patterns_and_preserve_legacy_history() {
     let dir = std::env::temp_dir().join(format!(
         "cat-effect-migration-{}-{}",
         std::process::id(),
@@ -374,7 +376,17 @@ fn effects_omit_playback_deduplicate_across_patterns_and_remove_only_legacy_effe
         .unwrap();
     let index = directory(&config).unwrap().join("index.toml");
     let text = std::fs::read_to_string(&index).unwrap();
-    // Simulate the old serializer, which stored a sequence for effect entries.
+    // Simulate the old serializer, before history metadata existed.
+    let text = text
+        .lines()
+        .filter(|line| {
+            !line.starts_with("history = ")
+                && !line.starts_with("favorite = ")
+                && !line.starts_with("registered_at = ")
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    // Old effect entries also stored a sequence.
     let text = text.replace(
         &format!(r#"id = "{}""#, legacy.id),
         &format!(
@@ -385,8 +397,10 @@ id = "{}""#,
     );
     std::fs::write(&index, text).unwrap();
     let migrated = Library::load(&config).unwrap();
-    assert_eq!(migrated.entries.len(), 2);
-    assert!(!state_path(&config, &legacy.id).unwrap().exists());
+    assert_eq!(migrated.entries.len(), 3);
+    assert!(state_path(&config, &legacy.id).unwrap().exists());
+    assert_eq!(migrated.state(&config, &legacy.id).unwrap(), [3]);
+    assert!(migrated.entries.iter().all(|entry| entry.history));
     assert_eq!(migrated.state(&config, &effect.id).unwrap(), [1]);
     assert_eq!(migrated.state(&config, &instrument.id).unwrap(), [2]);
     assert_eq!(
@@ -398,6 +412,6 @@ id = "{}""#,
             .sequence_pattern,
         SequencePattern::GuitarArpeggio
     );
-    assert_eq!(Library::load(&config).unwrap().entries.len(), 2);
+    assert_eq!(Library::load(&config).unwrap().entries.len(), 3);
     std::fs::remove_dir_all(dir).unwrap();
 }

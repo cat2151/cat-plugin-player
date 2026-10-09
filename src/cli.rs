@@ -1,41 +1,26 @@
 //! Parse commands before initializing audio, plugins, or the GUI.
 
-use clap::{Parser, Subcommand};
+use clap::Parser;
 
 #[derive(Debug, Parser)]
 #[command(version, about = "オーディオプラグインを手軽に演奏するアプリ")]
-pub struct Cli {
-    #[command(subcommand)]
-    pub command: Option<Command>,
-}
-
-#[derive(Debug, PartialEq, Eq, Subcommand)]
-pub enum Command {
-    /// ビルド時のコミットと GitHub の main を比較する
-    Check,
-    /// GitHub から最新版をビルドしてインストールする
-    Update,
-}
+pub struct Cli {}
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn dispatches_gui_and_update_commands() {
-        assert_eq!(Cli::try_parse_from(["app"]).unwrap().command, None);
-        for (argument, expected) in [("check", Command::Check), ("update", Command::Update)] {
-            assert_eq!(
-                Cli::try_parse_from(["app", argument]).unwrap().command,
-                Some(expected)
-            );
-        }
+    fn accepts_gui_invocation() {
+        assert!(Cli::try_parse_from(["app"]).is_ok());
     }
 
     #[test]
     fn rejects_invalid_invocations_instead_of_starting_gui() {
         for args in [
             vec!["app", "unknown"],
+            vec!["app", "check"],
+            vec!["app", "update"],
             vec!["app", "update", "extra"],
             vec!["app", "diagnose-scope"],
             vec!["app", "replay-scope", "--input", "X:/captures/one"],

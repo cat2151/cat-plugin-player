@@ -56,10 +56,13 @@
   - 接続や Bypass の変更時には短い音切れがあり、発音中の note と余韻は途切れることがあります。サイドチェイン、並列接続、ホスト側の Dry/Wet は未対応です
 - 音色
   - 各プラグインの `★ Add favorite` で、その瞬間の音色・設定・演奏パターン（停止を含む）をお気に入りとして複数保存できます。名前は自動で付け、後から変更できます
-  - 別のプラグインを `Load` すると、置き換わるプラグインの音色・設定・演奏パターンを切り替え前に Favorites へ自動保存します。名前は `auto プラグイン名 連番` です。同じプラグインの再読み込みや起動時の復元では追加しません。保存に失敗した場合は切り替えを中止します
+  - 別のプラグインを `Load` すると、置き換わるプラグインの音色・設定・演奏パターンを切り替え前に History へ自動記録します。名前は `プラグイン名 連番` です。同じプラグインの再読み込みや起動時の復元では追加しません。保存に失敗した場合は切り替えを中止します
   - 手動・自動保存時に、同じプラグイン・役割・演奏パターン・state の重複を確認し、新しいお気に入りを残して古い項目と保存ファイルを削除します
   - [プラグイン固有処理の方針・一覧（ADR 0002）](docs/adr/0002-plugin-specific-favorite-state-comparison.md)で、製品ごとの例外・理由・適用範囲・制限を確認できます。TyrellN6 CLAPの確認済みstate形式では、演奏だけで変わる圧縮部分を重複判定から除外し、テキストの音色設定が同じ音色をまとめます。確認済みのPCore `UI_op=9/10`とテキスト末尾の空行も比較から除外します（[ADR 0011](docs/adr/0011-tyrell-n6-ui-operation-favorite-comparison.md)）。Vaporizer2 CLAPの確認済み形式では、読み込み・保存で生じるMSEGの時間・座標の微小差（指定項目の絶対差：時間`0.00011` ms以下、正規化座標`0.000001`以下。詳細は[ADR 0010](docs/adr/0010-vaporizer2-mseg-recalculation-drift.md)）を同一と扱います。この幅以内の編集は区別できません。保存データは元のまま保持します
-  - 中央の `Favorites` / `Plugins` タブで一覧を切り替えます。Favorites は新しいものから表示し、お気に入り名・プラグイン名・形式で絞り込めます
+  - 中央の `Favorites` / `History` / `Plugins` タブで一覧を切り替えます。Favorites は手動順を維持し、新規追加は先頭に置きます。呼び出し・再保存・Historyへの記録では順番を変更しません。お気に入り名・プラグイン名・形式で絞り込めます
+  - Favoritesのハンバーガーメニューで `Reorder favorites` をONにすると、行末の `↑` / `↓` で並べ替え、即保存できます。行クリックの読み込み・Effect取り外しは従来どおりです。`Sort by plugin name` は一度だけプラグイン名の昇順に並べ替えて保存します（大文字・小文字を区別せず、同名項目は前後関係を維持）。その後も手動調整できます。絞り込み中は並べ替え不可、並べ替えモードは起動時OFFです。[採用経緯と仕様（ADR 0017）](docs/adr/0017-manual-favorites-order.md)を参照してください
+  - History は最新の登録順です。同じ音色と判定した場合は保存済みの音色を再利用し、登録時刻を更新して先頭へ移します。経過時間は `1s`, `1m`, `1h`, `1d`, `1w`, `1mon`, `1y` の単位で表示します（月は30日、年は365日）。手動のFavoritesは維持します。旧形式の全項目をHistoryへ移行し、`auto ` で始まる項目以外はFavoritesにも保持します（旧形式は自動保存の出自を記録していないため、名前変更済みの自動保存をすべてHistoryに含めるためです）。方針と理由は[ADR 0016](docs/adr/0016-history-instead-of-automatic-favorites.md)を参照してください。
+  - HistoryにはRename・Deleteの操作メニューを表示しません。名前変更・削除はFavoritesで行います。
   - 全体設定の `☰` にある `Show only CLAP for duplicate plugins` は初期値ONです。同じ名前・メーカー・種別のCLAPがある場合、Plugins一覧のVST3を非表示にします（名前・メーカーの前後の空白と大文字小文字の違いは無視し、名前またはメーカーが空の場合は両方表示します）。OFFにすると両形式を表示します。設定は `config.toml` の `[plugins] prefer_clap` に保存し、次回起動時も維持します。Favoritesとロード・復元する形式は変更しません。
   - 両タブとも名前・画像をクリックして読み込み、接続中のエフェクトはもう一度クリックして解除できます。現在ロード・接続中の行を色づけし、エフェクトのバイパス中も色を維持します。Plugins の `Load` / `Add` / `Remove` ボタンでも同じ操作ができます
   - Favorites は1件1行で表示します。長い名前・補足情報は省略し、マウスを重ねると全文を確認できます。波形・スペクトラムは右側の Routing の下に表示し、右側の幅は境界のドラッグで調整できます。`Audio analysis` の `On right` で、分析表示を右下／画面下部に切り替えられます（起動時は右下）
@@ -70,7 +73,7 @@
   - お気に入りは `%LOCALAPPDATA%\cat-plugin-player\favorites\` に保存します。保存・復帰時には短い音切れが入る場合があり、保存できる範囲は従来のstate保存と同じです
 - リサジュー表示
   - 右側の解析欄のオシロスコープ下に `Lissajous` を表示します。オシロスコープの `☰` → `On right` を外すと、スペクトル・オシロスコープ・リサジューが画面下に横並びになります
-  - 横軸L・縦軸Rの正方形に、effect・Bypassを反映した直近50msの出力を描きます（最大4096サンプル）。左右共通の自動倍率で音量差を保ち、同相は右上がりの斜線、逆相は右下がりの斜線、位相差のある正弦波は楕円や円になります。monoは同相の斜線、無音は中央の点になります
+  - 45°回転したリサジューに、effect・Bypassを反映した直近50msの出力を描きます（最大4096サンプル）。左右共通の自動倍率で音量差と図形の縦横比を保ち、同レベルの同相は縦線、逆相は横線、位相差のある正弦波は楕円や円になります。左だけの出力は左上〜右下、右だけの出力は右上〜左下の斜線、monoは縦線、無音は中央の点になります
   - ノート・周期数・トリガー設定に依存せず更新し、`Show analysis labels` で見出しを表示できます。軸と描画方式はグラフのツールチップでも確認できます
   - リサジュー直下の `Correlation` は、直近150msの左右の相関を−1〜＋1のバーと数値で表示します。＋1は同相、0付近は相関が弱く、−1は逆相です。負の値は赤で表示し、モノラルに混ぜたときの打ち消しを判断する目安になります。無音または片側が無音の場合は「—」になります
 - 波形表示
@@ -114,29 +117,22 @@ placement = "right_then_bottom_right"
 
 本体の `x`・`y` は論理座標で、両方を指定した場合に起動位置として使います。省略すると従来の初期位置になります。`width`・`height` は本体の内側の幅・高さ（論理座標）です。片方だけでも指定でき、省略した側や0以下・非有限の値は幅900・高さ600に戻ります。変更は次回起動時に反映されます。プラグインの配置方式は現在 `right_then_bottom_right` のみで、省略時も同じ動作です。GUIサイズと配置は実際のウィンドウ枠・画面の作業領域・DPIに基づいて計算します。本体やGUIを手で動かした位置の自動保存、プラグインごとの位置指定は行いません。
 
-## コマンドラインから最新版を確認・更新
+## ローカルでのビルドと実行
+
+当アプリと `uapmd`、`clap-mml-render-tui`、`clap-mml-play-server` を同じ親ディレクトリに clone し、当アプリのディレクトリで実行します。TUIの `app` / `patches` とplay-serverの `core-lib` / `server-config` はCargo.tomlから常時ローカル参照します。play-serverには `prepare_clap_patch_state` / `PatchStateError`、TUIの `cmrt-patches` にはその再exportが必要です。checkout不足やAPI不足はビルドエラーとなり、Git版への自動切替は行いません。
 
 ```powershell
-cat-plugin-player check
-cat-plugin-player update
+cargo build --release
+& ./target/release/cat-plugin-player.exe
 ```
 
-## 補足 ※AIが生成した文章なので読みづらいです。あとでなおすつもりです
-- 引数なしでは従来どおり GUI を起動します。`--help` と `--version` も使えます。
-- `check` は exe のビルド時のコミットと GitHub の `cat2151/cat-plugin-player` の `main` を比較します。`up-to-date` は一致、`update available` は不一致です（コミットの新旧判定や未コミット変更の比較はしません）。確認できれば終了コードは 0、通信失敗などは 1 です。
-- `update` は参照プロジェクトの clap-mml-render-tui と同じ `cat-self-update-lib` を使います。Windows では別コンソールで `cargo install --force --git https://github.com/cat2151/cat-plugin-player` を実行します。開始後、このコマンドは終了します。更新の成否は別コンソールで確認してください。
-- 更新先は Cargo のインストール先（通常 `$CARGO_HOME/bin`、未設定なら `$HOME/.cargo/bin`）です。`target/release` にある exe は置き換えません。完了後はインストール先の `cat-plugin-player` を手動で起動します。
-- 更新には Git、Rust/Cargo、`python`、CMake、Microsoft C++ Build Tools と UAPMD のソースが必要です。UAPMD の場所は環境変数 `UAPMD_DIR` → `%LOCALAPPDATA%\cat-plugin-player\config.toml` の `[build]` の `uapmd_dir` → この exe のビルド時の場所、の順で選びます。絶対パスに変換して更新用の Cargo に環境変数 `UAPMD_DIR` として渡します。UAPMD 自体は更新しません。
-- config には次のように指定できます（パスは実際の checkout に置き換えてください）。相対パスの場合は config.toml のあるディレクトリを基準にします。GUI のセッション保存では config.toml を書き換えません。
+UAPMD が兄弟の `uapmd` ディレクトリ以外にある場合は、先に `$env:UAPMD_DIR = 'X:\projects\uapmd'` を設定してください。ビルド時の UAPMD の場所は環境変数で指定します。config.toml はビルド設定として読みません。
 
-```toml
-[build]
-uapmd_dir = 'X:\projects\uapmd'
-```
+`cargo install` は使わず、既定の `target/release` に生成されたexeを直接実行します。ビルドはローカルのコード（未コミット変更を含む）と既存の `target/shim` を利用しますが、ソース変更によって再構成・再ビルドが必要になる場合があります。shim DLL は exe に同梱し、GUI 起動時にキャッシュディレクトリへ展開して読み込みます。
 
-## 補足 ※AIが生成した文章なので読みづらいです。あとでなおすつもりです
-- `cargo install --force --git https://github.com/cat2151/cat-plugin-player` を直接実行するときは config を読みません。PowerShell なら先に `$env:UAPMD_DIR = 'X:\projects\uapmd'` を設定してください。未設定時のビルドは Cargo が取得したパッケージの隣の `uapmd` を探すため、Cargo を実行するカレントディレクトリに UAPMD を置いても解決しません。
-- インストール先でも起動できるよう、ビルドした shim DLL は exe に同梱します。GUI 起動時にユーザーのキャッシュディレクトリへ展開して読み込みます。`check` / `update` は GUI・音声・プラグインを起動しません。
+3repoの依存構成と運用方針は [ADR 0012](docs/adr/0012-local-dependencies-and-release-execution.md) を参照してください。catでのビルドにTUIのlocal切替は不要です。TUI自身で横断ビルドする場合はTUIの既存 `python scripts/cross_repo_local.py on` 手順を使い、offは人間が担当します。ローカル参照は未commit変更も使い、Cargo.lockは各checkoutの内容を固定しません。検証時は各repoのHEADと差分を記録してください。
+
+引数なしで GUI を起動します。`--help` と `--version` も使えます。
 
 # 今後のブレインストーミング
 - ※気分で変更する可能性があります

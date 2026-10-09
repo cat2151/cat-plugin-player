@@ -5,6 +5,7 @@ use eframe::egui;
 impl App {
     pub(crate) fn routing_panel(&mut self, ctx: &egui::Context, analysis_on_right: bool) {
         // Apply actions only after the routing and analysis panes are drawn.
+        let busy = self.actions_busy();
         let mut add_favorite = None;
         let mut show: Option<i32> = None;
         let mut hide: Option<i32> = None;
@@ -32,7 +33,7 @@ impl App {
                         // Text selection competes with dragging the routing handles.
                         ui.style_mut().interaction.selectable_labels = false;
                         ui.label(self.routing_label());
-                        if self.pending.is_none() && self.effect_id().is_some() {
+                        if !busy && self.effect_id().is_some() {
                             let mut bypass = self.effect_bypassed;
                             if ui.checkbox(&mut bypass, "Bypass effects").changed() {
                                 set_bypass = Some(bypass);
@@ -44,8 +45,8 @@ impl App {
                                     if instance.kind == crate::plugin_list::PluginKind::Effect {
                                         let handle = ui
                                             .add_enabled(
-                                                self.pending.is_none() && !self.restoring,
-                                                egui::Button::new("↕")
+                                                !busy && !self.restoring,
+                                                egui::Button::new("::")
                                                     .sense(egui::Sense::drag())
                                                     .min_size(egui::vec2(
                                                         28.0,
@@ -80,13 +81,21 @@ impl App {
                                         .iter()
                                         .find(|f| &f.id == favorite_id)
                                     {
-                                        ui.label(format!("Last favorite: {}", favorite.name));
+                                        ui.label(format!(
+                                            "Last {}: {}",
+                                            if favorite.favorite {
+                                                "favorite"
+                                            } else {
+                                                "history"
+                                            },
+                                            favorite.name
+                                        ));
                                     }
                                 }
                                 ui.horizontal_wrapped(|ui| {
                                     if ui
                                         .add_enabled(
-                                            self.pending.is_none()
+                                            !busy
                                                 && !self.restoring
                                                 && self.favorites.error.is_none(),
                                             egui::Button::new("★ Add favorite"),
@@ -106,19 +115,14 @@ impl App {
                                             show = Some(instance.id);
                                         }
                                     }
-                                    if ui
-                                        .add_enabled(
-                                            self.pending.is_none(),
-                                            egui::Button::new("Remove"),
-                                        )
-                                        .clicked()
+                                    if ui.add_enabled(!busy, egui::Button::new("Remove")).clicked()
                                     {
                                         remove = Some(instance.id);
                                     }
                                 });
                             });
                             if instance.kind == crate::plugin_list::PluginKind::Effect
-                                && self.pending.is_none()
+                                && !busy
                                 && !self.restoring
                             {
                                 if egui::DragAndDrop::payload::<i32>(ctx)

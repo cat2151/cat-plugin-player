@@ -16,6 +16,7 @@ impl App {
             sequence_modulation,
             favorite_selection,
             show_favorites,
+            show_history,
             on_right,
             window_config,
             prefer_clap,
@@ -35,6 +36,7 @@ impl App {
                 status.sequence_modulation,
                 status.favorites,
                 status.show_favorites,
+                status.show_history,
                 status.on_right,
                 settings.window,
                 settings.plugins.prefer_clap,
@@ -50,6 +52,7 @@ impl App {
                 crate::SequenceModulation::default(),
                 crate::status::FavoriteSelection::default(),
                 None,
+                false,
                 crate::status::Status::default().on_right,
                 Default::default(),
                 true,
@@ -94,11 +97,18 @@ impl App {
                 restore: favorite_selection,
                 show: show_favorites.unwrap_or_default(),
                 restore_show: show_favorites,
+                show_history,
                 ..Default::default()
             },
             scope_ui: crate::scope_ui::ScopeUi::with_on_right(on_right),
             plugin_icons: Default::default(),
             repaint_heartbeat: None,
+            random_patch_catalog: Default::default(),
+            random_patch: Default::default(),
+            unsafe_state: Default::default(),
+            shutdown: Default::default(),
+            #[cfg(test)]
+            random_failures: Default::default(),
         }
     }
 

@@ -51,7 +51,7 @@ impl App {
         let mut velocity = original_velocity;
         let original_modulation = self.sequence_modulation;
         let mut modulation = original_modulation;
-        let ready = self.pending.is_none() && !self.restoring;
+        let ready = !self.actions_busy();
         let has_audio = self.instances.iter().any(|i| i.voice.is_some());
         let shortcut = take_transport_shortcut(ui.ctx(), ready && has_audio);
 
@@ -159,10 +159,11 @@ impl App {
             });
         });
 
-        if selected != original
-            || next != current
-            || velocity != original_velocity
-            || modulation != original_modulation
+        if !self.actions_busy()
+            && (selected != original
+                || next != current
+                || velocity != original_velocity
+                || modulation != original_modulation)
         {
             self.selected_sequence = selected;
             self.sequence_pattern = next;

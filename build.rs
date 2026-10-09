@@ -19,8 +19,6 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-mod build_metadata;
-
 /// Bump to force one new configure run in existing build directories.
 const CONFIGURE_STAMP: &str = ".uh_configured_v2";
 
@@ -36,8 +34,6 @@ fn run(cmd: &mut Command) {
 
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    build_metadata::emit(&manifest_dir);
-    println!("cargo:rerun-if-changed=build_metadata.rs");
     let shim_dir = manifest_dir.join("shim");
     // Deliberately not OUT_DIR: that path is long, and the dependency trees CMake
     // unpacks below it would run into the Windows path length limit.
@@ -47,7 +43,6 @@ fn main() {
         .map(PathBuf::from)
         .unwrap_or_else(|_| manifest_dir.join("..").join("uapmd"));
     let uapmd_dir = uapmd_dir.canonicalize().unwrap_or(uapmd_dir);
-    println!("cargo:rustc-env=BUILD_UAPMD_DIR={}", uapmd_dir.display());
 
     for f in [
         "CMakeLists.txt",
@@ -58,6 +53,7 @@ fn main() {
         "owned_instance.h",
         "plugin_catalog.cpp",
         "plugin_catalog.h",
+        "shutdown_overlay.cpp",
         "plugin_specific/shu_ui.h",
     ] {
         println!("cargo:rerun-if-changed={}", shim_dir.join(f).display());
@@ -91,6 +87,12 @@ fn main() {
     println!(
         "cargo:rerun-if-changed={}",
         uapmd_dir.join("source/remidy/src/clap").display()
+    );
+    println!(
+        "cargo:rerun-if-changed={}",
+        manifest_dir
+            .join("patches/uapmd/clap-state-load-error")
+            .display()
     );
 
     if env::var_os("UH_SKIP_CMAKE").is_none() {

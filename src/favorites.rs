@@ -11,16 +11,21 @@ pub struct Favorites {
     pub initialized: bool,
     pub error: Option<String>,
     pub show: bool,
+    pub show_history: bool,
+    pub reorder_mode: bool,
     pub restore_show: Option<bool>,
     pub active: Vec<(i32, String)>,
     pub restore: crate::status::FavoriteSelection,
-    pub pending: Option<(Favorite, Vec<u8>)>,
     pub rename: Option<(String, String)>,
 }
 
 #[cfg(test)]
 #[path = "favorites_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "favorites_selection_tests.rs"]
+mod selection_tests;
 
 #[cfg(test)]
 #[path = "effect_favorite_tests.rs"]
@@ -51,7 +56,8 @@ impl App {
     }
 
     pub(crate) fn add_favorite(&mut self, id: i32) {
-        if self.pending.is_some() || self.restoring || self.favorites.error.is_some() {
+        if self.actions_busy() || self.unsafe_state.contains(&id) || self.favorites.error.is_some()
+        {
             return;
         }
         let previous_count = self.favorites.library.entries.len();
@@ -80,6 +86,7 @@ impl App {
             Ok(favorite) => {
                 self.mark_favorite(id, &favorite);
                 self.favorites.show = true;
+                self.favorites.show_history = false;
                 self.filter.clear();
                 self.save_session();
                 if self.favorites.library.entries.len() == previous_count {
@@ -124,6 +131,9 @@ impl App {
 
     /// Called before replacing a slot, while the entire audio chain is stopped.
     pub(crate) fn save_automatic_favorite(&mut self, id: i32) -> Result<(), String> {
+        if self.unsafe_state.contains(&id) {
+            return Err("state saving suppressed after failed rollback".into());
+        }
         self.initialize_favorites();
         if let Some(error) = &self.favorites.error {
             return Err(error.clone());
@@ -150,24 +160,12 @@ impl App {
     }
 
     pub(crate) fn load_favorite(&mut self, favorite_id: &str) {
-        if self.pending.is_some() || self.scanning || self.restoring {
+        if self.actions_busy() {
             return;
         }
         let result = self.prepare_favorite(favorite_id);
         if let Err(e) = result {
             self.status = format!("Could not load favorite: {e}");
-        }
-    }
-
-    pub(crate) fn record_favorite_use(&mut self, favorite_id: &str) {
-        let result = self
-            .config_path
-            .as_ref()
-            .map_err(Clone::clone)
-            .and_then(|path| self.favorites.library.record_use(path, favorite_id));
-        if let Err(error) = result {
-            self.status
-                .push_str(&format!("; could not save favorite order: {error}"));
         }
     }
 
@@ -211,8 +209,8 @@ impl App {
             })?;
             self.plugins[index].kind = kind;
             self.load_plugin(index);
-            if self.pending.is_some() {
-                self.favorites.pending = Some((favorite, state));
+            if let Some(pending) = &mut self.pending {
+                pending.purpose = crate::session_load::LoadPurpose::Favorite(favorite, state);
             }
         }
         Ok(())
@@ -262,6 +260,7 @@ impl App {
                     .map_or(String::new(), |e| format!("; no audio: {e}"))
             ));
         }
+        self.unsafe_state.remove(&id);
         self.mark_favorite(id, favorite);
         self.status = format!(
             "Loaded favorite: {}{}",
@@ -272,7 +271,6 @@ impl App {
                 ""
             }
         );
-        self.record_favorite_use(&favorite.id);
         self.save_session();
         Ok(())
     }

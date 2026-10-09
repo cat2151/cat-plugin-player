@@ -218,7 +218,7 @@ fn drag_effect(app: &mut App, from: usize, to: usize) {
         .shapes
         .iter()
         .filter_map(|shape| match &shape.shape {
-            egui::epaint::Shape::Text(text) if text.galley.job.text == "↕" => {
+            egui::epaint::Shape::Text(text) if text.galley.job.text == "::" => {
                 Some(text.pos + text.galley.size() / 2.0)
             }
             _ => None,

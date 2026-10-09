@@ -10,6 +10,8 @@ use std::path::{Path, PathBuf};
 pub struct Status {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub show_favorites: Option<bool>,
+    #[serde(default)]
+    pub show_history: bool,
     #[serde(default = "default_on_right")]
     pub on_right: bool,
     #[serde(default)]
@@ -40,6 +42,7 @@ impl Default for Status {
     fn default() -> Self {
         Self {
             show_favorites: None,
+            show_history: false,
             on_right: default_on_right(),
             sequence_pattern: Default::default(),
             selected_sequence: Default::default(),
