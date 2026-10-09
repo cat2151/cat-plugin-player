@@ -1,105 +1,108 @@
 # cat-plugin-player
 
-A lightweight app for easily playing audio plugins. It utilizes [UAPMD](https://github.com/atsushieno/uapmd) and is written in Rust.
+A lightweight application that allows you to easily play audio plugins. It utilizes [UAPMD](https://github.com/atsushieno/uapmd) and is written in Rust.
 
-# Past Challenges and What This App Solves
-- Audio plugin tones are wonderful!
-- To play them, it often requires launching a DAW and performing setup tasks.
-- Lightweight apps for easy playback sometimes require account registration to obtain, or their operation feels "not for me."
-- Nowadays, if you have a desired UX, you can achieve it through vibecoding.
+# Problems Addressed by This Application
+- Audio plugin sounds are fantastic!
+- To play them, it often requires launching a DAW and extensive setup.
+- Lightweight applications for easy playback sometimes require account registration to obtain, or their user experience wasn't suitable for me.
+- Nowadays, if you have a desired UX, you can achieve it through "vibe coding."
 - So, that's what I decided to do.
 
 # Features
-- Discovery
-  - Automatically detects installed plugins upon startup
+- Detection
+  - Upon startup, it automatically detects installed plugins.
 - Playback
-  - After pressing the `Load` button, the plugin loads and playback automatically starts.
+  - Pressing the `Load` button automatically starts playback after loading the plugin.
 - GUI
   - You can display the plugin's GUI by pressing the `Show UI` button.
-- Tones
-  - To change tones, use the plugin's GUI.
+- Sound
+  - To change the sound, use the plugin's GUI.
 
-※↑This section is human-written. AI is prohibited from writing here.
+※↑This section is written by a human. AI is prohibited from writing here.
 
-# Features (Detailed additions by AI. Hard to read, so I'll fix it later)
+# Features (Detailed additions by AI. Intending to refine later as it's hard to read.)
 
-The oscilloscope display method and constraints are recorded in [ADR 0001](docs/adr/0001-scope-follows-waveform-position.md).
+Oscilloscope display methods and constraints are recorded in [ADR 0001](docs/adr/0001-scope-follows-waveform-position.md).
 
 - GUI
-  - When the GUI is opened for the first time, it waits 2 seconds for rendering, automatically takes a screenshot, and scales it down to a PNG with its aspect ratio preserved, fitting the list's display frame and screen zoom level. It saves to `%LOCALAPPDATA%\cat-plugin-player\plugin-icons\`. Plugins with matching names and manufacturers share the same image across VST3 / CLAP (ignoring leading/trailing spaces and case). If the name or manufacturer is missing, it distinguishes by format + ID.
-  - Previously saved format-specific images are also automatically migrated and used as shared images based on the list/favorites identification. Tone states and favorite load destinations continue to be distinguished by format + ID as before.
-  - Plugin images are displayed in Plugins / Favorites / Routing. Within a row, they are scaled down to fit the button height, preserving their aspect ratio. Hovering over an image displays it at its saved size. Plugins without a displayed GUI show a temporary icon of the same height.
-  - The GUI prioritizes positions that fit within the screen's work area, right next to and aligned with the top of the main window. If it doesn't fit, it's placed in the bottom-right of the work area of the screen where the main window is located. It is positioned on display and when the GUI is resized, but it does not constantly follow the main window's movement. The GUI is not scaled down; if its width is larger than the screen, its left edge aligns with the work area; if its height is larger, its top edge aligns.
-  - For blank images or failed captures, it retries at 1-second intervals for up to 20 seconds from GUI display. Saved blank images are also treated as uncaptured; opening the GUI will replace them with valid images. After a successful capture, it does not re-capture.
-  - If capturing fails after retries, an error is displayed. Opening the GUI again will retry. GUIs that don't support capture will remain with a temporary icon. If you want to retake or if the saved PNG is corrupted, delete the shared PNG and any remaining old format-specific PNGs for that plugin, restart the app, and open the GUI (old PNGs are kept during migration).
+  - When you open the GUI for the first time, it waits 2 seconds for drawing, automatically takes a screenshot, and scales it down to a PNG image that matches the aspect ratio of the list display frame and screen zoom level. It saves to `%LOCALAPPDATA%\cat-plugin-player\plugin-icons\`, and plugins with matching names + manufacturers (ignoring leading/trailing spaces and case) share the same image across VST3 / CLAP. If the name/manufacturer is missing, they are distinguished by format + ID.
+  - Previously saved format-specific images are also automatically migrated from list/favorite identification information to shared images and used. Sound state and favorite load destinations are still distinguished by format + ID.
+  - Plugin images are displayed in Plugins / Favorites / Routing. Within a row, they are scaled down to fit the button height while maintaining aspect ratio. Hovering over the image displays it at its saved size. Plugins without a GUI displayed will show a temporary icon of the same height.
+  - The GUI prioritizes positioning to fit within the screen's work area, aligned with the right and top edges of the main window. If it doesn't fit, it's placed at the bottom-right of the main window's screen work area. It's positioned on display and GUI resizing, but does not constantly follow main window movement. The GUI is not scaled down; if its width is greater than the screen, its left edge aligns with the work area; if its height is greater, its top edge aligns.
+  - For blank images or failed captures, it retries at 1-second intervals, up to 20 seconds from GUI display. Saved blank images are also treated as uncaptured, and opening the GUI will replace them with a valid image. After success, it does not recapture.
+  - If capture fails even after retrying, an error is displayed. Opening the GUI again will retry. GUIs that do not support capture will remain with a temporary icon. If you want to retake or if the saved PNG is corrupted, delete the shared PNG and any remaining old format-specific PNGs for that plugin, restart the app, and open the GUI (old PNGs are kept during migration).
 - Playback
-  - The last played instrument, connected effects, Bypass state, and playback pattern are saved to `%LOCALAPPDATA%\cat-plugin-player\status.json` and restored on the next startup. The stopped state is also restored.
-  - CLAP Note On/Off messages are sent according to the input format supported by the plugin. This includes sforzando CLAP, which only accepts MIDI. The scope of fixes and validation records are documented in [CLAP Note Format Description](patches/uapmd/clap-note-dialect/README.md).
-  - In the top-left `Sequence` pane, you can select the playback type using the left/right arrows or the dropdown. The arrows cycle at the ends of the types; Stop is not included. Switching during playback releases all sounding notes in the current phrase and starts the new phrase from the beginning. When stopped, selecting a type does not start playback; use `Play` to start and `Stop` to stop. In the main window, the `Space` key also toggles start/stop (except when typing). The selected type and stopped state are restored on the next startup.
-  - In the `Velocity` field below the playback pattern, you can select `100`, `127`, or `Random` using the same left/right arrows or dropdown. The initial value is 100. Random selects 1-127 for each Note On. Changes take effect from the next note without restarting the phrase and are restored on the next startup.
-  - Guitar open strings send Note On for MIDI note numbers 40, 45, 50, 55, 59, 64 (E, A, D, G, B, E) at 125ms intervals. 2 seconds after the last Note On, all 6 notes are simultaneously Note Off, and the sequence repeats after 0.5 seconds.
-  - Saved on `Load` success, and when selecting type, starting, or stopping in `Sequence`. The memory persists after stopping or `Remove`. Older history/favorites are restored with the traditional 4-note pattern.
-  - On exit and `Remove`, the binary state (tones, parameters, etc.) exposed by the plugin via UAPMD's state API is saved to `%LOCALAPPDATA%\cat-plugin-player\states\` per plugin. On the next startup or when the same plugin is re-loaded, it's restored before playback starts.
-  - `Load` for an instrument replaces only the sound source, maintaining connected effects and settings. It saves the state of the plugin being replaced, and only switches after successfully creating, restoring, and connecting the new plugin. If it fails, it maintains the original configuration and displays an error.
-  - The scope of state saving depends on the plugin and UAPMD's format-specific implementation. It requests UI state, but the current UAPMD VST3 implementation only retrieves component state. It does not include replication of external samples or saving during forced termination.
-  - On startup, it directly loads the previous instrument and effects, restores their states, and then starts playback. After that, it initializes the GUI and scans the plugin list in the background.
-  - If direct loading fails due to old history or file movement, it restores from the scan results after GUI display. Old history is updated once played.
+  - The last played instrument, connected effects, Bypass state, and playback pattern are saved to `%LOCALAPPDATA%\cat-plugin-player\status.json` and restored on next launch. The stopped state is also restored.
+  - CLAP Note On/Off is sent according to the plugin's supported input format. This includes sforzando CLAP, which only accepts MIDI. The scope of the fix and verification records are documented in [CLAP Note Format Description](patches/uapmd/clap-note-dialect/README.md).
+  - In the top-left `Sequence` pane, you can select the playback type using left/right arrows or the dropdown. The arrows cycle at both ends of the types and do not include "stop". Switching during playback releases all notes in the current phrase and starts from the beginning of the new phrase. When stopped, selecting a type does not play; use `Play` to start and `Stop` to stop. In the main window, the `Space` key also toggles start/stop (except when typing). The selected type and stop state are restored on next launch.
+  - In the `Velocity` field below the playback pattern, you can select `100`, `127`, or `Random` using the same left/right arrows or dropdown. The initial value is 100. Random selects a value from 1 to 127 for each Note On. Changes are reflected from the next note without restarting the phrase and are restored on next launch.
+  - Guitar open strings send MIDI note numbers 40, 45, 50, 55, 59, 64 (E, A, D, G, B, E) sequentially at 125ms intervals. 2 seconds after the last Note On, all six notes are Note Offed simultaneously, and the sequence repeats after 0.5 seconds.
+  - On successful `Load`, it's memorized when selecting `Sequence` type, starting, or stopping. The memory persists after stopping or `Remove`. Older history/favorites are restored with the traditional 4-note pattern.
+  - On exit and `Remove`, the binary state of sounds, parameters, etc., exposed by the plugin via UAPMD's state API is saved per plugin to `%LOCALAPPDATA%\cat-plugin-player\states\`. On next launch or reloading the same plugin, it is restored before playback begins.
+  - `Load` an instrument replaces only the sound source, maintaining connected effects and settings. The state of the plugin being replaced is saved, and it switches only after successful creation, restoration, and connection of the new plugin. If it fails, the original configuration is maintained, and an error is displayed.
+  - The scope of state saving depends on the plugin and UAPMD's format-specific implementation. UI state is also requested, but the current UAPMD VST3 implementation only retrieves component state. It does not include duplication of external samples or saving during forced termination.
+  - On startup, the previous instrument and effects are loaded directly, states are restored, and playback begins. The GUI is then initialized, and the list is scanned in the background.
+  - If direct loading fails due to old history or file movement, it is restored from the scan results after GUI display. Old history is updated once played.
   - Refer to [docs/startup-timing.md](docs/startup-timing.md) for startup time measurement methods and results.
 - Effect Routing
-  - A serial connection: one instrument → multiple effects → output. After loading an instrument, press `Load` for the first effect, then `Add` to append subsequent effects. `Remove` a connected effect to disconnect only that one. Duplicate connections of effects with the same format + ID are not allowed.
-  - The connection order is displayed in `Routing`. You can change the order by dragging the effect's `↕` button up or down. While dragging, the moving effect's name and an insertion line are displayed. Instruments are excluded from reordering. You can edit tones and effects using each plugin's `Show UI`.
-  - Removing all effects reverts to a direct connection from the instrument to the output. `Bypass effect` targets the entire chain, allowing signals to pass through while retaining instances and settings.
-  - `Sequence` is for the instrument. Stopping the sequence continues audio processing, allowing effect decay.
-  - On the next startup, the instrument, the order of all effects, their respective states, and Bypass status are restored before playback. History of a single old-format effect can also be loaded. If an effect fails to restore, an error is displayed, the instrument reverts to a direct connection, and the saved configuration is retained.
-  - Additions, removals, and reordering are saved only if the preparation for the new connection succeeds. If it fails, the original configuration and playback are restored, and an error is displayed.
-  - Supports mono/stereo for main input/output. Mono → stereo is duplicated, stereo → mono is the average of left and right. Auxiliary inputs are silent.
-  - Changing connections or Bypass may cause short audio dropouts, and sounding notes and decay may be interrupted. Sidechain, parallel connections, and host-side Dry/Wet are not supported.
-- Tones
-  - With `★ Add favorite` for each plugin, you can save multiple presets of the current tone, settings, and playback pattern (including stop) as favorites. Names are automatically assigned and can be changed later.
-  - When you `Load` a different plugin, the tone, settings, and playback pattern of the plugin being replaced are automatically saved to Favorites before the switch. The name is `auto plugin_name serial_number`. This is not added when reloading the same plugin or restoring on startup. If saving fails, the switch is aborted.
-  - During manual and automatic saving, it checks for duplicates of the same plugin, role, playback pattern, and state, keeping the new favorite and deleting older entries and saved files.
-  - In [Plugin-Specific Processing Policy/List (ADR 0002)](docs/adr/0002-plugin-specific-favorite-state-comparison.md), you can review product-specific exceptions, reasons, scope, and limitations. For confirmed TyrellN6 CLAP state format, compressed parts that change only with playback are excluded from duplicate detection, and tones with identical text tone settings are grouped. Confirmed PCore `UI_op=9/10` and trailing empty lines in text are also excluded from comparison ([ADR 0011](docs/adr/0011-tyrell-n6-ui-operation-favorite-comparison.md)). For confirmed Vaporizer2 CLAP format, tiny differences in MSEG time and coordinates (absolute difference of specified items: time `0.00011` ms or less, normalized coordinates `0.000001` or less; see [ADR 0010](docs/adr/0010-vaporizer2-mseg-recalculation-drift.md) for details) caused by loading/saving are treated as identical. Edits within this range cannot be distinguished. Saved data is retained as is.
-  - The central `Favorites` / `Plugins` tabs toggle the list view. Favorites are displayed from newest to oldest and can be filtered by favorite name, plugin name, and format.
-  - `Show only CLAP for duplicate plugins` in the `☰` global settings is ON by default. If a CLAP with the same name, manufacturer, and type exists, VST3s with identical name/manufacturer are hidden from the Plugins list (ignoring leading/trailing spaces and case differences in name/manufacturer; if name or manufacturer is empty, both are shown). Turning it OFF displays both formats. The setting is saved to `[plugins] prefer_clap` in `config.toml` and persists on the next startup. It does not change the format of Favorites or what is loaded/restored.
-  - In both tabs, clicking on a name/image loads it; for connected effects, clicking again removes it. The currently loaded/connected row is highlighted, and the color persists even when effects are bypassed. The `Load` / `Add` / `Remove` buttons in Plugins perform the same operations.
-  - Favorites are displayed one per line. Long names and supplementary information are truncated; hovering over them reveals the full text. Waveform/spectrum is displayed below Routing on the right; the width of the right panel can be adjusted by dragging the border. `Audio analysis`'s `On right` toggles the analysis display between bottom-right and bottom of the screen (it's bottom-right on startup).
-  - For confirmed sforzando CLAP state format, it reuses existing favorites instead of creating new ones for differences only in the save counter and played values of notes/CC1. Differences in tone settings are preserved. Refer to [ADR 0006](docs/adr/0006-sforzando-favorite-state-comparison.md) for scope and limitations.
-  - A colored `Instrument` / `Effect` label is displayed to the left of each row. A single click on a favorite name restores its tone, settings, and playback pattern. Favorites saved in a stopped state are restored as stopped. Instrument favorites retain connected effects, and effect favorites retain the instrument. An instrument is required to call an effect.
-  - For connected effect favorites, `Connected - click again to remove` is displayed; re-clicking the name removes that effect. This behavior is the same after editing settings or during Bypass. The instrument, other effects, and saved favorites remain. A different tone of the same format + ID switches settings at the current position, and an unconnected effect is added to the end. The selected favorite for each effect is also restored on the next startup.
-  - From the `…` at the end of the line, you can rename or delete. Edits after recalling or traditional auto-saves do not overwrite favorites. `Last favorite` indicates the last saved or recalled favorite.
-  - Favorites are saved to `%LOCALAPPDATA%\cat-plugin-player\favorites\`. Saving and restoring may cause short audio dropouts, and the scope of what can be saved is the same as traditional state saving.
+  - Serial connection: one instrument → multiple effects → output. After loading an instrument, press `Load` for the first effect, then `Add` to append subsequent effects. Connected effects can be removed one by one with `Remove`. Duplicate connections of effects with the same format + ID are not allowed.
+  - `Routing` displays the connection order. You can drag the `↕` button of an effect up or down to change its order. While dragging, the moving effect name and insertion line are displayed. Instruments are not subject to reordering. You can edit sounds or effects using `Show UI` for each plugin.
+  - Removing all effects reverts to a direct connection from the sound source to the output. `Bypass effect` targets the entire chain, allowing audio to pass through while retaining instances and settings.
+  - `Sequence` is for the instrument. Even if the Sequence is stopped, audio processing continues, allowing effects to trail off.
+  - On next launch, the instrument, the order of all effects, their respective states, and Bypass status are restored before playback. History of one old format effect can also be loaded. If an effect fails to restore, an error is displayed, it reverts to a direct connection from the sound source, and the saved configuration is retained.
+  - Additions, removals, and reordering are saved only if the new connection setup succeeds. If it fails, the original configuration and playback are restored, and an error is displayed.
+  - Supports mono/stereo for main input/output. Mono → stereo is duplication; stereo → mono is the average of left and right. Auxiliary input is silent.
+  - Changing connections or Bypass may cause a brief audio dropout, and sounding notes and decay may be interrupted. Sidechain, parallel connections, and host-side Dry/Wet are not supported.
+- Sound
+  - You can save multiple instances of the current sound, settings, and playback pattern (including stopped state) as favorites using `★ Add favorite` for each plugin. Names are assigned automatically and can be changed later.
+  - Loading a different plugin automatically records the sound, settings, and playback pattern of the plugin being replaced into History before switching. The name is `Plugin Name Sequence Number`. It is not added on reloading the same plugin or restoring on startup. If saving fails, the switch is aborted.
+  - During manual and automatic saving, it checks for duplicates of the same plugin, role, playback pattern, and state, keeping the newer favorite and deleting older items and saved files.
+  - [Plugin-Specific Processing Policy/List (ADR 0002)](docs/adr/0002-plugin-specific-favorite-state-comparison.md) provides exceptions, reasons, scope, and limitations for each product. For TyrellN6 CLAP's verified state format, the compressed part that changes only with playback is excluded from duplicate detection, and sounds with identical text sound settings are grouped. Verified PCore `UI_op=9/10` and blank lines at the end of text are also excluded from comparison ([ADR 0011](docs/adr/0011-tyrell-n6-ui-operation-favorite-comparison.md)). For Vaporizer2 CLAP's verified format, minute differences in MSEG time/coordinates that occur during loading/saving (absolute difference of specified items: time `0.00011` ms or less, normalized coordinate `0.000001` or less. See [ADR 0010](docs/adr/0010-vaporizer2-mseg-recalculation-drift.md) for details) are treated as identical. Edits within this range cannot be distinguished. Saved data is retained as is.
+  - Switch lists using the `Favorites` / `History` / `Plugins` tabs in the center. Favorites maintain their manual order, with new additions placed at the top. Calling, re-saving, or recording to History does not change the order. You can filter by favorite name, plugin name, and format.
+  - In the Favorites hamburger menu, turning `Reorder favorites` ON allows sorting by `↑` / `↓` at the end of the row, saving immediately. Loading by clicking a row and removing Effects works as before. `Sort by plugin name` sorts once by plugin name in ascending order and saves (case-insensitive, maintaining relative order for items with the same name). Manual adjustments can be made afterward. Sorting is disabled when filtering, and reorder mode is OFF on startup. See [ADR 0017](docs/adr/0017-manual-favorites-order.md) for adoption history and specifications.
+  - History is sorted by most recent registration. If the same sound is detected, the existing sound is reused, its registration time is updated, and it is moved to the top. Elapsed time is displayed in units of `1s`, `1m`, `1h`, `1d`, `1w`, `1mon`, `1y` (month is 30 days, year is 365 days). Manual Favorites are preserved. All items of the old format are migrated to History, and all items except those starting with `auto ` are also kept in Favorites (because the old format does not record the origin of auto-saves, thus including all renamed auto-saves in History). Refer to [ADR 0016](docs/adr/0016-history-instead-of-automatic-favorites.md) for policy and reasons.
+  - History does not display Rename/Delete operation menus. Renaming and deletion are performed in Favorites.
+  - The `Show only CLAP for duplicate plugins` option in the global `☰` settings is ON by default. If there are CLAP plugins with the same name, manufacturer, and type, VST3 plugins in the Plugins list are hidden (ignoring leading/trailing spaces and case differences in name/manufacturer; if name or manufacturer is empty, both are displayed). Turning it OFF displays both formats. The setting is saved to `[plugins] prefer_clap` in `config.toml` and retained on next launch. It does not change the format of Favorites or loaded/restored plugins.
+  - In both tabs, you can load by clicking the name/image, and disconnect connected effects by clicking again. The currently loaded/connected row is highlighted, and the color is maintained even when effects are bypassed. The same operations can be performed with the `Load` / `Add` / `Remove` buttons in Plugins.
+  - Favorites are displayed one item per line. Long names and supplementary information are truncated; hovering the mouse over them reveals the full text. Waveform/spectrum are displayed below Routing on the right side, and the width of the right side can be adjusted by dragging the boundary. `Audio analysis`'s `On right` toggles the analysis display between bottom-right and bottom of the screen (defaulting to bottom-right on startup).
+  - For sforzando CLAP's verified state format, it does not increase the number of identical sounds based solely on differences in the save counter and played values of notes/CC1, instead reusing existing favorites. Differences in sound settings are retained. Refer to [ADR 0006](docs/adr/0006-sforzando-favorite-state-comparison.md) for scope and limitations.
+  - Colored `Instrument` / `Effect` is displayed to the left of each row. Single-clicking a favorite name restores the sound, settings, and playback pattern. Favorites saved in a stopped state are restored as stopped. Instrument favorites retain connected effects, and effect favorites retain the instrument. An instrument is required to call an effect.
+  - For connected effect favorites, `Connected - click again to remove` is displayed, and re-clicking the name removes that effect. This behavior is the same after editing settings or during Bypass. The instrument, other effects, and saved favorites remain. Another sound with the same format + ID switches settings at the current position, and unconnected effects are appended to the end. The selected favorite for each effect is also restored on next launch.
+  - Rename/Delete operations are available from the `…` at the end of the row. Edits after calling a favorite or traditional auto-saves do not overwrite the favorite. `Last favorite` indicates the last saved/called favorite.
+  - Favorites are saved to `%LOCALAPPDATA%\cat-plugin-player\favorites\`. There may be brief audio dropouts during saving/restoration, and the savable range is the same as traditional state saving.
 - Lissajous Display
-  - `Lissajous` is displayed below the oscilloscope in the right-hand analysis pane. If `☰` → `On right` is unchecked for the oscilloscope, the spectrum, oscilloscope, and Lissajous become horizontally aligned at the bottom of the screen.
-  - It draws the recent 50ms output (up to 4096 samples) reflecting effects and Bypass, within a square with L on the horizontal axis and R on the vertical axis. A shared automatic gain maintains volume differences; in-phase signals are a diagonal line rising to the right, out-of-phase signals are a diagonal line falling to the right, and sine waves with phase differences form ellipses or circles. Mono signals result in an in-phase diagonal line, and silence results in a central dot.
+  - `Lissajous` is displayed below the oscilloscope in the right-side analysis pane. If `☰` → `On right` is unchecked for the oscilloscope, the spectrum, oscilloscope, and Lissajous appear side-by-side at the bottom of the screen.
+  - A 45° rotated Lissajous displays the most recent 50ms of output (max 4096 samples), reflecting effects and Bypass. A common automatic magnification maintains volume differences and aspect ratio of the figure; in-phase at the same level becomes a vertical line, out-of-phase a horizontal line, and sine waves with phase differences become ellipses or circles. Output only on the left is a diagonal line from top-left to bottom-right, only on the right is top-right to bottom-left, mono is a vertical line, and silence is a central dot.
   - It updates independently of notes, cycle counts, or trigger settings, and `Show analysis labels` can display headings. Axes and drawing methods can also be checked in the graph's tooltip.
-  - `Correlation` directly below Lissajous displays the left/right correlation for the recent 150ms as a bar and numerical value from -1 to +1. +1 indicates in-phase, near 0 indicates weak correlation, and -1 indicates out-of-phase. Negative values are displayed in red and serve as a guide for judging cancellation when mixed to mono. It shows "—" for silence or if one side is silent.
+  - `Correlation` directly below Lissajous displays the left/right correlation for the most recent 150ms as a bar and numerical value from -1 to +1. +1 is in-phase, near 0 indicates weak correlation, and -1 is out-of-phase. Negative values are displayed in red, serving as a guideline for judging cancellation when mixed to mono. For silence or one side being silent, it shows "—".
 - Waveform Display
-  - The `Oscilloscope` at the bottom of the screen displays L (green) and R (blue) of the output, reflecting effects and Bypass, overlaid. Mono displays the same waveform for both.
-  - The display width is determined from the MIDI note number of the last Note On (A4 = 440Hz), and you can choose `1`, `2`, `4`, `8 cycles`. After Note Off, the decay is displayed based on the last note. Outputs including chords or detuning may not perfectly repeat within that width.
+  - The `Oscilloscope` at the bottom of the screen displays the L (green) and R (blue) channels of the output, reflecting effects and Bypass, overlaid. Mono displays the same waveform for both.
+  - The display width is determined from the MIDI note number of the last Note On (A4 = 440Hz), and `1`, `2`, `4`, `8 cycles` can be selected. After Note Off, the decay is still displayed based on the last note. Output containing chords or detuning may not repeat perfectly within that width.
   - `Zero cross` aligns with the negative-to-positive crossing of the left channel. If the left channel is silent, it uses the right channel; if there's no crossing, it displays from the beginning.
-  - `Similarity` exhaustively searches from the beginning of the buffer for the display width, one sample at a time, for the position where the correlation coefficient with the previous display is maximized. Ties favor the earlier position, and the same start position is used for both left and right. For the first display or if the comparison target is silent, zero cross is used.
-  - The comparison history is reset when a note is sounded, playback pattern changes, display cycle count changes, trigger method changes, or the audio stream changes. It displays "waiting" until sufficient data is collected.
-  - The search runs on a separate thread from audio processing. Display updates may be slower for low notes or high cycle counts. If display data is interrupted, the history is reset.
-  - The default display settings on startup are 4 cycles and zero-cross. Display settings are not saved.
+  - `Similarity` sweeps from the start of the buffer, sample by sample, for the display width, to find the position with the maximum correlation coefficient to the previous display. Ties prefer the earlier position, and the same start position is used for both left and right. For the first display or if the comparison target is silent, zero-crossing is used.
+  - Comparison history is reset when a note is sounded, playback pattern changes, display cycle count changes, trigger method changes, or the audio stream changes. It displays "waiting" until sufficient data is collected.
+  - Exploration is performed on a separate thread from audio processing. Display updates may be slow for low notes or high cycle counts. If display data is interrupted, the history is reset.
+  - Default display settings on startup are 4 cycles and zero-cross. Display settings are not saved.
 
-# Build & Operation Check Procedure
-- *Prerequisite:* First, please build [UAPMD](https://github.com/atsushieno/uapmd). Refer to its documentation for instructions. If you have `Microsoft C++ Build Tools` on Windows, it's easy! If not, ask AI how to install it, and it's easy! The general idea is that it's easy if you let AI handle everything!
-- *Next Prerequisite:* If Rust is not installed, ask AI how to install it, and it's easy!
-- As mentioned, confirm that `../uapmd` is built.
+# Build & Verification Steps
+- ※Prerequisite: First, build [UAPMD](https://github.com/atsushieno/uapmd). Please refer to its instructions. If you have `Microsoft C++ Build Tools` on Windows, it's easy! If not, ask AI to install it, and it's easy! The overall image is "easy by entrusting it to AI!"
+- ※Next prerequisite: If Rust is not installed, ask AI to install it, and it's easy! That's the image.
+- As mentioned, confirm that `../uapmd` is already built.
 - Confirm that an audio plugin (instrument) like Surge XT is installed. For example, confirm Surge XT plays in REAPER.
 - Run `cargo run` (the app will be debug-built).
 - Confirm that the screen opens.
 - Confirm that Surge XT and similar plugins are listed on the screen.
-- Click the `Load` button.
-- Confirm it loads and plays sound.
+- Click the Load button.
+- Confirm that it loads and plays sound.
 
-# Miscellaneous
+# Various Things
 
-The text was generated by AI and is hard to read. I'll fix it later.
+The AI-generated text is hard to read. I plan to fix it later.
 
-## Window Position & Size Settings
+## Window Position and Size Settings
 
-In `%LOCALAPPDATA%\cat-plugin-player\config.toml`, you can specify the main window's startup position/size and the plugin GUI's placement method. Please edit it after closing the app. Session and favorite selection states are saved in `status.json` in the same directory, and normal saves do not overwrite the TOML. If the old TOML contains mixed states, they are migrated on first startup, the original file is saved as `config.toml.before-status-migration.bak`, and only the state items are removed. Configuration comments, formatting, and unknown items are preserved, and isolated comments associated with deleted items are left at the end. If an existing `status.json` is present, it takes precedence.
+You can specify the main window's startup position/size and plugin GUI placement method in `%LOCALAPPDATA%\cat-plugin-player\config.toml`. Please edit it after closing the application. Session and favorite selection states are saved in `status.json` in the same directory, and regular saves do not overwrite the TOML. If status items are mixed in the old TOML, they will be migrated on first launch, the original file saved as `config.toml.before-status-migration.bak`, and only status items removed. Configuration comments, format, and unknown items are preserved, and independent comments attached to deleted items are moved to the end. If an existing `status.json` is present, it takes precedence.
 
 ```toml
 [window.main]
@@ -112,89 +115,82 @@ height = 800.0
 placement = "right_then_bottom_right"
 ```
 
-The main window's `x` and `y` are logical coordinates and are used as the startup position if both are specified. If omitted, it uses the traditional initial position. `width` and `height` are the inner width and height of the main window (logical coordinates). Either can be specified; if omitted, or if values are 0 or less, or non-finite, they revert to 900 width and 600 height. Changes are reflected on the next startup. The plugin placement method is currently `right_then_bottom_right` only, and the default behavior is the same if omitted. GUI size and placement are calculated based on the actual window frame, screen work area, and DPI. Automatic saving of manually moved main window or GUI positions, or per-plugin position specification, is not performed.
+The main window's `x` and `y` are logical coordinates, used as the startup position if both are specified. If omitted, it uses the traditional initial position. `width` and `height` are the inner width/height (logical coordinates) of the main window. Either can be specified alone; omitted values or values <= 0 / non-finite values revert to a width of 900 and height of 600. Changes are reflected on next launch. The plugin placement method is currently only `right_then_bottom_right`; omitting it results in the same behavior. GUI size and placement are calculated based on the actual window frame, screen work area, and DPI. Automatic saving of manually moved main window/GUI positions and per-plugin position specification are not implemented.
 
-## Check & Update Latest Version from Command Line
+## Local Build and Execution
+
+Clone this app, `uapmd`, `clap-mml-render-tui`, and `clap-mml-play-server` into the same parent directory, then run from this app's directory. TUI's `app` / `patches` and play-server's `core-lib` / `server-config` are always referenced locally from Cargo.toml. Play-server requires `prepare_clap_patch_state` / `PatchStateError`, and TUI's `cmrt-patches` requires their re-export. Insufficient checkout or API will result in a build error; automatic switching to Git versions is not performed.
 
 ```powershell
-cat-plugin-player check
-cat-plugin-player update
+cargo build --release
+& ./target/release/cat-plugin-player.exe
 ```
 
-## Note *This text was generated by AI and is hard to read. I plan to revise it later.*
-- Without arguments, the GUI starts as usual. `--help` and `--version` are also available.
-- `check` compares the exe's build commit with `main` branch of `cat2151/cat-plugin-player` on GitHub. `up-to-date` means they match, `update available` means they don't (it doesn't determine if commits are newer/older or compare uncommitted changes). If successful, the exit code is 0; communication failures etc. result in 1.
-- `update` uses `cat-self-update-lib`, the same as the referenced project clap-mml-render-tui. On Windows, it runs `cargo install --force --git https://github.com/cat2151/cat-plugin-player` in a separate console. After starting, this command exits. Check the success or failure of the update in the separate console.
-- The update destination is Cargo's installation directory (usually `$CARGO_HOME/bin`, or `$HOME/.cargo/bin` if not set). It does not replace the exe in `target/release`. After completion, manually launch `cat-plugin-player` from the installation directory.
-- Updating requires Git, Rust/Cargo, `python`, CMake, Microsoft C++ Build Tools, and UAPMD source. The UAPMD location is selected in the order: environment variable `UAPMD_DIR` → `[build]`'s `uapmd_dir` in `%LOCALAPPDATA%\cat-plugin-player\config.toml` → the location during this exe's build. It is converted to an absolute path and passed to Cargo for the update as environment variable `UAPMD_DIR`. UAPMD itself is not updated.
-- You can specify in config as follows (replace the path with your actual checkout location). For relative paths, it's relative to the directory containing config.toml. GUI session saves do not overwrite config.toml.
+If UAPMD is not in the sibling `uapmd` directory, first set `$env:UAPMD_DIR = 'X:\projects\uapmd'`. The UAPMD location during build is specified via environment variable. `config.toml` is not read as a build setting.
 
-```toml
-[build]
-uapmd_dir = 'X:\projects\uapmd'
-```
+Do not use `cargo install`; directly execute the `exe` generated in the default `target/release`. The build uses local code (including uncommitted changes) and existing `target/shim`, but source changes may require re-configuration/re-build. Shim DLLs are bundled with the exe and extracted to a cache directory for loading when the GUI starts.
 
-## Note *This text was generated by AI and is hard to read. I plan to revise it later.*
-- When running `cargo install --force --git https://github.com/cat2151/cat-plugin-player` directly, it does not read the config. In PowerShell, first set `$env:UAPMD_DIR = 'X:\projects\uapmd'`. If not set, the build will look for `uapmd` next to the package obtained by Cargo, so placing UAPMD in the current directory where Cargo is run will not resolve it.
-- To allow launching from the installation directory, the built shim DLL is bundled with the exe. It's extracted to the user's cache directory and loaded when the GUI starts. `check` / `update` do not launch the GUI, audio, or plugins.
+Refer to [ADR 0012](docs/adr/0012-local-dependencies-and-release-execution.md) for the 3-repo dependency structure and operational policy. Local switching of TUI is not required for building cat. If building across repos with TUI itself, use TUI's existing `python scripts/cross_repo_local.py on` procedure; 'off' is a human task. Local references use uncommitted changes, and Cargo.lock does not fix the contents of each checkout. When verifying, record the HEAD and differences of each repo.
+
+Launch the GUI without arguments. `--help` and `--version` are also available.
 
 # Future Brainstorming
-- *May change based on mood.*
-- Leverage the strength of VST3 and GUI support, which `cmrt` lacks.
+- ※Subject to change based on mood
+- Enhance strengths not present in cmrt, such as VST3 and GUI support
   - Automated GUI operation?
-    - Log GUI operations and reproduce snappy TUI operations with `cmrt`? Provide hints for per-plugin custom handling?
-  - Experiment with `egui`.
+    - Log GUI operations and reproduce quick TUI operations in cmrt? Provide hints for plugin-specific customization?
+  - Experiment with egui
     - Keyboard display?
     - Grid sequencer?
-- Utilize various `cmrt` crates to do various things.
-  - *This refines the crates and benefits from their use, making it a win-win.*
+- Utilize various cmrt crates to achieve various goals
+  - ※This will also refine the crates, and we benefit from using them, so it's a win-win.
   - Patch selector
-    - Can detect preset patches for CLAP audio plugins.
+    - Detect preset patches for CLAP audio plugins.
   - CLI import / export
-    - The `cmrt` keyboard screen can play with one command by specifying patch, effect, arpeggio, etc., from the CLI. Make the same possible (to the extent that it plays just by changing `cmrt` to `cat-plugin-player`).
-      - Frequent breaking changes are acceptable. Manual migration work is possible later. Better than being stuck and hindering progress for fear of change.
+    - The cmrt keyboard screen can play sounds in one go from the CLI, specifying patches, effects, arpeggios, etc. Make the same possible (to the extent of being able to play just by changing cmrt to cat-plugin-player).
+      - Frequent destructive changes are acceptable. Manual migration is possible later. Better than being paralyzed by fear of change and halting progress.
 
 # Concept, What We Aim For
-- Instrument
-  - For example, a synthesizer with a MIDI keyboard makes sound when you turn it on and press a key.
+- Musical Instrument
+  - For example, a synthesizer with a MIDI keyboard makes sound when you power it on and press a key.
     - We aim for that level of ease of use.
-      - Minimize operations to produce sound.
+      - Minimize operations until sound is produced.
 - Sounding
-  - We aim to maintain "it sounds on the author's environment" as much as possible.
+  - We aim to maintain "it plays in the author's environment" as much as possible.
 - Immediate Sound
-  - From app launch to sound output, a perceived 0.2 seconds. We prioritize the fastest playback.
-    - Processing like GUI display preparation is done after the sound.
-      - Sound playing before GUI display could be called a sound version of a splash screen.
-    - Requires directly running a release-built exe (via `cargo` adds timestamp checks, and debug builds add debug code, both adding to startup latency).
-- Educational Use
-  - More oriented towards educational use than commercial.
+  - From app launch to sound production, an perceived 0.2 seconds. Playback is optimized for speed.
+    - Processes like GUI display preparation are performed after the sound starts.
+      - Sound playing before GUI display might be considered the audio equivalent of a splash screen.
+    - A release-built exe must be run directly (cargo adds timestamp checks, debug builds add debug code, both cause startup delay).
+- Educational
+  - It's oriented more towards educational use than commercial use.
 - Experimentation, Exploration, Personal Use
-  - Frequent breaking changes.
+  - Destructive changes will be made frequently.
 
 # Random Thoughts Corner
-- *Related to the concept.*
-- I like audio plugin presets.
+- ※Related to the concept
+- I love audio plugin presets.
   - Because they are reproducible.
-  - Because they are shared freely, everyone benefits.
-- I want to provide an instrument UX.
+  - Because they are shared freely, benefiting everyone.
+- I want to provide a musical instrument UX.
   - I want to provide an instrument UX, not a DAW UX.
-- What is an instrument?
-  - It's the combination of each layer from the audio plugin to the PC keyboard.
+- What is a musical instrument?
+  - It's a combination of each layer from the audio plugin to the PC keyboard.
     - There are intermediate layers.
-      - These are the plugin host and the performance UI.
-        - This is a layer where vibecoding is possible.
-        - Building this can improve UX.
+      - These are the plugin host and playback UI.
+        - This is a layer where "vibe coding" can be done.
+        - Building this can improve the UX.
 - For whom is this instrument?
   - Cats, babies.
-    - Meaning, the target audience broadly includes beginners, even to the extent of cats and babies (e.g., Android tablets).
-  - *This is purely metaphorical. Whether it actually runs on Android tablets is unconfirmed. The likelihood of effort to make it run on Android if it doesn't is also low.*
+    - This means extending the target range to beginners, even including cats and babies (e.g., Android tablets) as a metaphor.
+  - ※This is merely a metaphor. Whether it actually runs on an Android tablet is unconfirmed. The likelihood of striving to make it work on Android if it doesn't is also low.
 
 # Out of Scope, What We Don't Aim For
 - Robustness
   - Absolutely no bugs, the app never crashes.
   - Full compatibility. Loads all past settings and data and operates perfectly.
 - Features
-  - Equipped with every imaginable feature. Usable for all purposes.
+  - Equipped with every conceivable feature. Usable for all purposes.
 - Convenience
   - Pursuing convenience and ease of use to the extreme.
 - Performance
