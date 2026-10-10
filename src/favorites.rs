@@ -78,6 +78,10 @@ impl App {
                 FavoriteCapture {
                     sequence_pattern: self.sequence_pattern,
                     sweep_cc1: instance.sweep_cc1,
+                    selected_sequence: Some(
+                        self.sequence_pattern.selection(self.selected_sequence),
+                    ),
+                    mml: Some(self.mml_input.confirmed.clone()),
                 },
             )
         })();
@@ -153,6 +157,8 @@ impl App {
             FavoriteCapture {
                 sequence_pattern: self.sequence_pattern,
                 sweep_cc1: instance.sweep_cc1,
+                selected_sequence: Some(self.sequence_pattern.selection(self.selected_sequence)),
+                mml: Some(self.mml_input.confirmed.clone()),
             },
         )?;
         self.mark_favorite(id, &favorite);
@@ -178,6 +184,12 @@ impl App {
             .find(|f| f.id == favorite_id)
             .ok_or("favorite not found")?
             .clone();
+        let playback = favorite.prepare_playback(
+            &self.mml_input,
+            self.sequence_pattern,
+            self.selected_sequence,
+            self.sample_rate(),
+        )?;
         if favorite.effect && self.instrument_id().is_none() {
             return Err("Load an instrument first".into());
         }
@@ -199,7 +211,7 @@ impl App {
             })
             .map(|i| i.id);
         if let Some(id) = existing {
-            self.apply_favorite(id, &favorite, &state)?;
+            self.apply_favorite(id, &favorite, &state, playback)?;
         } else {
             let index = favorite.plugin.find(&self.plugins).ok_or_else(|| {
                 format!(
@@ -210,15 +222,24 @@ impl App {
             self.plugins[index].kind = kind;
             self.load_plugin(index);
             if let Some(pending) = &mut self.pending {
-                pending.purpose = crate::session_load::LoadPurpose::Favorite(favorite, state);
+                pending.purpose =
+                    crate::session_load::LoadPurpose::Favorite(favorite, state, playback);
             }
         }
         Ok(())
     }
 
-    fn apply_favorite(&mut self, id: i32, favorite: &Favorite, state: &[u8]) -> Result<(), String> {
+    fn apply_favorite(
+        &mut self,
+        id: i32,
+        favorite: &Favorite,
+        state: &[u8],
+        playback: crate::favorite_playback::Playback,
+    ) -> Result<(), String> {
         self.pause_audio();
         let old_sequence = self.sequence_pattern;
+        let old_selected = self.selected_sequence;
+        let old_input = self.mml_input.clone();
         let old_sweep = self
             .instances
             .iter()
@@ -234,12 +255,14 @@ impl App {
                 .find(|i| i.id == id)
                 .unwrap()
                 .sweep_cc1 = false;
-            self.sequence_pattern = favorite.playback_pattern(self.sequence_pattern);
+            self.apply_playback(playback);
             self.resume_audio()
         })();
         if let Err(e) = result {
             self.pause_audio();
             self.sequence_pattern = old_sequence;
+            self.selected_sequence = old_selected;
+            self.mml_input = old_input;
             self.instances
                 .iter_mut()
                 .find(|i| i.id == id)
@@ -249,6 +272,9 @@ impl App {
                 .as_ref()
                 .map(|data| self.host.load_state(id, data))
                 .transpose();
+            if rollback.is_err() {
+                self.unsafe_state.insert(id);
+            }
             let resumed = self.resume_audio();
             return Err(format!(
                 "{e}{}{}",

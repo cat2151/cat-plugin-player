@@ -191,6 +191,8 @@ fn native_vaporizer_round_trip_deduplicates_and_tuning_edits_survive() {
                 crate::favorites_store::FavoriteCapture {
                     sequence_pattern: entry.sequence_pattern,
                     sweep_cc1: true,
+                    selected_sequence: None,
+                    mml: None,
                 },
             )
             .unwrap();
@@ -265,6 +267,8 @@ fn native_vaporizer_round_trip_deduplicates_and_tuning_edits_survive() {
                 crate::favorites_store::FavoriteCapture {
                     sequence_pattern: pattern,
                     sweep_cc1: true,
+                    selected_sequence: None,
+                    mml: None,
                 },
             )
             .unwrap();

@@ -18,6 +18,10 @@ pub struct Favorite {
     pub registered_at: u64,
     #[serde(default)]
     pub sequence_pattern: SequencePattern,
+    #[serde(default)]
+    pub selected_sequence: Option<SequencePattern>,
+    #[serde(default)]
+    pub mml: Option<String>,
 }
 
 fn default_favorite() -> bool {
@@ -27,7 +31,7 @@ fn default_favorite() -> bool {
 impl Favorite {
     pub fn playback_pattern(&self, current: SequencePattern) -> SequencePattern {
         if self.effect
-            || matches!(current, SequencePattern::Off | SequencePattern::Custom)
+            || current == SequencePattern::Off
             || self.sequence_pattern == SequencePattern::Off
         {
             current
@@ -49,6 +53,10 @@ struct FavoriteMetadata {
     registered_at: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     sequence_pattern: Option<SequencePattern>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    selected_sequence: Option<SequencePattern>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mml: Option<String>,
 }
 
 impl From<Favorite> for FavoriteMetadata {
@@ -62,6 +70,12 @@ impl From<Favorite> for FavoriteMetadata {
             favorite: favorite.favorite,
             registered_at: favorite.registered_at,
             sequence_pattern: (!favorite.effect).then_some(favorite.sequence_pattern),
+            selected_sequence: if favorite.effect {
+                None
+            } else {
+                favorite.selected_sequence
+            },
+            mml: if favorite.effect { None } else { favorite.mml },
         }
     }
 }
@@ -71,10 +85,12 @@ pub struct Library {
     pub entries: Vec<Favorite>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub(crate) struct FavoriteCapture {
     pub sequence_pattern: SequencePattern,
     pub sweep_cc1: bool,
+    pub selected_sequence: Option<SequencePattern>,
+    pub mml: Option<String>,
 }
 
 impl From<SequencePattern> for FavoriteCapture {
@@ -82,6 +98,8 @@ impl From<SequencePattern> for FavoriteCapture {
         Self {
             sequence_pattern,
             sweep_cc1: false,
+            selected_sequence: None,
+            mml: None,
         }
     }
 }
@@ -143,10 +161,16 @@ impl Library {
                 history: false,
                 favorite: true,
                 registered_at: 0,
+                selected_sequence: if effect {
+                    None
+                } else {
+                    capture.selected_sequence
+                },
+                mml: if effect { None } else { capture.mml },
                 sequence_pattern: if effect {
                     SequencePattern::Off
                 } else {
-                    capture.sequence_pattern.persisted()
+                    capture.sequence_pattern
                 },
             },
             state,
@@ -175,10 +199,16 @@ impl Library {
                 history: true,
                 favorite: false,
                 registered_at: crate::history::now(),
+                selected_sequence: if effect {
+                    None
+                } else {
+                    capture.selected_sequence
+                },
+                mml: if effect { None } else { capture.mml },
                 sequence_pattern: if effect {
                     SequencePattern::Off
                 } else {
-                    capture.sequence_pattern.persisted()
+                    capture.sequence_pattern
                 },
             },
             state,
@@ -199,6 +229,18 @@ impl Library {
             if entry.plugin.format == favorite.plugin.format
                 && entry.plugin.id == favorite.plugin.id
                 && entry.effect == favorite.effect
+                && (favorite.effect
+                    || entry.mml.as_deref().unwrap_or("") == favorite.mml.as_deref().unwrap_or(""))
+                && (favorite.effect
+                    || (automatic
+                        && (entry.sequence_pattern == SequencePattern::Off
+                            || favorite.sequence_pattern == SequencePattern::Off))
+                    || entry
+                        .sequence_pattern
+                        .selection(entry.selected_sequence.unwrap_or_default())
+                        == favorite
+                            .sequence_pattern
+                            .selection(favorite.selected_sequence.unwrap_or_default()))
                 && (favorite.effect
                     || entry.sequence_pattern == favorite.sequence_pattern
                     // Stop is transport state, not a new automatic favorite.
@@ -321,3 +363,7 @@ mod tests;
 
 #[path = "favorites_order.rs"]
 mod order;
+
+#[cfg(test)]
+#[path = "favorites_mml_store_tests.rs"]
+mod mml_tests;

@@ -74,6 +74,7 @@ impl EventBuf {
 }
 
 pub struct Sequencer {
+    preview: crate::preview::Player,
     startup_remaining: usize,
     sample_rate: u32,
     sample_remainder: u64,
@@ -93,6 +94,7 @@ pub struct Sequencer {
 impl Sequencer {
     pub fn new(sample_rate: u32) -> Self {
         Self {
+            preview: Default::default(),
             startup_remaining: 0,
             sample_rate,
             sample_remainder: 0,
@@ -129,6 +131,10 @@ impl Sequencer {
 
     pub fn set_phrase(&mut self, phrase: Option<std::sync::Arc<crate::timed_sequence::Phrase>>) {
         self.timed.set_phrase(phrase);
+    }
+
+    pub(crate) fn preview(&mut self, notes: crate::preview::Notes) {
+        self.preview.replace(notes);
     }
 
     fn samples(&mut self, micros: u32) -> usize {
@@ -181,6 +187,19 @@ impl Sequencer {
         frames: usize,
         out: &mut EventBuf,
     ) {
+        if self.preview.active() {
+            if !self.timed.reset(out) {
+                return;
+            }
+            self.release(out);
+            if self.sounding.iter().any(|&n| n) {
+                return;
+            }
+            self.restart_pending = true;
+            self.preview.render(frames, out);
+            self.current_velocity = self.preview.velocity;
+            return;
+        }
         let skipped = frames.min(self.startup_remaining);
         self.startup_remaining -= skipped;
         if skipped > 0 && skipped == frames {

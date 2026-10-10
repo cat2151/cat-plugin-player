@@ -18,6 +18,8 @@ fn restored_selection_requires_the_saved_slot_and_plugin_identity() {
         favorite: true,
         registered_at: 0,
         sequence_pattern: Default::default(),
+        selected_sequence: None,
+        mml: None,
     };
     let effect = Favorite {
         id: "effect".into(),

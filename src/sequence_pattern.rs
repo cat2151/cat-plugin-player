@@ -59,14 +59,6 @@ impl SequencePattern {
             _ => Self::Steps,
         }
     }
-    /// Input phrases are transient, so their identity is not persisted.
-    pub fn persisted(self) -> Self {
-        if self == Self::Custom {
-            Self::Steps
-        } else {
-            self
-        }
-    }
 }
 
 #[cfg(test)]

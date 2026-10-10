@@ -3,7 +3,7 @@ use crate::{timed_sequence::Phrase, App, SequencePattern};
 use eframe::egui;
 use std::sync::Arc;
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct MmlInput {
     pub open: bool,
     pub confirmed: String,
@@ -11,10 +11,23 @@ pub struct MmlInput {
     pub error: Option<String>,
     pub phrase: Option<Arc<Phrase>>,
     focus: bool,
+    cursor_preview: crate::mml_preview::CursorPreview,
 }
 
 impl MmlInput {
+    pub fn restore_phrase(&mut self, rate: u32, selected: SequencePattern) -> Result<(), String> {
+        self.phrase = if self.confirmed.trim().is_empty() {
+            if selected == SequencePattern::Custom {
+                return Err("Custom requires saved MML".into());
+            }
+            None
+        } else {
+            Some(Arc::new(Phrase::parse(&self.confirmed, rate)?))
+        };
+        Ok(())
+    }
     pub fn open(&mut self) {
+        self.cursor_preview = Default::default();
         self.buffer.clone_from(&self.confirmed);
         self.error = None;
         self.open = true;
@@ -39,13 +52,31 @@ impl MmlInput {
 }
 
 impl App {
+    pub(crate) fn open_mml_editor(&mut self) {
+        self.stop_sequence_for_mml();
+        self.mml_input.open();
+    }
+
+    fn stop_sequence_for_mml(&mut self) {
+        if self.sequence_pattern != SequencePattern::Off {
+            self.selected_sequence = self.sequence_pattern;
+            self.sequence_pattern = SequencePattern::Off;
+            for instance in &self.instances {
+                if let Some(voice) = &instance.voice {
+                    voice.set_sequence(SequencePattern::Off);
+                }
+            }
+            self.save_session();
+        }
+    }
+
     pub(crate) fn mml_editor(&mut self, ctx: &egui::Context) {
         if !self.mml_input.open
             && !ctx.wants_keyboard_input()
             && !self.actions_busy()
             && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::I))
         {
-            self.mml_input.open();
+            self.open_mml_editor();
             ctx.input_mut(|i| {
                 i.events
                     .retain(|e| !matches!(e, egui::Event::Text(t) if t == "i" || t == "I"))
@@ -54,11 +85,14 @@ impl App {
         if !self.mml_input.open {
             return;
         }
+        self.stop_sequence_for_mml();
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
+            self.stop_mml_preview();
             self.mml_input.cancel();
             return;
         }
         let ready = !self.actions_busy();
+        let rate = self.sample_rate();
         let mut confirm =
             ready && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter));
         let mut cancel = false;
@@ -68,12 +102,29 @@ impl App {
             .default_width(520.0)
             .show(ctx, |ui| {
                 ui.label("Enter: confirm   Esc: cancel");
-                let response = ui.add(
-                    egui::TextEdit::multiline(&mut self.mml_input.buffer)
-                        .id_salt("mml_editor_text")
-                        .desired_rows(5)
-                        .desired_width(f32::INFINITY),
-                );
+                let output = (egui::TextEdit::multiline(&mut self.mml_input.buffer)
+                    .id_salt("mml_editor_text")
+                    .desired_rows(5)
+                    .desired_width(f32::INFINITY))
+                .show(ui);
+                let response = output.response;
+                if ready {
+                    let request = output.cursor_range.and_then(|range| {
+                        self.mml_input.cursor_preview.refresh(
+                            &self.mml_input.buffer,
+                            range.primary.ccursor.index,
+                            rate,
+                            response.changed(),
+                        )
+                    });
+                    if let Some(notes) = request {
+                        for instance in &self.instances {
+                            if let Some(voice) = &instance.voice {
+                                voice.preview(notes);
+                            }
+                        }
+                    }
+                }
                 if self.mml_input.focus {
                     response.request_focus();
                     self.mml_input.focus = false;
@@ -89,13 +140,23 @@ impl App {
                 });
             });
         if cancel {
+            self.stop_mml_preview();
             self.mml_input.cancel();
         } else if confirm {
             self.confirm_mml();
         }
     }
 
+    pub(crate) fn stop_mml_preview(&self) {
+        for instance in &self.instances {
+            if let Some(voice) = &instance.voice {
+                voice.preview(None);
+            }
+        }
+    }
+
     fn confirm_mml(&mut self) {
+        self.stop_mml_preview();
         let Some(phrase) = self.mml_input.convert(self.sample_rate()) else {
             return;
         };
@@ -123,6 +184,7 @@ impl App {
         self.mml_input.confirmed.clone_from(&self.mml_input.buffer);
         self.mml_input.cancel();
         self.status = "MML / chord phrase ready (Play / Stop)".into();
+        self.save_session();
     }
 }
 

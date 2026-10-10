@@ -63,6 +63,7 @@ pub struct Voice {
     cc1_source: Arc<AtomicU8>,
     rendered: Arc<AtomicBool>,
     scope: crate::scope::Scope,
+    preview: Arc<crate::preview::Mailbox>,
 }
 
 impl Voice {
@@ -76,6 +77,9 @@ impl Voice {
         start_delay: std::time::Duration,
         phrase: Option<Arc<crate::timed_sequence::Phrase>>,
     ) -> Result<Self, String> {
+        let preview = Arc::new(crate::preview::Mailbox::default());
+        let preview_flag = preview.clone();
+        let mut seen_preview = 0;
         let channels = output.config.channels as usize;
         let sequence_pattern = Arc::new(AtomicU64::new(sequence_pattern as u64));
         let sequence_flag = Arc::clone(&sequence_pattern);
@@ -137,6 +141,9 @@ impl Voice {
                     let block = MAX_BLOCK_FRAMES as usize * channels;
                     for chunk in data.chunks_mut(block) {
                         ump.clear();
+                        if let Some(notes) = preview_flag.poll(&mut seen_preview) {
+                            sequencer.preview(notes);
+                        }
                         sequencer.render(pattern, velocity, chunk.len() / channels, &mut ump);
                         let rendered = render.process(ump.as_slice(), chunk, channels);
                         if let Some(source) =
@@ -179,7 +186,12 @@ impl Voice {
             cc1_source,
             rendered,
             scope,
+            preview,
         })
+    }
+
+    pub(crate) fn preview(&self, notes: Option<crate::preview::Notes>) {
+        self.preview.publish(notes);
     }
 
     pub fn sequence_pattern(&self) -> SequencePattern {

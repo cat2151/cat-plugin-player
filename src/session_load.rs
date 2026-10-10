@@ -8,7 +8,11 @@ pub(crate) struct PendingLoad {
 pub(crate) enum LoadPurpose {
     Manual,
     Restore,
-    Favorite(crate::favorites_store::Favorite, Vec<u8>),
+    Favorite(
+        crate::favorites_store::Favorite,
+        Vec<u8>,
+        crate::favorite_playback::Playback,
+    ),
     Random(crate::random_patch_apply::Replacement),
 }
 
@@ -108,7 +112,7 @@ impl App {
                 self.random_instance_created(plugin, replacement, id, error);
                 return;
             }
-            LoadPurpose::Favorite(favorite, state) => Some((favorite, state)),
+            LoadPurpose::Favorite(favorite, state, playback) => Some((favorite, state, playback)),
             LoadPurpose::Manual | LoadPurpose::Restore => None,
         };
         let label = format!("{} [{}]", plugin.name, plugin.format);
@@ -118,7 +122,7 @@ impl App {
         }
         let key = config::PluginKey::from_plugin(&plugin);
         let restored = match &favorite {
-            Some((_, state)) => self.host.load_state(id, state),
+            Some((_, state, _)) => self.host.load_state(id, state),
             None => self.restore_plugin_state(id, &key),
         };
         if let Err(error) = restored {
@@ -142,15 +146,20 @@ impl App {
         }
         let wait_for_effect = self.restoring && !self.restore_effect.is_empty();
         let old_sequence = self.sequence_pattern;
-        if let Some((favorite, _)) = &favorite {
-            self.sequence_pattern = favorite.playback_pattern(self.sequence_pattern);
-        }
+        let old_selected = self.selected_sequence;
+        let old_input = self.mml_input.clone();
+        let favorite = favorite.map(|(favorite, state, playback)| {
+            self.apply_playback(playback);
+            (favorite, state)
+        });
         let new_instrument = (kind == PluginKind::Instrument).then_some(&key);
         let prepared = self.prepare_voice(instrument, &effects, wait_for_effect, new_instrument);
         let voice = match prepared {
             Ok(voice) => voice,
             Err(error) => {
                 self.sequence_pattern = old_sequence;
+                self.selected_sequence = old_selected;
+                self.mml_input = old_input;
                 self.host.destroy_instance(id);
                 self.load_failed(format!("Could not connect {label}: {error}"));
                 return;

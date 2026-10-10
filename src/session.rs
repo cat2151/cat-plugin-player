@@ -130,7 +130,11 @@ impl App {
     }
 
     pub(crate) fn save_session(&mut self) {
-        if !self.unsafe_state.is_empty() || self.random_busy() {
+        if !self.unsafe_state.is_empty()
+            || self.random_busy()
+            || (self.selected_sequence == crate::SequencePattern::Custom
+                && self.mml_input.phrase.is_none())
+        {
             return;
         }
         self.selected_sequence = self.sequence_pattern.selection(self.selected_sequence);
@@ -171,11 +175,9 @@ impl App {
                     .collect(),
                 ..Default::default()
             },
-            sequence_pattern: self.sequence_pattern.persisted(),
-            selected_sequence: self
-                .sequence_pattern
-                .selection(self.selected_sequence)
-                .persisted(),
+            sequence_pattern: self.sequence_pattern,
+            selected_sequence: self.sequence_pattern.selection(self.selected_sequence),
+            mml: self.mml_input.confirmed.clone(),
             sequence_velocity: self.sequence_velocity,
             sequence_modulation: self.sequence_modulation,
             ..Default::default()

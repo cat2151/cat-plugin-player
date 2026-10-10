@@ -380,7 +380,7 @@ fn effects_omit_playback_deduplicate_across_patterns_and_preserve_legacy_history
     );
     assert_eq!(
         instrument.playback_pattern(SequencePattern::Custom),
-        SequencePattern::Custom
+        SequencePattern::GuitarArpeggio
     );
     assert_eq!(
         instrument.playback_pattern(SequencePattern::Steps),

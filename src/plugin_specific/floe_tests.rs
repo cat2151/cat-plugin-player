@@ -105,9 +105,11 @@ fn sweep_deduplicates_without_changing_state_name_or_pattern_identity() {
     let capture = FavoriteCapture {
         sequence_pattern: SequencePattern::Steps,
         sweep_cc1: true,
+        selected_sequence: None,
+        mml: None,
     };
     let same = library
-        .add_automatic(&config, plugin(), false, &played, capture)
+        .add_automatic(&config, plugin(), false, &played, capture.clone())
         .unwrap();
     assert_eq!(same.id, first.id);
     assert_eq!(same.name, "My harp");
@@ -120,7 +122,7 @@ fn sweep_deduplicates_without_changing_state_name_or_pattern_identity() {
             &played,
             FavoriteCapture {
                 sequence_pattern: SequencePattern::GuitarArpeggio,
-                ..capture
+                ..capture.clone()
             },
         )
         .unwrap();
@@ -178,6 +180,8 @@ fn saved_floe_sweep_snapshots_keep_two_patterns() {
                 FavoriteCapture {
                     sequence_pattern: entry.sequence_pattern,
                     sweep_cc1: true,
+                    selected_sequence: None,
+                    mml: None,
                 },
             )
             .unwrap();

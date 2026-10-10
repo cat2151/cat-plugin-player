@@ -19,6 +19,8 @@ pub struct Status {
     #[serde(default)]
     pub selected_sequence: SequencePattern,
     #[serde(default)]
+    pub mml: String,
+    #[serde(default)]
     pub sequence_velocity: SequenceVelocity,
     #[serde(default)]
     pub sequence_modulation: SequenceModulation,
@@ -46,6 +48,7 @@ impl Default for Status {
             on_right: default_on_right(),
             sequence_pattern: Default::default(),
             selected_sequence: Default::default(),
+            mml: String::new(),
             sequence_velocity: Default::default(),
             sequence_modulation: Default::default(),
             last_played: None,

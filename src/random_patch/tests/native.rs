@@ -7,6 +7,7 @@ use crate::{
 use std::path::{Path, PathBuf};
 
 mod editor;
+mod favorite_mml;
 mod real_surge;
 
 fn key(mode: &str) -> PluginKey {

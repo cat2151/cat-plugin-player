@@ -51,7 +51,8 @@ impl App {
         let mut velocity = original_velocity;
         let original_modulation = self.sequence_modulation;
         let mut modulation = original_modulation;
-        let ready = !self.actions_busy();
+        let ready = !self.actions_busy() && !self.mml_input.open;
+        let mut open_mml = false;
         let has_audio = self.instances.iter().any(|i| i.voice.is_some());
         let shortcut =
             take_transport_shortcut(ui.ctx(), ready && has_audio && !self.mml_input.open);
@@ -66,10 +67,13 @@ impl App {
             ui.horizontal_wrapped(|ui| {
                 ui.label("Sequence");
                 if ui
-                    .add_enabled(ready, egui::Button::new("MML / Chord (i)"))
+                    .add_enabled(ready, egui::Button::new("Chord"))
+                    .on_hover_text(
+                        "Chord / MML input\nShortcut: i\nEnter chord notation and MML in the same field",
+                    )
                     .clicked()
                 {
-                    self.mml_input.open();
+                    open_mml = true;
                 }
                 ui.add_enabled_ui(ready, |ui| {
                     if ui.button("<").on_hover_text("Previous sequence").clicked() {
@@ -193,6 +197,9 @@ impl App {
                 }
             }
             self.save_session();
+        }
+        if open_mml {
+            self.open_mml_editor();
         }
     }
 }

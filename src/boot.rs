@@ -12,6 +12,7 @@ impl App {
             effect_bypassed,
             sequence_pattern,
             selected_sequence,
+            mml,
             sequence_velocity,
             sequence_modulation,
             favorite_selection,
@@ -32,6 +33,7 @@ impl App {
                 status.effect_bypassed,
                 status.sequence_pattern,
                 status.sequence_pattern.selection(status.selected_sequence),
+                status.mml,
                 status.sequence_velocity,
                 status.sequence_modulation,
                 status.favorites,
@@ -48,6 +50,7 @@ impl App {
                 false,
                 crate::SequencePattern::default(),
                 crate::SequencePattern::default(),
+                String::new(),
                 crate::SequenceVelocity::default(),
                 crate::SequenceModulation::default(),
                 crate::status::FavoriteSelection::default(),
@@ -68,6 +71,17 @@ impl App {
             Err(error) => (None, format!("No audio: {error}")),
         };
         startup::mark(Stage::DeviceReady);
+        let mut mml_input = crate::mml_input::MmlInput::default();
+        mml_input.confirmed = mml;
+        let rate = output
+            .as_ref()
+            .map_or(crate::FALLBACK_SAMPLE_RATE, |o| o.sample_rate());
+        let restored_mml =
+            mml_input.restore_phrase(rate, sequence_pattern.selection(selected_sequence));
+        let config_error = restored_mml
+            .err()
+            .map(|e| format!("Could not restore MML: {e}"))
+            .or(config_error);
         Self {
             instances: Vec::new(),
             window_config,
@@ -83,7 +97,7 @@ impl App {
             sequence_velocity,
             sequence_modulation,
             restore,
-            mml_input: Default::default(),
+            mml_input,
             restored: None,
             restoring: false,
             config_error,

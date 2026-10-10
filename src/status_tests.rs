@@ -206,3 +206,33 @@ fn normal_save_preserves_live_user_edits_byte_for_byte() {
         .exists());
     std::fs::remove_dir_all(directory).unwrap();
 }
+
+#[test]
+fn confirmed_mml_round_trips_with_playing_and_stopped_custom() {
+    let dir = directory();
+    let config = dir.join("config.toml");
+    for mml in ["o5 l8 c", "C F G"] {
+        for transport in [SequencePattern::Custom, SequencePattern::Off] {
+            Status {
+                mml: mml.into(),
+                sequence_pattern: transport,
+                selected_sequence: SequencePattern::Custom,
+                ..Default::default()
+            }
+            .save(&config)
+            .unwrap();
+            let saved = Status::load(&config).unwrap();
+            assert_eq!(saved.mml, mml);
+            assert_eq!(saved.sequence_pattern, transport);
+            assert_eq!(saved.selected_sequence, SequencePattern::Custom);
+            let mut input = crate::mml_input::MmlInput::default();
+            input.confirmed = saved.mml;
+            input
+                .restore_phrase(48000, saved.selected_sequence)
+                .unwrap();
+            assert!(input.phrase.is_some());
+        }
+    }
+    assert_eq!(serde_json::from_str::<Status>("{}").unwrap().mml, "");
+    std::fs::remove_dir_all(dir).unwrap();
+}
