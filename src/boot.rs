@@ -120,6 +120,8 @@ impl App {
             repaint_heartbeat: None,
             random_patch_catalog: Default::default(),
             random_patch: Default::default(),
+            random_effect: Default::default(),
+            random_effect_catalog: Default::default(),
             unsafe_state: Default::default(),
             shutdown: Default::default(),
             #[cfg(test)]

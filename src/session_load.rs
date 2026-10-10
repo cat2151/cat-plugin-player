@@ -14,6 +14,7 @@ pub(crate) enum LoadPurpose {
         crate::favorite_playback::Playback,
     ),
     Random(crate::random_patch_apply::Replacement),
+    RandomEffect(crate::random_effect_apply::Replacement),
 }
 
 impl App {
@@ -108,6 +109,10 @@ impl App {
         };
         let plugin = pending.plugin;
         let favorite = match pending.purpose {
+            LoadPurpose::RandomEffect(prepared) => {
+                self.random_effect_instance_created(plugin, prepared, id, error);
+                return;
+            }
             LoadPurpose::Random(replacement) => {
                 self.random_instance_created(plugin, replacement, id, error);
                 return;

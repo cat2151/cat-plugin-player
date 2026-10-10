@@ -1,4 +1,4 @@
-//! Responsive placement of independent sequence and random patch panes.
+//! Responsive placement of sequence and random preset controls.
 use crate::App;
 use eframe::egui;
 
@@ -7,14 +7,10 @@ const RANDOM_PATCH_WIDTH: f32 = 150.0;
 
 impl App {
     pub(crate) fn playback_controls(&mut self, ui: &mut egui::Ui) {
-        if self.random_patch_catalog.candidates().next().is_none() {
-            self.sequence_controls(ui);
-            return;
-        }
-
         let spacing = ui.spacing().item_spacing.x;
         let sequence_width = ui.available_width() - RANDOM_PATCH_WIDTH - spacing;
         let mut random = false;
+        let mut effect = false;
         if sequence_width >= SEQUENCE_MIN_WIDTH {
             ui.horizontal_top(|ui| {
                 ui.allocate_ui_with_layout(
@@ -25,20 +21,33 @@ impl App {
                 ui.allocate_ui_with_layout(
                     egui::vec2(RANDOM_PATCH_WIDTH, 0.0),
                     egui::Layout::top_down(egui::Align::Min),
-                    |ui| random = self.random_patch_controls(ui),
+                    |ui| (random, effect) = self.random_controls(ui),
                 );
             });
         } else {
             self.sequence_controls(ui);
-            random = self.random_patch_controls(ui);
+            (random, effect) = self.random_controls(ui);
         }
         if random {
             self.start_random_patch(ui.ctx());
         }
+        if effect {
+            self.start_random_effect(ui.ctx());
+        }
     }
 
-    fn random_patch_controls(&self, ui: &mut egui::Ui) -> bool {
-        ui.group(|ui| self.random_patch_catalog.button(ui, self.actions_busy()))
+    fn random_controls(&self, ui: &mut egui::Ui) -> (bool, bool) {
+        ui.group(|ui| {
+            let patch = self.random_patch_catalog.button(ui, self.actions_busy());
+            let count = self.random_effect_catalog.installed(&self.plugins).count();
+            let effect = ui.add_enabled(
+                !self.actions_busy() && self.instrument_id().is_some() && count > 0,
+                egui::Button::new("Random effect"),
+            ).on_hover_text(format!(
+                "Choose from {count} effect presets.\nReplace one randomly chosen connected effect; add the first effect when none is connected.\nKeeps effect order, bypass and playback selection."
+            )).on_disabled_hover_text("Load an instrument and wait for scanning, catalog loading or preset preparation to finish. An eligible CLAP effect preset is required.").clicked();
+            (patch, effect)
+        })
             .inner
     }
 }

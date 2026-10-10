@@ -67,8 +67,13 @@ impl Preparation {
 impl App {
     pub(crate) fn random_busy(&self) -> bool {
         self.random_patch.busy()
+            || self.random_effect.busy()
             || self.pending.as_ref().is_some_and(|pending| {
-                matches!(pending.purpose, crate::session_load::LoadPurpose::Random(_))
+                matches!(
+                    pending.purpose,
+                    crate::session_load::LoadPurpose::Random(_)
+                        | crate::session_load::LoadPurpose::RandomEffect(_)
+                )
             })
     }
 
@@ -77,7 +82,7 @@ impl App {
             self.scanning || self.deferred_scan,
             self.restoring,
             self.pending.is_some(),
-            self.random_patch.busy(),
+            self.random_patch.busy() || self.random_effect.busy(),
         )
     }
 

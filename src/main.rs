@@ -24,6 +24,9 @@ mod plugin_list;
 mod plugin_specific;
 mod plugins_ui;
 mod preview;
+mod random_effect;
+mod random_effect_apply;
+mod random_effect_catalog;
 mod random_patch;
 mod random_patch_apply;
 mod random_patch_catalog;
@@ -148,6 +151,8 @@ struct App {
     repaint_heartbeat: Option<repaint_heartbeat::RepaintHeartbeat>,
     random_patch_catalog: random_patch_catalog::Catalog,
     random_patch: random_patch::Preparation,
+    random_effect: random_effect::Preparation,
+    random_effect_catalog: random_effect_catalog::Catalog,
     unsafe_state: std::collections::HashSet<i32>,
     #[cfg(test)]
     random_failures: Vec<random_patch_apply::Operation>,
@@ -229,6 +234,11 @@ impl eframe::App for App {
         self.initialize_favorites();
         self.capture_plugin_icons(ctx);
         self.poll_random_patch();
+        self.poll_random_effect();
+        self.random_effect_catalog.update(
+            !self.scanning && !self.deferred_scan && !self.restoring,
+            ctx,
+        );
         let rendered = self.instances.iter().any(|instance| {
             instance
                 .voice

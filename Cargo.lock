@@ -785,6 +785,8 @@ dependencies = [
  "clap",
  "clap-mml-render-tui",
  "cmrt-chord",
+ "cmrt-core",
+ "cmrt-patch-select",
  "cmrt-patches",
  "cpal 0.15.3",
  "dirs",
