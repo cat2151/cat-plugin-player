@@ -36,6 +36,8 @@ pub struct Status {
     pub favorites: FavoriteSelection,
     #[serde(default, skip_serializing_if = "BrowserFilter::is_empty")]
     pub patch_browser: BrowserFilter,
+    #[serde(default, skip_serializing_if = "EffectBrowserFilter::is_empty")]
+    pub effect_browser: EffectBrowserFilter,
 }
 
 fn default_on_right() -> bool {
@@ -59,6 +61,7 @@ impl Default for Status {
             effect_bypassed: false,
             favorites: Default::default(),
             patch_browser: Default::default(),
+            effect_browser: Default::default(),
         }
     }
 }
@@ -96,6 +99,37 @@ pub struct PatchIdentity {
 }
 
 impl BrowserFilter {
+    fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+/// Effect browser Category / Kind by name, so a changed catalog degrades to ALL.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct EffectBrowserFilter {
+    #[serde(default)]
+    pub category: String,
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub query: String,
+    /// Chain position of the target slot; instance ids do not survive a restart.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub slot: Option<usize>,
+    /// Preset under the cursor, so arrow keys continue from it after a restart.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected: Option<EffectPresetKey>,
+}
+
+/// Identity of an effect preset across catalog rescans.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct EffectPresetKey {
+    pub plugin_id: String,
+    pub path: PathBuf,
+    pub value: String,
+}
+
+impl EffectBrowserFilter {
     fn is_empty(&self) -> bool {
         *self == Self::default()
     }

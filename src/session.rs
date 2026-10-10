@@ -186,6 +186,7 @@ impl App {
             sequence_velocity: self.sequence_velocity,
             sequence_modulation: self.sequence_modulation,
             patch_browser: self.patch_browser.saved_filter(),
+            effect_browser: self.effect_browser.saved_filter(&self.effect_ids()),
             ..Default::default()
         };
         self.config_error = self

@@ -55,7 +55,7 @@ impl MmlInput {
 
 impl App {
     pub(crate) fn open_mml_editor(&mut self) {
-        if self.mml_input.open || self.patch_browser.open {
+        if self.mml_input.open || self.browser_open() {
             return;
         }
         self.mml_input.sequence_before_open =
@@ -94,7 +94,7 @@ impl App {
 
     pub(crate) fn mml_editor(&mut self, ctx: &egui::Context) {
         if !self.mml_input.open
-            && !self.patch_browser.open
+            && !self.browser_open()
             && !ctx.wants_keyboard_input()
             && !self.actions_busy()
             && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::I))

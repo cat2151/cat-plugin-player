@@ -2,7 +2,7 @@
 use eframe::egui::{InputState, Key, Modifiers};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) enum Step {
+pub(crate) enum Step {
     Left,
     Right,
     Up,
@@ -25,7 +25,7 @@ const DIGITS: [Key; 10] = [
 ];
 
 /// A step and how many times it repeats before any vim-style count is applied.
-pub(super) fn consume_step(input: &mut InputState) -> Option<(Step, usize)> {
+pub(crate) fn consume_step(input: &mut InputState) -> Option<(Step, usize)> {
     [
         (Step::Left, Key::ArrowLeft, Key::H),
         (Step::Right, Key::ArrowRight, Key::L),
@@ -46,7 +46,7 @@ pub(super) fn consume_step(input: &mut InputState) -> Option<(Step, usize)> {
 }
 
 /// Appends a typed digit to the pending count; a leading 0 is not a count.
-pub(super) fn consume_count_digit(input: &mut InputState, count: Option<usize>) -> Option<usize> {
+pub(crate) fn consume_count_digit(input: &mut InputState, count: Option<usize>) -> Option<usize> {
     let digit = DIGITS
         .iter()
         .position(|&key| input.consume_key(Modifiers::NONE, key))?;
@@ -62,7 +62,7 @@ pub(super) fn consume_count_digit(input: &mut InputState, count: Option<usize>) 
 }
 
 /// The cell reached from `at`; with nothing selected yet, every step starts at the first cell.
-pub(super) fn next(at: Option<usize>, len: usize, columns: usize, step: Step) -> usize {
+pub(crate) fn next(at: Option<usize>, len: usize, columns: usize, step: Step) -> usize {
     let Some(at) = at else {
         return 0;
     };
@@ -80,7 +80,7 @@ pub(super) fn next(at: Option<usize>, len: usize, columns: usize, step: Step) ->
 }
 
 /// `times` steps stop early at an edge; `len` steps always reach it.
-pub(super) fn next_by(
+pub(crate) fn next_by(
     at: Option<usize>,
     len: usize,
     columns: usize,

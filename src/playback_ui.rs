@@ -6,13 +6,18 @@ const SEQUENCE_MIN_WIDTH: f32 = 520.0;
 const RANDOM_PATCH_WIDTH: f32 = 150.0;
 
 impl App {
+    /// A browser window takes the keys the main window would otherwise handle.
+    pub(crate) fn browser_open(&self) -> bool {
+        self.patch_browser.open || self.effect_browser.open
+    }
+
     /// Single-letter shortcuts of the main window; off while a child window or text field takes keys.
     pub(crate) fn main_shortcut(&self, ctx: &egui::Context, key: egui::Key) -> bool {
         let editing_text = ctx
             .memory(|memory| memory.focused())
             .is_some_and(|id| egui::text_edit::TextEditState::load(ctx, id).is_some());
         !self.mml_input.open
-            && !self.patch_browser.open
+            && !self.browser_open()
             && !editing_text
             && ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, key))
     }
@@ -20,6 +25,11 @@ impl App {
     pub(crate) fn playback_controls(&mut self, ui: &mut egui::Ui) {
         if self.main_shortcut(ui.ctx(), egui::Key::T) {
             self.patch_browser.open_window();
+            ui.ctx().request_repaint();
+        }
+        if self.main_shortcut(ui.ctx(), egui::Key::E) || self.main_shortcut(ui.ctx(), egui::Key::X)
+        {
+            self.open_effect_browser();
             ui.ctx().request_repaint();
         }
         let spacing = ui.spacing().item_spacing.x;
@@ -64,6 +74,9 @@ impl App {
             ).on_hover_text(format!(
                 "Choose from {count} effect presets.\nReplace one randomly chosen connected effect; add the first effect when none is connected.\nKeeps effect order, bypass and playback selection."
             )).on_disabled_hover_text("Load an instrument and wait for scanning, catalog loading or preset preparation to finish. An eligible CLAP effect preset is required.").clicked();
+            if ui.add_enabled(!self.mml_input.open && !self.effect_browser.open, egui::Button::new("Browse effects")).on_hover_text("Open effect browser (E / X)").clicked() {
+                self.open_effect_browser();
+            }
             (patch, effect)
         })
             .inner

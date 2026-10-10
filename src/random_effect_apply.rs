@@ -25,7 +25,10 @@ impl App {
             })
             .cloned()
         else {
-            self.status = "Random effect failed: plugin no longer available".into();
+            self.status = format!(
+                "{} failed: plugin no longer available",
+                prepared.operation()
+            );
             return;
         };
         if self.instrument_id().is_none()
@@ -39,7 +42,10 @@ impl App {
                     && Some(instance.id) != prepared.target
             })
         {
-            self.status = "Random effect failed: routing changed during preparation".into();
+            self.status = format!(
+                "{} failed: routing changed during preparation",
+                prepared.operation()
+            );
             return;
         }
         self.pause_audio();
@@ -59,18 +65,17 @@ impl App {
         {
             Ok(state) => state,
             Err(error) => {
-                self.status =
-                    format!("Random effect failed: could not save previous state: {error}");
+                self.status = format!(
+                    "{} failed: could not save previous state: {error}",
+                    prepared.operation()
+                );
                 if let Err(error) = self.resume_audio() {
                     self.status.push_str(&format!("; no audio: {error}"));
                 }
                 return;
             }
         };
-        self.status = format!(
-            "Loading random effect: {}...",
-            prepared.candidate.preset.display
-        );
+        self.status = format!("Loading effect: {}...", prepared.candidate.preset.display);
         self.pending = Some(PendingLoad {
             plugin: plugin.clone(),
             purpose: LoadPurpose::RandomEffect(Replacement {
@@ -127,7 +132,7 @@ impl App {
                 if id >= 0 {
                     self.host.destroy_instance(id);
                 }
-                self.status = format!("Random effect failed: {error}");
+                self.status = format!("{} failed: {error}", prepared.operation());
                 if let Err(error) = self.resume_audio() {
                     self.status.push_str(&format!("; no audio: {error}"));
                 }
@@ -164,7 +169,14 @@ impl App {
             .find(|instance| instance.id == source)
             .unwrap()
             .voice = voice;
-        self.status = format!("Random effect: {}", prepared.candidate.preset.display);
+        self.status = format!(
+            "{}: {}",
+            prepared.operation(),
+            prepared.candidate.preset.display
+        );
+        if prepared.browse {
+            self.effect_browser.applied(id, prepared.candidate.clone());
+        }
         self.pause_audio();
         let saved = self
             .config_path

@@ -1,13 +1,36 @@
 //! Shared effect catalog discovery stays off the UI/audio threads.
 use crate::{ffi::PluginInfo, plugin_list::PluginKind};
-use cmrt_core::{audio_effect::PresetLocation, AudioEffectCatalog};
+use cmrt_core::{audio_effect::PresetLocation, AudioEffectCatalog, AudioEffectPreset};
 use eframe::egui;
 use std::sync::mpsc::{self, Receiver};
 
 #[derive(Clone, Debug)]
 pub(crate) struct Candidate {
     pub plugin_id: String,
+    pub plugin_name: String,
     pub preset: PresetLocation,
+    /// `display` without the plugin prefix.
+    pub name: String,
+    pub category: String,
+    pub kind: String,
+}
+
+impl Candidate {
+    pub(crate) fn new(catalog: &AudioEffectCatalog, preset: &AudioEffectPreset) -> Option<Self> {
+        let plugin = catalog.plugin(&preset.plugin).ok()?;
+        Some(Self {
+            plugin_id: plugin.plugin_id.clone(),
+            plugin_name: plugin.name.clone(),
+            preset: PresetLocation {
+                path: preset.path.clone(),
+                value: preset.value.clone(),
+                display: preset.display.clone(),
+            },
+            name: preset.name.clone(),
+            category: preset.category.clone(),
+            kind: preset.kind.clone(),
+        })
+    }
 }
 
 #[derive(Default)]
@@ -15,6 +38,8 @@ pub(crate) struct Catalog {
     started: bool,
     receiver: Option<Receiver<Vec<Candidate>>>,
     candidates: Vec<Candidate>,
+    /// Bumped when discovery delivers candidates.
+    pub generation: u64,
 }
 
 impl Catalog {
@@ -24,6 +49,7 @@ impl Catalog {
             started: true,
             receiver: None,
             candidates,
+            generation: 1,
         }
     }
     pub fn update(&mut self, ready: bool, ctx: &egui::Context) {
@@ -42,11 +68,16 @@ impl Catalog {
                 Ok(candidates) => {
                     self.candidates = candidates;
                     self.receiver = None;
+                    self.generation += 1;
                 }
                 Err(mpsc::TryRecvError::Disconnected) => self.receiver = None,
                 Err(mpsc::TryRecvError::Empty) => {}
             }
         }
+    }
+
+    pub fn loading(&self) -> bool {
+        !self.started || self.receiver.is_some()
     }
 
     pub fn installed<'a>(
@@ -70,17 +101,7 @@ fn candidates(catalog: &AudioEffectCatalog) -> Vec<Candidate> {
         .presets()
         .iter()
         .filter(|preset| cmrt_patch_select::auto_reverb::is_selectable_effect_preset(preset))
-        .filter_map(|preset| {
-            let plugin = catalog.plugin(&preset.plugin).ok()?;
-            Some(Candidate {
-                plugin_id: plugin.plugin_id.clone(),
-                preset: PresetLocation {
-                    path: preset.path.clone(),
-                    value: preset.value.clone(),
-                    display: preset.display.clone(),
-                },
-            })
-        })
+        .filter_map(|preset| Candidate::new(catalog, preset))
         .collect()
 }
 

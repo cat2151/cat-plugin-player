@@ -226,7 +226,7 @@ fn size(bytes: Option<u64>) -> String {
     )
 }
 
-fn editing_text(ctx: &egui::Context) -> bool {
+pub(crate) fn editing_text(ctx: &egui::Context) -> bool {
     ctx.memory(|memory| memory.focused())
         .is_some_and(|id| egui::text_edit::TextEditState::load(ctx, id).is_some())
 }
@@ -242,8 +242,9 @@ fn browser_viewport() -> egui::ViewportId {
 
 mod controls;
 mod layout;
-mod navigation;
-mod row_colors;
+pub(crate) use layout::pane;
+pub(crate) mod navigation;
+pub(crate) mod row_colors;
 mod rows;
 mod status;
 #[cfg(test)]

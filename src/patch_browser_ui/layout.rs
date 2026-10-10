@@ -105,7 +105,12 @@ impl Browser {
     }
 }
 
-fn pane(ui: &mut egui::Ui, rect: egui::Rect, title: &str, add: impl FnOnce(&mut egui::Ui)) {
+pub(crate) fn pane(
+    ui: &mut egui::Ui,
+    rect: egui::Rect,
+    title: &str,
+    add: impl FnOnce(&mut egui::Ui),
+) {
     ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
         egui::Frame::group(ui.style()).show(ui, |ui| {
             ui.set_width((rect.width() - 16.0).max(1.0));

@@ -41,7 +41,7 @@
   - 確定したフレーズは `Play`／`Stop` でループ再生します。休符・音長・テンポ変更・和音・末尾休符を保ちます。入力画面を開くと全体の通常演奏を一時停止します。開く直前に演奏中だった場合、確定後は新しいフレーズ、取消後は元の演奏パターンを先頭から再生します。停止中に開いた場合は確定・取消後も停止を維持し、`Play`で全体再生を開始します。通常の演奏パターンにも切り替えられます。確定直後に本文と選択・再生状態を保存し、取消時も戻した再生状態を保存します。次回起動時や音源のお気に入り・Historyから復元します。未確定の本文は保存せず、取消しや変換失敗では直前の確定本文を保ちます
   - 入力変更やカーソル移動で、その位置の単音／和音を一度試聴します。途中編集や貼り付けも対象です。同じ発音単位の内側での移動や再描画だけでは鳴らし直しません。前のテンポ・オクターブ・音長を反映し、休符やコマンドの位置では発音しません。編集を開いた時点で通常演奏は停止し、試聴音の終了後も全体再生は始まりません。次の発音単位、取消し、確定、音源交換でも試聴音を解放します。試聴は確定本文・通常の選択を変えません
   - 確定したMMLのループ再生の発音Velocityは、入力内の指定より `Velocity` 欄の設定を優先します。CC1も `CC1 modulation` 欄から操作できます。非常に過密なフレーズで演奏イベントの容量に達した場合は、鳴っている音を解放して発音を停止します。`Stop` → `Play` で再開始できます
-  - アプリのFavorites／Historyからの呼び出しやBrowse patches／Random patch／Random effectによる音色変更では、停止・再生状態を維持します。再生中はフレーズの先頭から演奏し、変更前のフレーズ途中の待ちを引き継ぎません。MMLで指定した先頭休符は保ちます。音色ブラウザー中は背後のSpaceによる再生・停止とMML入力開始を抑止します。プラグイン独自GUIの音色変更は検出しません
+  - アプリのFavorites／Historyからの呼び出しやBrowse patches／Random patch／Random effect／Browse effectsによる音色変更では、停止・再生状態を維持します。再生中はフレーズの先頭から演奏し、変更前のフレーズ途中の待ちを引き継ぎません。MMLで指定した先頭休符は保ちます。音色ブラウザー・effectブラウザーの表示中は背後のSpaceによる再生・停止とMML入力開始を抑止します。プラグイン独自GUIの音色変更は検出しません
   - Six Sines／TyrellN6 CLAPでは、ロード・state復元・接続変更などで音声処理を再構築した際、冒頭音を保つため、通常の音声処理を続けながら最初のフレーズ開始を待ちます。48kHz時の待ちはSix Sinesで約21ms、TyrellN6で約85msです。MMLの先頭休符はさらに加算されます。適用条件と実機検証は[ADR 0019](docs/adr/0019-random-patch-all-catalog.md)を参照してください
   - 演奏パターンの下の `Velocity` 欄で、同じ左右矢印・ドロップダウンから `100`・`127`・`40-100`・`80-127` を選べます。初期値は100です。範囲指定はフレーズ内のNote On順に値を上げ、次のループでは下げる動作を繰り返します。変更はフレーズを再開せず次の発音から反映し、次回起動時にも復元します
   - `CC1 modulation` 欄で、左右矢印・ドロップダウンから `0`・`127`・`sweep` を選べます。初期値は0です。`sweep` は2秒で0から127へ、次の2秒で127から0へ変化する動作を繰り返します。選択は次回起動時にも復元します
@@ -58,8 +58,11 @@
   - instrument 1つ → 複数effect → 出力の直列接続です。instrument を読み込んでから最初の effect の `Load` を押し、以降は `Add` で末尾に追加します。接続済みの effect は `Remove` でその1つだけを外します。同じ形式＋IDの effect を重複して接続することはできません
   - `Sequence` 横の `Random effect` は、cmrtのeffect selectorと同じカタログ・選択対象から、インストール済みCLAP effectのプリセットを抽選します。effectが0個なら最初の1個を追加し、1個ならそのeffectを、複数なら接続済みeffectの1つを均等に選んで置き換えます。連打してもeffectの個数は増えず、他のeffectの順序・設定とBypassを維持します。重複接続を避けるため、置き換え対象以外に接続済みの形式＋IDは候補から外します。対象の段に使える候補がなければ理由を表示して変更しません
   - Random effectには音源が必要です。候補はplay-server共有coreが探索する既定のeffect・プリセットの場所から取得し、VST3への代替はしません。準備中は現在の演奏を続け、ロード・走査・音色操作を無効にします。停止中は停止、再生中は現在フレーズを先頭から再開し、MML・Velocity・CC1の全体選択を維持します。生成・適用・接続の失敗時は元の構成へ復帰し、別候補の自動抽選はしません。成功後は適用したstateと接続を次回起動用に保存し、Favorites／Historyは追加しません。保存失敗は適用済みとして表示します
+  - `Random effect` の下の `Browse effects` または `E`／`X` キーで、独立した最大化ウィンドウのeffectブラウザーを開き、プリセットを一覧から選べます。MML編集中は開けません。左側のCategory→Kindと検索で絞り込みます。分類と選択対象はcmrtのeffect selectorと同じです。検索は大小無視の正規表現、空白AND、`-条件`による除外で、プリセット名・Category・Kind・effect名のいずれかに当てます（例: `hall -plate`、`dragonfly`）。入力途中の無効な正規表現はエラーを表示し、直前の一覧を保ちます。上部1行にSearch・対象の枠・`Random`が並び、ブラウザー内の `/` で検索欄へ入力を移し、`R` で絞り込み結果からランダムに選びます。一覧の複数列表示、上下左右キー／`h`／`j`／`k`／`l`・数字による回数指定・`PageUp`／`PageDown` での移動、`Enter`／`Esc` で閉じる操作はBrowse patchesと同じです。複数のeffectが混在する結果ではeffect名を付けてeffectごとに、Kindが異なればプリセット名をKindごとに色分けします
+  - 対象の枠は `Add new effect` か、接続中のeffectの `Replace n` から選びます。開いたときは、前回このブラウザーで書き込んだ枠、無ければ末尾のeffect、effectが無ければ `Add new effect` になります。`Add new effect` で適用すると追加したeffectがそのまま対象になり、以降の選択はその枠を置き換えるので、選び続けてもeffectの個数は増えません。対象の枠を外した場合は末尾のeffectが対象になります。対象以外の枠に接続済みのeffectのプリセットはグレーで表示し、選ぶと理由を表示して変更しません。対象の枠にこのブラウザーで入れたプリセットには `▶` を付け、開くとそこを選択状態にします（再適用はしません）
+  - クリック・キー移動、または絞り込みで別の候補が選ばれると、すぐに適用を要求します。開くだけではeffectを変えません。準備中にも次を選べ、未開始の選択は最新1件に置き換わり、閉じると取り消します。音源が必要で、準備中の演奏継続・失敗時の復帰・次回起動用の保存はRandom effectと同じです。Category・Kind・検索文字列・一覧の選択位置と対象の枠は終了時に保存し、次回起動時に復元します。キー移動は復元した選択から始まります。Category・Kindは名前で復元し、無くなっていればその欄の `ALL` に戻ります。選択はプリセットで復元し、カタログから無くなっていれば未選択になり、キー移動は先頭から始まります。対象の枠はchain内の位置で復元し、その位置にeffectが無ければ開いたときの既定の枠になります
   - `Routing` に接続順を表示します。effect の `↕` ボタンを上下にドラッグして順序を変更できます。ドラッグ中は移動するeffect名と挿入位置の線を表示します。instrument は並べ替えの対象外です。各プラグインの `Show UI` で音色や effect を編集できます。`Instrument`／`Effect` は左側の一覧と同じ種別色で表示します
-  - 全effectを外すと音源から出力への直結に戻ります。`Bypass effect` はchain全体を対象とし、instance と設定を保持したまま素通しにできます。`b` キーでも切り替えられます（MML入力画面・Browse patches表示中と文字入力中は動作しません）。Bypass中はRouting内の接続effectをグレーで表示し、`Bypassed` を併記します
+  - 全effectを外すと音源から出力への直結に戻ります。`Bypass effect` はchain全体を対象とし、instance と設定を保持したまま素通しにできます。`b` キーでも切り替えられます（MML入力画面・Browse patches／Browse effects表示中と文字入力中は動作しません）。Bypass中はRouting内の接続effectをグレーで表示し、`Bypassed` を併記します
   - `Sequence` は instrument 用です。Sequence を止めても音声処理は続け、effect の余韻を出します
   - 次回起動時は instrument・全effectの順序・それぞれの state・Bypass 状態を復元してから演奏します。旧形式のeffect 1件の履歴も読み込めます。effect の復元に失敗した場合はエラーを表示して音源の直結に戻し、保存済みの構成は保持します
   - 追加・除去・順序変更は新しい接続の準備に成功した場合だけ保存します。失敗した場合は元の構成と再生を復帰し、エラーを表示します
@@ -73,7 +76,7 @@
   - 検索条件はハンバーガー `☰` 内の `Save condition to Role` でRoleへ追加し、Presetの `Delete` で削除できます。ALLからの追加先はEtcです。共通selectorの正規化・分類規則で扱い、catのconfig directory内 `patch-filter-presets.json` に保存します。読込破損時は元ファイルを保護して書込みを止め、保存失敗も画面に表示します。同じアプリ起動中はRole／Preset／検索・Solo／Muteを保持し、再起動後に復元するのは保存した自作条件だけです。TUIの条件やFavoritesは共有・移行しません
   - Browse patchesはRandom patchと同じカタログ・対応CLAP instrument・state適用と失敗時復旧を使います。MML・Velocity・CC1の全体選択、effectの順序・state・Bypassを維持し、成功後は次回起動用stateを保存します。Favorites／Historyは自動追加しません。適用成功と保存失敗は区別して表示します。子ウィンドウのfocus中にも準備・適用の進行を更新します
   - `Sequence` の `Random patch` は、既存cmrtカタログにあるSurge XT・Dexed・Floe・sforzando・Six Sines・TyrellN6・Vaporizer2のCLAP音色から、インストール済みのinstrumentと形式＋IDが一致する全patchを均等に抽選します。音源ごとの均等抽選ではなく、候補が多いDexedは選ばれる頻度も高くなります。tooltipには対象音源と総候補数を表示します。対応候補がなければボタンを表示しません
-  - Random patchのカタログは既存の `%LOCALAPPDATA%\clap-mml-render-tui\patch-catalog\catalog.json` を読み取り専用で利用します。Random patchではVST3への代替、effectの音色抽選、未知の音源は対象外です。effectの音色抽選はエフェクトルーティング欄のRandom effectを使います。Dexedはcartridge内のprogram指定を保持します。Floe・sforzandoの外部sampleは元の場所に必要で、sampleを複製・保存する機能はありません
+  - Random patchのカタログは既存の `%LOCALAPPDATA%\clap-mml-render-tui\patch-catalog\catalog.json` を読み取り専用で利用します。Random patchではVST3への代替、effectの音色抽選、未知の音源は対象外です。effectのプリセット選択はエフェクトルーティング欄のRandom effect／Browse effectsを使います。Dexedはcartridge内のprogram指定を保持します。Floe・sforzandoの外部sampleは元の場所に必要で、sampleを複製・保存する機能はありません
   - Random patchの準備中は現在の演奏を続け、競合するロード・走査・音色操作を無効にします。Floeなどのsample読込で待つ場合があります。停止中は適用後も停止、再生中は現在フレーズの先頭から再開します。MML・Velocity・CC1の全体選択とeffectの順序・state・Bypassは維持します。成功後は適用したstateを次回起動用に保存し、Random patch自身はFavorites／Historyを追加しません
   - 準備・適用に失敗した場合は理由を表示し、別patchを自動抽選しません。元の構成・state・再生状態を復旧し、stateの復旧にも失敗したinstanceは保存を抑止します。音色適用後の保存失敗は適用済みとして表示します。音源別の準備・反映条件と検証範囲は[ADR 0019](docs/adr/0019-random-patch-all-catalog.md)に記録しています
   - 各プラグインの `★ Add favorite` で、その瞬間の音色・設定をお気に入りとして複数保存できます。音源では演奏パターン・停止中の選択・確定したMML／コード本文も保存します。effectでは演奏設定を保存しません。名前は自動で付け、後から変更できます
@@ -140,7 +143,7 @@ placement = "right_then_bottom_right"
 
 ## ローカルでのビルドと実行
 
-当アプリと `uapmd`、`clap-mml-render-tui`、`clap-mml-play-server` を同じ親ディレクトリに clone し、当アプリのディレクトリで実行します。TUIの `app` / `patches` / `patch-select` / `tui-core` とplay-serverの `core-lib` / `server-config` はCargo.tomlから常時ローカル参照します。play-serverには従来の `prepare_clap_patch_state` / `PatchStateError` に加えて `prepare_catalog_clap_patch_state` / `supports_catalog_clap_plugin`、TUIの `cmrt-patches` にはその再exportが必要です。音色ブラウザーは公開Role／Preset／filter APIとtui-coreのsample容量判定を使います。Random effectはplay-serverの `AudioEffectCatalog` / `EffectRenderer` とTUIのeffect selectorの選択条件を利用します。checkout不足やAPI不足はビルドエラーとなり、Git版への自動切替は行いません。
+当アプリと `uapmd`、`clap-mml-render-tui`、`clap-mml-play-server` を同じ親ディレクトリに clone し、当アプリのディレクトリで実行します。TUIの `app` / `patches` / `patch-select` / `tui-core` とplay-serverの `core-lib` / `server-config` はCargo.tomlから常時ローカル参照します。play-serverには従来の `prepare_clap_patch_state` / `PatchStateError` に加えて `prepare_catalog_clap_patch_state` / `supports_catalog_clap_plugin`、TUIの `cmrt-patches` にはその再exportが必要です。音色ブラウザーは公開Role／Preset／filter APIとtui-coreのsample容量判定を使います。Random effectとBrowse effectsはplay-serverの `AudioEffectCatalog` / `EffectRenderer` とTUIのeffect selectorの選択条件を、Browse effectsの検索はtui-coreの検索条件を利用します。checkout不足やAPI不足はビルドエラーとなり、Git版への自動切替は行いません。
 
 ```powershell
 cargo build --release

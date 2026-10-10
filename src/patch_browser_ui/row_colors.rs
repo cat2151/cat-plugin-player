@@ -36,7 +36,7 @@ const MONOKAI: [(Color32, Color32); 5] = [
     ),
 ];
 
-pub(super) fn color(slot: usize, dark: bool) -> Color32 {
+pub(crate) fn color(slot: usize, dark: bool) -> Color32 {
     let (on_dark, on_light) = MONOKAI[slot % MONOKAI.len()];
     if dark {
         on_dark
@@ -96,7 +96,7 @@ fn first_preset(presets: &[FilterPreset], index: usize) -> Option<usize> {
 }
 
 /// Colors in order of first appearance, or `None` when every row has the same key.
-fn slots<K: Eq + std::hash::Hash>(keys: Vec<Option<K>>) -> Option<Vec<Option<usize>>> {
+pub(crate) fn slots<K: Eq + std::hash::Hash>(keys: Vec<Option<K>>) -> Option<Vec<Option<usize>>> {
     if keys.windows(2).all(|pair| pair[0] == pair[1]) {
         return None;
     }

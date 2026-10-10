@@ -51,7 +51,7 @@ impl App {
         let mut velocity = original_velocity;
         let original_modulation = self.sequence_modulation;
         let mut modulation = original_modulation;
-        let ready = !self.actions_busy() && !self.mml_input.open && !self.patch_browser.open;
+        let ready = !self.actions_busy() && !self.mml_input.open && !self.browser_open();
         let mut open_mml = false;
         let has_audio = self.instances.iter().any(|i| i.voice.is_some());
         let shortcut =

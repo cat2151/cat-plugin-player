@@ -46,6 +46,8 @@ mod spectrum;
 mod spectrum_ui;
 mod timed_sequence;
 use sequence_modulation::SequenceModulation;
+mod effect_browser;
+mod effect_browser_ui;
 mod patch_browser;
 mod patch_browser_catalog;
 mod patch_browser_requests;
@@ -159,6 +161,7 @@ struct App {
     random_patch_catalog: random_patch_catalog::Catalog,
     random_patch: random_patch::Preparation,
     patch_browser: patch_browser::Browser,
+    effect_browser: effect_browser::EffectBrowser,
     random_effect: random_effect::Preparation,
     random_effect_catalog: random_effect_catalog::Catalog,
     unsafe_state: std::collections::HashSet<i32>,
@@ -281,6 +284,8 @@ impl eframe::App for App {
 
         self.browser_ui(ctx);
         self.poll_browser_patch(ctx);
+        self.poll_effect_browser(ctx);
+        self.effect_browser_ui(ctx);
         self.mml_editor(ctx);
         // Keep sound selection in its own pane beside the sequence controls.
         egui::TopBottomPanel::top("sequence_controls").show(ctx, |ui| {

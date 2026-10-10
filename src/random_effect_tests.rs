@@ -39,6 +39,7 @@ fn apply(app: &mut App, candidate: &Candidate, target: Option<i32>, bytes: Optio
         candidate: candidate.clone(),
         target,
         state,
+        browse: false,
     });
     settle(app);
 }
@@ -102,14 +103,7 @@ fn native_random_effect_add_replace_failure_and_restore() {
             .presets()
             .iter()
             .filter(|preset| preset.display.starts_with("Dragonfly"))
-            .map(|preset| Candidate {
-                plugin_id: catalog.plugin(&preset.plugin).unwrap().plugin_id.clone(),
-                preset: cmrt_core::audio_effect::PresetLocation {
-                    path: preset.path.clone(),
-                    value: preset.value.clone(),
-                    display: preset.display.clone(),
-                },
-            })
+            .map(|preset| Candidate::new(&catalog, preset).unwrap())
             .collect()
     });
     let source = app
@@ -240,6 +234,7 @@ fn native_random_effect_add_replace_failure_and_restore() {
                 candidate: bad,
                 target: Some(ids[0]),
                 state: vec![1],
+                browse: false,
             },
             old_state: None,
         },
