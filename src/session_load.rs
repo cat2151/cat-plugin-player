@@ -13,7 +13,7 @@ pub(crate) enum LoadPurpose {
         Vec<u8>,
         crate::favorite_playback::Playback,
     ),
-    Random(crate::random_patch_apply::Replacement),
+    Random(Box<crate::random_patch_apply::Replacement>),
     RandomEffect(crate::random_effect_apply::Replacement),
 }
 
@@ -23,6 +23,12 @@ impl App {
             return;
         }
         let plugin = self.plugins[index].clone();
+        // Restoring reloads the saved state; an effect leaves the instrument patch alone.
+        if self.restoring || plugin.kind == PluginKind::Effect {
+            self.patch_browser.requests.invalidate();
+        } else {
+            self.invalidate_browser_live();
+        }
         if plugin.kind == PluginKind::Effect && self.instrument_id().is_none() {
             self.status = "Load an instrument first".into();
             return;
@@ -114,7 +120,7 @@ impl App {
                 return;
             }
             LoadPurpose::Random(replacement) => {
-                self.random_instance_created(plugin, replacement, id, error);
+                self.random_instance_created(plugin, *replacement, id, error);
                 return;
             }
             LoadPurpose::Favorite(favorite, state, playback) => Some((favorite, state, playback)),

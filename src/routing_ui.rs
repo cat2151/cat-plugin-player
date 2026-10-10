@@ -10,7 +10,9 @@ impl App {
         let mut show: Option<i32> = None;
         let mut hide: Option<i32> = None;
         let mut remove: Option<i32> = None;
-        let mut set_bypass = None;
+        let mut set_bypass = self
+            .main_shortcut(ctx, egui::Key::B)
+            .then_some(!self.effect_bypassed);
         let mut reorder = None;
         egui::SidePanel::right("instances")
             .min_width(240.0)
@@ -35,7 +37,11 @@ impl App {
                         ui.label(self.routing_label());
                         if !busy && self.effect_id().is_some() {
                             let mut bypass = self.effect_bypassed;
-                            if ui.checkbox(&mut bypass, "Bypass effects").changed() {
+                            if ui
+                                .checkbox(&mut bypass, "Bypass effects")
+                                .on_hover_text("Toggle bypass (B)")
+                                .changed()
+                            {
                                 set_bypass = Some(bypass);
                             }
                         }

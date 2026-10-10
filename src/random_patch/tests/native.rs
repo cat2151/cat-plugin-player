@@ -6,6 +6,7 @@ use crate::{
 };
 use std::path::{Path, PathBuf};
 
+mod browser;
 mod editor;
 mod favorite_mml;
 mod preparation_gate;
@@ -87,6 +88,13 @@ fn files(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
 #[ignore = "requires compiled CLAP fixture and S06_NATIVE_WORK_DIR"]
 fn native_random_transaction_boundaries_and_preservation() {
     let _library = crate::native_library::load().unwrap();
+    transaction_cases(false);
+    transaction_cases(true);
+    native_preparation_busy_actions_and_applied_save_failure();
+    native_rollback_recovery_and_button();
+}
+
+fn transaction_cases(direct: bool) {
     let root = PathBuf::from(std::env::var_os("S06_NATIVE_WORK_DIR").unwrap());
     let normal = key("normal");
     let other = key("context");
@@ -128,7 +136,10 @@ fn native_random_transaction_boundaries_and_preservation() {
         ("replacement-stopped-success", &other, vec![], vec![5], true),
         ("current-playing-success", &normal, vec![], vec![5], false),
     ] {
-        let path = root.join(case).join("config.toml");
+        let path = root
+            .join(if direct { "browser" } else { "random" })
+            .join(case)
+            .join("config.toml");
         let mut app = app(&path);
         let index = add(&mut app, &normal);
         add(&mut app, &other);
@@ -172,7 +183,15 @@ fn native_random_transaction_boundaries_and_preservation() {
         app.random_failures = failure;
         // Target lookup must select an instrument identity even when the same
         // CLAP ID is also used as an effect in the connected chain.
-        app.apply_random_patch(prepared(target, &bytes));
+        let prepared = prepared(target, &bytes);
+        if direct {
+            app.patch_browser
+                .requests
+                .select(prepared.candidate.clone(), 1);
+            app.patch_browser.requests.next().unwrap();
+            app.patch_browser.requests.ready().unwrap();
+        }
+        app.apply_random_patch(prepared);
         wait(&mut app);
         assert!(app.pending.is_none() && !app.random_busy());
         assert_eq!(app.host.save_state(effects[0]).unwrap(), [1]);
@@ -182,10 +201,25 @@ fn native_random_transaction_boundaries_and_preservation() {
         assert_eq!(app.sequence_modulation, modulation);
         if case.ends_with("success") {
             assert!(
-                app.status.contains("Random patch:"),
+                app.status.contains(if direct {
+                    "Browse patch:"
+                } else {
+                    "Random patch:"
+                }),
                 "{case}: {}",
                 app.status
             );
+            if direct {
+                assert_eq!(
+                    app.patch_browser
+                        .requests
+                        .applied
+                        .as_ref()
+                        .unwrap()
+                        .plugin_id,
+                    target.id
+                );
+            }
             let current = app.instrument_id().unwrap();
             assert_eq!(app.host.save_state(current).unwrap(), [5]);
             assert_eq!(app.sequence_pattern, pattern);
@@ -199,7 +233,11 @@ fn native_random_transaction_boundaries_and_preservation() {
             }
         } else {
             assert!(
-                app.status.contains("Random patch failed"),
+                app.status.contains(if direct {
+                    "Browse patch failed"
+                } else {
+                    "Random patch failed"
+                }),
                 "{case}: {}",
                 app.status
             );
@@ -225,8 +263,6 @@ fn native_random_transaction_boundaries_and_preservation() {
         // Drop cannot overwrite transaction bytes while no audio device is used.
         drop(app);
     }
-    native_preparation_busy_actions_and_applied_save_failure();
-    native_rollback_recovery_and_button();
 }
 
 fn native_preparation_busy_actions_and_applied_save_failure() {

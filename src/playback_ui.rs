@@ -6,7 +6,22 @@ const SEQUENCE_MIN_WIDTH: f32 = 520.0;
 const RANDOM_PATCH_WIDTH: f32 = 150.0;
 
 impl App {
+    /// Single-letter shortcuts of the main window; off while a child window or text field takes keys.
+    pub(crate) fn main_shortcut(&self, ctx: &egui::Context, key: egui::Key) -> bool {
+        let editing_text = ctx
+            .memory(|memory| memory.focused())
+            .is_some_and(|id| egui::text_edit::TextEditState::load(ctx, id).is_some());
+        !self.mml_input.open
+            && !self.patch_browser.open
+            && !editing_text
+            && ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, key))
+    }
+
     pub(crate) fn playback_controls(&mut self, ui: &mut egui::Ui) {
+        if self.main_shortcut(ui.ctx(), egui::Key::T) {
+            self.patch_browser.open_window();
+            ui.ctx().request_repaint();
+        }
         let spacing = ui.spacing().item_spacing.x;
         let sequence_width = ui.available_width() - RANDOM_PATCH_WIDTH - spacing;
         let mut random = false;
@@ -36,9 +51,12 @@ impl App {
         }
     }
 
-    fn random_controls(&self, ui: &mut egui::Ui) -> (bool, bool) {
+    fn random_controls(&mut self, ui: &mut egui::Ui) -> (bool, bool) {
         ui.group(|ui| {
             let patch = self.random_patch_catalog.button(ui, self.actions_busy());
+            if ui.add_enabled(!self.mml_input.open && !self.patch_browser.open, egui::Button::new("Browse patches")).on_hover_text("Open patch browser (T)").clicked() {
+                self.patch_browser.open_window();
+            }
             let count = self.random_effect_catalog.installed(&self.plugins).count();
             let effect = ui.add_enabled(
                 !self.actions_busy() && self.instrument_id().is_some() && count > 0,

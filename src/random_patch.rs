@@ -24,7 +24,7 @@ impl Preparation {
         self.receiver.is_some()
     }
 
-    fn start(&mut self, candidate: Candidate, ctx: &egui::Context) {
+    pub(crate) fn start(&mut self, candidate: Candidate, ctx: &egui::Context) {
         self.start_with(candidate, ctx.clone(), |candidate| {
             cmrt_patches::prepare_catalog_clap_patch_state(
                 &candidate.plugin_id,
@@ -53,7 +53,7 @@ impl Preparation {
         });
     }
 
-    fn poll(&mut self) -> Option<Result<Prepared, String>> {
+    pub(crate) fn poll(&mut self) -> Option<Result<Prepared, String>> {
         let result = match self.receiver.as_ref()?.try_recv() {
             Ok(result) => result,
             Err(TryRecvError::Empty) => return None,
@@ -67,6 +67,7 @@ impl Preparation {
 impl App {
     pub(crate) fn random_busy(&self) -> bool {
         self.random_patch.busy()
+            || self.patch_browser.preparation.busy()
             || self.random_effect.busy()
             || self.pending.as_ref().is_some_and(|pending| {
                 matches!(
@@ -82,7 +83,9 @@ impl App {
             self.scanning || self.deferred_scan,
             self.restoring,
             self.pending.is_some(),
-            self.random_patch.busy() || self.random_effect.busy(),
+            self.random_patch.busy()
+                || self.random_effect.busy()
+                || self.patch_browser.preparation.busy(),
         )
     }
 
@@ -106,6 +109,7 @@ impl App {
         };
         // A rescan may replace the bundle without changing its format/ID.
         candidate.bundle_path = installed.bundle_path.clone().into();
+        self.invalidate_browser_live();
         self.status = format!(
             "Preparing {}: {}...",
             candidate.plugin_name, candidate.display

@@ -28,6 +28,7 @@ cmrt-patches = { path = "../clap-mml-render-tui/patches" }
 cmrt-chord = { path = "../clap-mml-render-tui/chord" }
 cmrt-core = { path = "../clap-mml-play-server/core-lib" }
 cmrt-patch-select = { path = "../clap-mml-render-tui/patch-select" }
+cmrt-tui-core = { path = "../clap-mml-render-tui/tui-core" }
 rand = "0.8"
 
 [patch."https://github.com/cat2151/clap-mml-play-server"]

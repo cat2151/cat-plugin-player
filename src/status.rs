@@ -34,6 +34,8 @@ pub struct Status {
     pub effect_bypassed: bool,
     #[serde(default, skip_serializing_if = "FavoriteSelection::is_empty")]
     pub favorites: FavoriteSelection,
+    #[serde(default, skip_serializing_if = "BrowserFilter::is_empty")]
+    pub patch_browser: BrowserFilter,
 }
 
 fn default_on_right() -> bool {
@@ -56,6 +58,7 @@ impl Default for Status {
             effects: Vec::new(),
             effect_bypassed: false,
             favorites: Default::default(),
+            patch_browser: Default::default(),
         }
     }
 }
@@ -68,6 +71,34 @@ pub struct FavoriteSelection {
     pub effect: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub effects: Vec<String>,
+}
+
+/// Patch browser Role / Preset by label, so reordered or deleted presets degrade to ALL.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct BrowserFilter {
+    #[serde(default)]
+    pub role: String,
+    #[serde(default)]
+    pub preset: String,
+    #[serde(default)]
+    pub query: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub playing: Option<PatchIdentity>,
+}
+
+/// The catalog patch the restored instrument state came from.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub struct PatchIdentity {
+    pub format: String,
+    pub plugin_id: String,
+    pub path: PathBuf,
+    pub display: String,
+}
+
+impl BrowserFilter {
+    fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
 }
 
 fn is_false(value: &bool) -> bool {

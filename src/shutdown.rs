@@ -79,6 +79,8 @@ impl App {
         let mut errors = 0;
         self.shutdown.progress("Stopping audio...", 0, total);
         self.pause_audio();
+        // Browser conditions change without any other save trigger.
+        self.save_session();
         for (done, (id, label)) in plugins.into_iter().enumerate() {
             self.shutdown
                 .progress(&format!("Saving: {label}"), done, total);

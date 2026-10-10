@@ -107,6 +107,8 @@ impl App {
             .find(|plugin| crate::random_effect_catalog::matches_plugin(&candidate, plugin))
             .unwrap();
         let bundle = plugin.bundle_path.clone();
+        // The instrument patch keeps playing; only pending browser requests are stale.
+        self.patch_browser.requests.invalidate();
         self.status = format!("Preparing effect: {}...", candidate.preset.display);
         self.random_effect.start(
             candidate,

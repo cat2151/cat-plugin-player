@@ -170,6 +170,7 @@ impl App {
             return;
         }
         let result = self.prepare_favorite(favorite_id);
+        self.invalidate_browser_live();
         if let Err(e) = result {
             self.status = format!("Could not load favorite: {e}");
         }

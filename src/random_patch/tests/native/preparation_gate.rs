@@ -94,6 +94,10 @@ fn native_preparation_cross_host_gate() {
             display: patch.reference.display.clone(),
             path: resolved.clone(),
             bundle_path: bundle.to_path_buf(),
+            entry: cmrt_patch_select::PatchCatalogEntry::from_display(
+                patch.reference.display.clone(),
+            ),
+            measurement: Default::default(),
         };
         let pattern = if index == 0 {
             SequencePattern::Off

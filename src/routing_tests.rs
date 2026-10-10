@@ -163,7 +163,13 @@ fn native_effect_routing_and_session_restore() {
         .is_empty());
     app.load_plugin(effect);
     settle(&mut app);
-    app.set_effect_bypass(true);
+    // B toggles bypass from the main window, but not while the MML editor takes keys.
+    app.mml_input.open = true;
+    press_b(&mut app);
+    assert!(!app.effect_bypassed);
+    app.mml_input.open = false;
+    press_b(&mut app);
+    assert!(app.effect_bypassed);
     let saved = crate::status::Status::load(&path).unwrap();
     assert!(saved.effect_bypassed);
     let fx_state = app.host.save_state(app.effect_id().unwrap()).unwrap();
@@ -254,6 +260,21 @@ fn native_effect_routing_and_session_restore() {
     assert_eq!(std::fs::read(crate::status::path(&path)).unwrap(), bytes);
     drop(absent);
     std::fs::remove_dir_all(directory).unwrap();
+}
+
+fn press_b(app: &mut App) {
+    use eframe::egui;
+    let input = egui::RawInput {
+        events: vec![egui::Event::Key {
+            key: egui::Key::B,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        }],
+        ..Default::default()
+    };
+    let _ = egui::Context::default().run(input, |ctx| app.routing_panel(ctx, false));
 }
 
 fn settle(app: &mut App) {

@@ -10,6 +10,8 @@ pub(super) fn candidate() -> Candidate {
         display: "Bass/One.fxp".into(),
         path: "X:/patches/One.fxp".into(),
         bundle_path: "X:/plugins/Surge.clap".into(),
+        entry: cmrt_patch_select::PatchCatalogEntry::from_display("Bass/One.fxp".into()),
+        measurement: Default::default(),
     }
 }
 

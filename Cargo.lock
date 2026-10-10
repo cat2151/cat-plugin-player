@@ -788,6 +788,7 @@ dependencies = [
  "cmrt-core",
  "cmrt-patch-select",
  "cmrt-patches",
+ "cmrt-tui-core",
  "cpal 0.15.3",
  "dirs",
  "eframe",

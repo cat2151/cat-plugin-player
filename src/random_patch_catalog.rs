@@ -18,6 +18,8 @@ pub(crate) struct Candidate {
     pub display: String,
     pub path: PathBuf,
     pub bundle_path: PathBuf,
+    pub entry: cmrt_patch_select::PatchCatalogEntry,
+    pub measurement: cmrt_tui_core::patch_load::PatchLoadMeasurement,
 }
 
 type LoadResult = Result<Vec<Candidate>, String>;
@@ -28,7 +30,7 @@ enum State {
     NotStarted,
     Loading(Receiver<LoadResult>),
     Ready(Vec<Candidate>),
-    Unavailable,
+    Unavailable(String),
 }
 
 #[derive(Default)]
@@ -36,6 +38,7 @@ pub(crate) struct Catalog {
     state: State,
     eligible: Vec<usize>,
     instrument_names: Vec<String>,
+    pub generation: u64,
 }
 
 impl Catalog {
@@ -45,6 +48,7 @@ impl Catalog {
             state: State::Ready(candidates),
             eligible: Vec::new(),
             instrument_names: Vec::new(),
+            generation: 0,
         };
         catalog.reconcile(plugins);
         catalog
@@ -84,7 +88,7 @@ impl Catalog {
                 Some(String::new())
             }
             Err(error) => {
-                self.state = State::Unavailable;
+                self.state = State::Unavailable(error.clone());
                 Some(format!("Random patch unavailable: {error}"))
             }
         }
@@ -92,6 +96,7 @@ impl Catalog {
 
     /// Call when the scan list changes, and when a worker result arrives.
     pub fn reconcile(&mut self, plugins: &[PluginInfo]) {
+        self.generation += 1;
         self.eligible.clear();
         self.instrument_names.clear();
         if let State::Ready(candidates) = &self.state {
@@ -135,6 +140,15 @@ impl Catalog {
         self.eligible.iter().map(move |&index| &candidates[index])
     }
 
+    pub fn notice(&self) -> Option<&str> {
+        match &self.state {
+            State::NotStarted => Some("Catalog will load after the first audio callback."),
+            State::Loading(_) => Some("Loading catalog..."),
+            State::Unavailable(error) => Some(error),
+            State::Ready(_) => None,
+        }
+    }
+
     fn button_response(&self, ui: &mut egui::Ui, busy: bool) -> Option<egui::Response> {
         if self.eligible.is_empty() {
             return None;
@@ -154,7 +168,7 @@ impl Catalog {
     }
 }
 
-fn load() -> LoadResult {
+pub(crate) fn load() -> LoadResult {
     let (snapshot, _) = clap_mml_render_tui::patch_catalog_cache::load()
         .map_err(|error| format!("{error:#}"))?
         .into_parts();
@@ -181,6 +195,24 @@ fn load() -> LoadResult {
             display: patch.reference.display.clone(),
             path: plugin.patch_base.resolve(&patch.reference.display).into(),
             bundle_path: plugin.plugin_path.clone().into(),
+            entry: cmrt_patch_select::PatchCatalogEntry::new(
+                patch.reference.display.clone(),
+                patch.normalized_display.clone(),
+                plugin.name.clone(),
+                patch.selector_category.clone(),
+            )
+            .with_merged(
+                patch.merged.as_ref().map_or(1, |merged| merged.count),
+                patch
+                    .merged
+                    .as_ref()
+                    .map_or_else(Vec::new, |merged| merged.names.clone()),
+            ),
+            measurement: snapshot
+                .load_measurements()
+                .get(&patch.reference.display)
+                .cloned()
+                .unwrap_or_default(),
         });
     }
     Ok(candidates)

@@ -8,6 +8,7 @@ mod cli;
 mod config;
 mod correlation;
 mod correlation_ui;
+mod error_log;
 mod favorite_playback;
 mod favorites;
 mod favorites_store;
@@ -45,6 +46,12 @@ mod spectrum;
 mod spectrum_ui;
 mod timed_sequence;
 use sequence_modulation::SequenceModulation;
+mod patch_browser;
+mod patch_browser_catalog;
+mod patch_browser_requests;
+mod patch_browser_snapshot;
+mod patch_browser_ui;
+mod patch_filter_store;
 mod playback_ui;
 mod sequence_pattern;
 mod sequence_ui;
@@ -151,6 +158,7 @@ struct App {
     repaint_heartbeat: Option<repaint_heartbeat::RepaintHeartbeat>,
     random_patch_catalog: random_patch_catalog::Catalog,
     random_patch: random_patch::Preparation,
+    patch_browser: patch_browser::Browser,
     random_effect: random_effect::Preparation,
     random_effect_catalog: random_effect_catalog::Catalog,
     unsafe_state: std::collections::HashSet<i32>,
@@ -172,6 +180,7 @@ impl App {
             return;
         }
         startup::mark(Stage::ScanRequested);
+        self.patch_browser.requests.invalidate();
         if self
             .host
             .scan_async(rescan, on_scan_done, std::ptr::null_mut())
@@ -182,6 +191,17 @@ impl App {
             } else {
                 "Loading plugin list...".into()
             };
+        }
+    }
+
+    fn log_status_error(&self, previous: &str) {
+        if self.status == previous || !error_log::is_error(&self.status) {
+            return;
+        }
+        if let Ok(path) = &self.config_path {
+            if let Err(error) = error_log::append(path, &self.status) {
+                eprintln!("{error}");
+            }
         }
     }
 
@@ -228,6 +248,7 @@ impl eframe::App for App {
             self.save_on_shutdown();
             return;
         }
+        let previous_status = self.status.clone();
         // Run what uapmd and the plugins queued for the main thread.
         self.host.pump();
         self.handle_events();
@@ -258,6 +279,8 @@ impl eframe::App for App {
         }
         startup::flush_if_ready();
 
+        self.browser_ui(ctx);
+        self.poll_browser_patch(ctx);
         self.mml_editor(ctx);
         // Keep sound selection in its own pane beside the sequence controls.
         egui::TopBottomPanel::top("sequence_controls").show(ctx, |ui| {
@@ -275,6 +298,7 @@ impl eframe::App for App {
         self.scope_panel(ctx, analysis_on_right);
         self.routing_panel(ctx, analysis_on_right);
         self.library_panel(ctx);
+        self.log_status_error(&previous_status);
     }
 }
 

@@ -185,6 +185,7 @@ impl App {
             mml: self.mml_input.confirmed.clone(),
             sequence_velocity: self.sequence_velocity,
             sequence_modulation: self.sequence_modulation,
+            patch_browser: self.patch_browser.saved_filter(),
             ..Default::default()
         };
         self.config_error = self
@@ -240,6 +241,11 @@ impl App {
     pub(crate) fn remove_plugin(&mut self, id: i32) -> bool {
         if self.actions_busy() {
             return false;
+        }
+        if Some(id) == self.instrument_id() {
+            self.invalidate_browser_live();
+        } else {
+            self.patch_browser.requests.invalidate();
         }
         if let Err(error) = self.save_plugin_state(id) {
             let resumed = self.resume_audio();

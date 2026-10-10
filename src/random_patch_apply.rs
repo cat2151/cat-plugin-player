@@ -63,7 +63,11 @@ impl App {
             })
             .cloned()
         else {
-            self.status = "Random patch failed: target plugin no longer available".into();
+            self.status = format!(
+                "{} failed: target plugin no longer available",
+                self.patch_operation_name()
+            );
+            self.patch_browser.requests.finish(false);
             return;
         };
         self.pause_audio();
@@ -92,7 +96,7 @@ impl App {
                 self.random_failed(
                     old_pattern,
                     &old_sweeps,
-                    format!("Random patch failed: {error}"),
+                    format!("{} failed: {error}", self.patch_operation_name()),
                 );
                 return;
             }
@@ -116,10 +120,14 @@ impl App {
         if let Some(id) = existing {
             self.random_current(id, replacement);
         } else {
-            self.status = format!("Loading random patch: {}...", plugin.name);
+            self.status = format!(
+                "Loading {}: {}...",
+                self.patch_operation_name(),
+                plugin.name
+            );
             self.pending = Some(PendingLoad {
                 plugin: plugin.clone(),
-                purpose: LoadPurpose::Random(replacement),
+                purpose: LoadPurpose::Random(Box::new(replacement)),
             });
             if let Err(error) = self.random_operation(Operation::Create, |_| Ok(())) {
                 self.instance_created(-1, Some(error));
@@ -165,7 +173,8 @@ impl App {
                     replacement.old_pattern,
                     &replacement.old_sweeps,
                     format!(
-                        "Random patch failed: {error}{}",
+                        "{} failed: {error}{}",
+                        self.patch_operation_name(),
                         rollback.err().map_or(String::new(), |error| format!(
                             "; state rollback failed: {error}; saving suppressed"
                         ))
@@ -189,7 +198,7 @@ impl App {
             self.random_failed(
                 replacement.old_pattern,
                 &replacement.old_sweeps,
-                format!("Random patch failed: {error}"),
+                format!("{} failed: {error}", self.patch_operation_name()),
             );
             return;
         }
@@ -210,7 +219,7 @@ impl App {
                 self.random_failed(
                     replacement.old_pattern,
                     &replacement.old_sweeps,
-                    format!("Random patch failed: {error}"),
+                    format!("{} failed: {error}", self.patch_operation_name()),
                 );
                 return;
             }
@@ -236,6 +245,7 @@ impl App {
     }
 
     fn random_failed(&mut self, pattern: SequencePattern, sweeps: &[(i32, bool)], message: String) {
+        self.patch_browser.requests.finish(false);
         self.sequence_pattern = pattern;
         for &(id, sweep) in sweeps {
             if let Some(instance) = self.instances.iter_mut().find(|i| i.id == id) {
@@ -256,7 +266,8 @@ impl App {
             *instance != id && self.instances.iter().any(|i| i.id == *instance)
         });
         self.status = format!(
-            "Random patch: {} — {}{}",
+            "{}: {} — {}{}",
+            self.patch_operation_name(),
             replacement.prepared.candidate.plugin_name,
             replacement.prepared.candidate.display,
             if self.output.is_none() {
@@ -265,6 +276,9 @@ impl App {
                 ""
             }
         );
+        self.patch_browser.requests.finish(true);
+        // Random patches play catalog patches too; the browser opens at them.
+        self.patch_browser.requests.applied = Some(replacement.prepared.candidate.clone());
         // Save both old and applied bytes with the existing state store. No favorite capture.
         self.pause_audio();
         let saved = (|| {
