@@ -3,6 +3,7 @@
 use crate::config::PluginKey;
 
 mod floe;
+mod patch_settling;
 mod sforzando;
 mod surge_xt;
 mod tyrell_n6;
@@ -10,6 +11,13 @@ mod vaporizer2;
 
 pub(crate) fn automatic_note_start_delay(plugin: &PluginKey) -> std::time::Duration {
     surge_xt::automatic_note_start_delay(plugin).max(floe::automatic_note_start_delay(plugin))
+}
+
+pub(crate) fn automatic_note_start_delay_at_rate(
+    plugin: &PluginKey,
+    sample_rate: u32,
+) -> std::time::Duration {
+    automatic_note_start_delay(plugin).max(patch_settling::delay(plugin, sample_rate))
 }
 
 pub(crate) fn same_favorite_state(plugin: &PluginKey, left: &[u8], right: &[u8]) -> bool {

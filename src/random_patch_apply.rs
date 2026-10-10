@@ -56,7 +56,11 @@ impl App {
         let Some(plugin) = self
             .plugins
             .iter()
-            .find(|plugin| plugin.format == candidate.format && plugin.id == candidate.plugin_id)
+            .find(|plugin| {
+                plugin.format == candidate.format
+                    && plugin.id == candidate.plugin_id
+                    && plugin.kind == PluginKind::Instrument
+            })
             .cloned()
         else {
             self.status = "Random patch failed: target plugin no longer available".into();

@@ -1,4 +1,4 @@
-//! Owned conversion work only; native instances stay on the GUI thread.
+//! Owned preparation work; only temporary cmrt instances live on the worker.
 use crate::{random_patch_catalog::Candidate, App};
 use eframe::egui;
 use rand::Rng;
@@ -26,8 +26,12 @@ impl Preparation {
 
     fn start(&mut self, candidate: Candidate, ctx: &egui::Context) {
         self.start_with(candidate, ctx.clone(), |candidate| {
-            cmrt_patches::prepare_clap_patch_state(&candidate.plugin_id, &candidate.path)
-                .map_err(|error| error.to_string())
+            cmrt_patches::prepare_catalog_clap_patch_state(
+                &candidate.plugin_id,
+                &candidate.bundle_path,
+                &candidate.path,
+            )
+            .map_err(|error| error.to_string())
         });
     }
 
@@ -81,13 +85,22 @@ impl App {
         if self.actions_busy() {
             return;
         }
-        let Some(candidate) = choose(
+        let Some(mut candidate) = choose(
             self.random_patch_catalog.candidates(),
             &mut rand::thread_rng(),
         )
         .cloned() else {
             return;
         };
+        let Some(installed) = self.plugins.iter().find(|p| {
+            p.format == candidate.format
+                && p.id == candidate.plugin_id
+                && p.kind == crate::plugin_list::PluginKind::Instrument
+        }) else {
+            return;
+        };
+        // A rescan may replace the bundle without changing its format/ID.
+        candidate.bundle_path = installed.bundle_path.clone().into();
         self.status = format!(
             "Preparing {}: {}...",
             candidate.plugin_name, candidate.display

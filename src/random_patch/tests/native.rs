@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 mod editor;
 mod favorite_mml;
+mod preparation_gate;
 mod real_surge;
 
 fn key(mode: &str) -> PluginKey {

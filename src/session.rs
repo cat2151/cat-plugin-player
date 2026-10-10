@@ -83,7 +83,12 @@ impl App {
                 .map(|i| &i.plugin)
         });
         let start_delay = instrument_plugin
-            .map(crate::plugin_specific::automatic_note_start_delay)
+            .map(|plugin| {
+                crate::plugin_specific::automatic_note_start_delay_at_rate(
+                    plugin,
+                    self.sample_rate(),
+                )
+            })
             .unwrap_or_default();
         audio::Voice::start(
             self.output.as_ref().unwrap(),

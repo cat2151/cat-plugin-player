@@ -1,16 +1,17 @@
 //! Opt-in installed Surge acceptance; all application writes use the supplied directory.
 use super::*;
 
-fn render(app: &App, id: i32) -> Vec<f32> {
+pub(super) fn render(app: &App, id: i32) -> Vec<f32> {
     let processor = app.host.create_chain(id, &[], false, 48_000, 256).unwrap();
     let mut audio = unsafe { processor.audio_ref() };
     let mut sequencer = crate::seq::Sequencer::new(48_000);
-    sequencer.delay_start(crate::plugin_specific::automatic_note_start_delay(
+    sequencer.delay_start(crate::plugin_specific::automatic_note_start_delay_at_rate(
         &app.instances
             .iter()
             .find(|instance| instance.id == id)
             .unwrap()
             .plugin,
+        48_000,
     ));
     let mut events = crate::seq::EventBuf::new();
     let mut samples = Vec::new();

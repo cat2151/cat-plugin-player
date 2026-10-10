@@ -12,6 +12,7 @@ fn candidate() -> Candidate {
         plugin_name: "Surge XT".into(),
         display: "Bass/One.fxp".into(),
         path: "X:/patches/Bass/One.fxp".into(),
+        bundle_path: "X:/plugins/Surge.clap".into(),
     }
 }
 
@@ -144,16 +145,76 @@ fn conditional_ui_disables_each_busy_phase() {
 }
 
 #[test]
+fn seven_identities_same_names_programs_and_effect_exclusion() {
+    let ids = [
+        SURGE_ID,
+        "com.digital-suburban.dexed",
+        "com.floe-audio.floe",
+        "com.Plogue Art et Technologie, Inc.sforzando",
+        "org.baconpaul.six-sines",
+        "com.u-he.TyrellN6",
+        "com.vastdynamics.VAST2",
+    ];
+    let installed: Vec<_> = ids.iter().map(|id| plugin("CLAP", id)).collect();
+    let mut candidates: Vec<_> = ids
+        .iter()
+        .map(|id| {
+            let mut item = candidate();
+            item.plugin_id = (*id).into();
+            item.display = "Same name".into();
+            item
+        })
+        .collect();
+    for program in ["00 Say Again", "01 LAURIE"] {
+        let mut item = candidates[1].clone();
+        item.display = format!("Dexed_01.syx/{program}");
+        item.path = PathBuf::from(format!("X:/cartridges/{}", item.display));
+        candidates.push(item);
+    }
+    let mut catalog = Catalog::from_candidates(candidates, &installed);
+    assert_eq!(catalog.candidates().count(), 9);
+    assert_eq!(
+        catalog.instrument_names.len(),
+        7,
+        "count identities even with identical names"
+    );
+    let dexed: Vec<_> = catalog
+        .candidates()
+        .filter(|c| c.plugin_id == ids[1])
+        .collect();
+    assert_ne!(dexed[1].path, dexed[2].path);
+    assert!(dexed[2].path.to_string_lossy().ends_with("01 LAURIE"));
+    let mut changed = installed.clone();
+    changed[1].kind = crate::plugin_list::PluginKind::Effect;
+    changed[2].format = "VST3".into();
+    changed.pop();
+    catalog.reconcile(&changed);
+    assert_eq!(catalog.candidates().count(), 4);
+    assert_eq!(catalog.instrument_names.len(), 4);
+    assert!(catalog
+        .candidates()
+        .all(|c| c.plugin_id != ids[1] && c.plugin_id != ids[2] && c.plugin_id != ids[6]));
+    catalog.reconcile(&installed);
+    assert_eq!(catalog.candidates().count(), 9);
+}
+
+#[test]
 #[ignore = "read-only installed catalog acceptance"]
-fn installed_catalog_extracts_owned_surge_clap_paths() {
+fn installed_catalog_extracts_owned_instrument_clap_paths() {
     let candidates = load().unwrap();
     assert!(!candidates.is_empty());
     for candidate in &candidates {
         assert_eq!(candidate.format, "CLAP");
-        assert_eq!(candidate.plugin_id, SURGE_ID);
+        assert!(cmrt_patches::supports_catalog_clap_plugin(
+            &candidate.plugin_id
+        ));
         assert!(candidate.path.is_absolute());
         assert!(!candidate.display.is_empty());
         assert!(!candidate.plugin_name.is_empty());
     }
-    println!("owned Surge CLAP candidates: {}", candidates.len());
+    let mut counts = std::collections::BTreeMap::new();
+    for candidate in candidates {
+        *counts.entry(candidate.plugin_name).or_insert(0usize) += 1;
+    }
+    println!("owned CLAP candidates by instrument: {counts:?}");
 }

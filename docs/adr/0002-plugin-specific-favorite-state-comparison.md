@@ -18,7 +18,7 @@ Auto FavoでTyrellN6の同じ音色が繰り返し追加される。
 固有処理の追加・撤去はADRに記録し、本ADRを置き換える場合は後続ADRへの参照を残す。
 新しい例外を増やす前に、プラグイン形式の標準APIで解決できるか確認する。
 
-## 現在の本番処理：6件
+## 現在の本番処理：7件
 
 | 対象 | 処理・場所 | 必要な理由 | 適用範囲・撤去条件 |
 | --- | --- | --- | --- |
@@ -28,6 +28,7 @@ Auto FavoでTyrellN6の同じ音色が繰り返し追加される。
 | Floe CLAP (`com.floe-audio.floe`) | sweep中のFavorite重複判定：[floe.rs](../../src/plugin_specific/floe.rs) | 自動CC1がMacro 1とpreset変更フラグに保存される | Floe 2.0.2 / state schema 30、CC1→Macro 1だけの割り当てを確認。詳細は[ADR 0009](0009-sweep-cc1-favorite-comparison.md)。Vaporizer2のsweep対応も同ADR参照 |
 | sforzando CLAP (`com.Plogue Art et Technologie, Inc.sforzando`) | Favoritesの重複判定：[sforzando.rs](../../src/plugin_specific/sforzando.rs) | 保存だけで`sc`が増え、ノート・CC1の演奏値もstateに残る | `CEGP`とARIA schema 1982/1014の確認済み形式のみ。CC1と最後のvelocityは別音色としない。詳細と撤去条件は[ADR 0006](0006-sforzando-favorite-state-comparison.md) |
 | Surge XT CLAP / VST3 | Favoritesの重複判定：[surge_xt.rs](../../src/plugin_specific/surge_xt.rs) | editor拡大率と演奏中のCC1値がstateに残る | `sub3` / patch revision 24、実機確認済み1.3.4。詳細と撤去条件は[ADR 0007](0007-surge-xt-favorite-state-comparison.md) |
+| Six Sines / TyrellN6 CLAP | state復元後のnote開始待ち：[patch_settling.rs](../../src/plugin_specific/patch_settling.rs) | Six Sinesは反映blockのnote-onを捨て、TyrellN6は反映に複数blockが必要 | Six Sinesは最大1block分、TyrellN6は4096frames・最低4blocks。sample rateに応じて既存sequencerで待つ。空回しなしで冒頭音・選択音色が安定すれば撤去を検討。詳細は[ADR 0019](0019-random-patch-all-catalog.md) |
 
 ### Vaporizer2の判定と制限
 

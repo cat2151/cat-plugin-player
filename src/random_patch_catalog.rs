@@ -17,6 +17,7 @@ pub(crate) struct Candidate {
     pub plugin_name: String,
     pub display: String,
     pub path: PathBuf,
+    pub bundle_path: PathBuf,
 }
 
 type LoadResult = Result<Vec<Candidate>, String>;
@@ -34,6 +35,7 @@ enum State {
 pub(crate) struct Catalog {
     state: State,
     eligible: Vec<usize>,
+    instrument_names: Vec<String>,
 }
 
 impl Catalog {
@@ -42,6 +44,7 @@ impl Catalog {
         let mut catalog = Self {
             state: State::Ready(candidates),
             eligible: Vec::new(),
+            instrument_names: Vec::new(),
         };
         catalog.reconcile(plugins);
         catalog
@@ -90,6 +93,7 @@ impl Catalog {
     /// Call when the scan list changes, and when a worker result arrives.
     pub fn reconcile(&mut self, plugins: &[PluginInfo]) {
         self.eligible.clear();
+        self.instrument_names.clear();
         if let State::Ready(candidates) = &self.state {
             self.eligible.extend(
                 candidates
@@ -101,10 +105,20 @@ impl Catalog {
                             .any(|plugin| {
                                 plugin.format == candidate.format
                                     && plugin.id == candidate.plugin_id
+                                    && plugin.kind == crate::plugin_list::PluginKind::Instrument
                             })
                             .then_some(index)
                     }),
             );
+            let mut names = std::collections::BTreeMap::new();
+            for &index in &self.eligible {
+                let candidate = &candidates[index];
+                names
+                    .entry((&candidate.format, &candidate.plugin_id))
+                    .or_insert(&candidate.plugin_name);
+            }
+            self.instrument_names = names.values().map(|name| (*name).clone()).collect();
+            self.instrument_names.sort();
         }
     }
 
@@ -129,9 +143,10 @@ impl Catalog {
         Some(
             ui.add_enabled(!busy, egui::Button::new("Random patch"))
                 .on_hover_text(format!(
-                    "Choose from {} {} patches and play the selected sequence.\nExample: {}\n{}",
+                    "Choose uniformly from {} patches across {} instruments: {}.\nKeeps stopped playback stopped; restarts the current phrase when playing.\nExample: {}\n{}",
                     self.eligible.len(),
-                    sample.plugin_name,
+                    self.instrument_names.len(),
+                    self.instrument_names.join(", "),
                     sample.display,
                     sample.path.display()
                 )),
@@ -149,7 +164,10 @@ fn load() -> LoadResult {
             .patch_plugins()
             .audio_info_for_ref(&patch.reference)
             .map_err(|error| error.to_string())?;
-        if plugin.plugin_id.as_deref() != Some(SURGE_ID)
+        let Some(id) = plugin.plugin_id.as_deref() else {
+            continue;
+        };
+        if !cmrt_patches::supports_catalog_clap_plugin(id)
             || !std::path::Path::new(&plugin.plugin_path)
                 .extension()
                 .is_some_and(|extension| extension.eq_ignore_ascii_case("clap"))
@@ -158,10 +176,11 @@ fn load() -> LoadResult {
         }
         candidates.push(Candidate {
             format: "CLAP".into(),
-            plugin_id: SURGE_ID.into(),
+            plugin_id: id.into(),
             plugin_name: plugin.name.clone(),
             display: patch.reference.display.clone(),
             path: plugin.patch_base.resolve(&patch.reference.display).into(),
+            bundle_path: plugin.plugin_path.clone().into(),
         });
     }
     Ok(candidates)

@@ -9,6 +9,7 @@ pub(super) fn candidate() -> Candidate {
         plugin_name: "Surge XT".into(),
         display: "Bass/One.fxp".into(),
         path: "X:/patches/One.fxp".into(),
+        bundle_path: "X:/plugins/Surge.clap".into(),
     }
 }
 

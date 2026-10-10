@@ -42,6 +42,7 @@
   - 入力変更やカーソル移動で、その位置の単音／和音を一度試聴します。途中編集や貼り付けも対象です。同じ発音単位の内側での移動や再描画だけでは鳴らし直しません。前のテンポ・オクターブ・音長を反映し、休符やコマンドの位置では発音しません。編集を開いた時点で通常演奏は停止し、試聴音の終了後も全体再生は始まりません。次の発音単位、取消し、確定、音源交換でも試聴音を解放します。試聴は確定本文・通常の選択を変えません
   - 確定したMMLのループ再生の発音Velocityは、入力内の指定より `Velocity` 欄の設定を優先します。CC1も `CC1 modulation` 欄から操作できます。非常に過密なフレーズで演奏イベントの容量に達した場合は、鳴っている音を解放して発音を停止します。`Stop` → `Play` で再開始できます
   - アプリのFavorites／Historyからの呼び出しやRandom patchによる音色変更では、停止・再生状態を維持します。再生中はフレーズの先頭から演奏し、変更前のフレーズ途中の待ちを引き継ぎません。MMLで指定した先頭休符は保ちます。プラグイン独自GUIの音色変更は検出しません
+  - Six Sines／TyrellN6 CLAPでは、ロード・state復元・接続変更などで音声処理を再構築した際、冒頭音を保つため、通常の音声処理を続けながら最初のフレーズ開始を待ちます。48kHz時の待ちはSix Sinesで約21ms、TyrellN6で約85msです。MMLの先頭休符はさらに加算されます。適用条件と実機検証は[ADR 0019](docs/adr/0019-random-patch-all-catalog.md)を参照してください
   - 演奏パターンの下の `Velocity` 欄で、同じ左右矢印・ドロップダウンから `100`・`127`・`40-100`・`80-127` を選べます。初期値は100です。範囲指定はフレーズ内のNote On順に値を上げ、次のループでは下げる動作を繰り返します。変更はフレーズを再開せず次の発音から反映し、次回起動時にも復元します
   - `CC1 modulation` 欄で、左右矢印・ドロップダウンから `0`・`127`・`sweep` を選べます。初期値は0です。`sweep` は2秒で0から127へ、次の2秒で127から0へ変化する動作を繰り返します。選択は次回起動時にも復元します
   - ギター開放弦は MIDI note number 40・45・50・55・59・64（ミ・ラ・レ・ソ・シ・ミ）を125ms間隔で順にNote Onします。最後のNote Onから2秒後に6音を同時にNote Offし、0.5秒後に繰り返します
@@ -63,6 +64,10 @@
   - 主入力・主出力の mono／stereo に対応します。mono → stereo は複製、stereo → mono は左右の平均です。補助入力は無音です
   - 接続や Bypass の変更時には短い音切れがあり、発音中の note と余韻は途切れることがあります。サイドチェイン、並列接続、ホスト側の Dry/Wet は未対応です
 - 音色
+  - `Sequence` の `Random patch` は、既存cmrtカタログにあるSurge XT・Dexed・Floe・sforzando・Six Sines・TyrellN6・Vaporizer2のCLAP音色から、インストール済みのinstrumentと形式＋IDが一致する全patchを均等に抽選します。音源ごとの均等抽選ではなく、候補が多いDexedは選ばれる頻度も高くなります。tooltipには対象音源と総候補数を表示します。対応候補がなければボタンを表示しません
+  - カタログは既存の `%LOCALAPPDATA%\clap-mml-render-tui\patch-catalog\catalog.json` を読み取り専用で利用します。VST3への代替、effectの音色抽選、未知の音源は対象外です。Dexedはcartridge内のprogram指定を保持します。Floe・sforzandoの外部sampleは元の場所に必要で、sampleを複製・保存する機能はありません
+  - Random patchの準備中は現在の演奏を続け、競合するロード・走査・音色操作を無効にします。Floeなどのsample読込で待つ場合があります。停止中は適用後も停止、再生中は現在フレーズの先頭から再開します。MML・Velocity・CC1の全体選択とeffectの順序・state・Bypassは維持します。成功後は適用したstateを次回起動用に保存し、Random patch自身はFavorites／Historyを追加しません
+  - 準備・適用に失敗した場合は理由を表示し、別patchを自動抽選しません。元の構成・state・再生状態を復旧し、stateの復旧にも失敗したinstanceは保存を抑止します。音色適用後の保存失敗は適用済みとして表示します。音源別の準備・反映条件と検証範囲は[ADR 0019](docs/adr/0019-random-patch-all-catalog.md)に記録しています
   - 各プラグインの `★ Add favorite` で、その瞬間の音色・設定をお気に入りとして複数保存できます。音源では演奏パターン・停止中の選択・確定したMML／コード本文も保存します。effectでは演奏設定を保存しません。名前は自動で付け、後から変更できます
   - 別のプラグインを `Load` すると、置き換わるプラグインの音色・設定・演奏パターンを切り替え前に History へ自動記録します。名前は `プラグイン名 連番` です。同じプラグインの再読み込みや起動時の復元では追加しません。音源の確定MML／コード本文と停止中の選択も、お気に入りと同じ範囲で記録します。effectでは演奏設定を記録しません。保存に失敗した場合は切り替えを中止します
   - 手動・自動保存時に、同じプラグイン・役割・演奏パターン・確定MML本文・state の重複を確認し、保存済みの項目と名前を再利用します。Historyの自動記録では停止だけの違いを同一と扱いますが、本文が異なるMMLは別の項目として保持します。effectは演奏設定を比較しません
@@ -127,7 +132,7 @@ placement = "right_then_bottom_right"
 
 ## ローカルでのビルドと実行
 
-当アプリと `uapmd`、`clap-mml-render-tui`、`clap-mml-play-server` を同じ親ディレクトリに clone し、当アプリのディレクトリで実行します。TUIの `app` / `patches` とplay-serverの `core-lib` / `server-config` はCargo.tomlから常時ローカル参照します。play-serverには `prepare_clap_patch_state` / `PatchStateError`、TUIの `cmrt-patches` にはその再exportが必要です。checkout不足やAPI不足はビルドエラーとなり、Git版への自動切替は行いません。
+当アプリと `uapmd`、`clap-mml-render-tui`、`clap-mml-play-server` を同じ親ディレクトリに clone し、当アプリのディレクトリで実行します。TUIの `app` / `patches` とplay-serverの `core-lib` / `server-config` はCargo.tomlから常時ローカル参照します。play-serverには従来の `prepare_clap_patch_state` / `PatchStateError` に加えて `prepare_catalog_clap_patch_state` / `supports_catalog_clap_plugin`、TUIの `cmrt-patches` にはその再exportが必要です。checkout不足やAPI不足はビルドエラーとなり、Git版への自動切替は行いません。
 
 ```powershell
 cargo build --release
