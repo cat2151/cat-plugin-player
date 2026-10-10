@@ -38,6 +38,8 @@ fn native_mml_editor_keys_and_patch_transport() {
     assert!(app.mml_input.open);
     assert_eq!(app.sequence_pattern, SequencePattern::Off);
     assert_eq!(app.selected_sequence, SequencePattern::Steps);
+    // Opening twice must not replace the remembered playing state with Off.
+    app.open_mml_editor();
     assert_eq!(
         crate::status::Status::load(&app.config_path.clone().unwrap())
             .unwrap()
@@ -55,25 +57,60 @@ fn native_mml_editor_keys_and_patch_transport() {
     app.mml_input.buffer = "t120 crd".into();
     frame(&mut app, vec![key_event(egui::Key::Enter)]);
     assert!(!app.mml_input.open);
-    assert_eq!(app.sequence_pattern, SequencePattern::Off);
+    assert_eq!(app.sequence_pattern, SequencePattern::Custom);
     assert_eq!(app.selected_sequence, SequencePattern::Custom);
+    assert_eq!(
+        crate::status::Status::load(&app.config_path.clone().unwrap())
+            .unwrap()
+            .sequence_pattern,
+        SequencePattern::Custom
+    );
     let phrase = app.mml_input.phrase.clone().unwrap();
     app.open_mml_editor();
     app.mml_input.buffer = " ".into();
     frame(&mut app, vec![key_event(egui::Key::Enter)]);
     assert!(app.mml_input.open && app.mml_input.error.is_some());
+    assert_eq!(app.sequence_pattern, SequencePattern::Off);
     assert!(std::sync::Arc::ptr_eq(
         app.mml_input.phrase.as_ref().unwrap(),
         &phrase
     ));
     frame(&mut app, vec![key_event(egui::Key::Escape)]);
     assert!(!app.mml_input.open);
+    assert_eq!(app.sequence_pattern, SequencePattern::Custom);
     app.sequence_pattern = SequencePattern::Custom;
     app.open_mml_editor();
     assert_eq!(app.sequence_pattern, SequencePattern::Off);
     app.mml_input.buffer = "C F G".into();
     frame(&mut app, vec![key_event(egui::Key::Enter)]);
+    assert_eq!(app.sequence_pattern, SequencePattern::Custom);
+    let phrase = app.mml_input.phrase.clone().unwrap();
+    // Cancel restores a built-in pattern, while stopped edits stay stopped.
+    for state in [SequencePattern::Steps, SequencePattern::Off] {
+        app.sequence_pattern = state;
+        app.selected_sequence = SequencePattern::Steps;
+        app.open_mml_editor();
+        app.mml_input.buffer = "df a".into();
+        frame(&mut app, vec![key_event(egui::Key::Escape)]);
+        assert_eq!(app.sequence_pattern, state);
+        assert_eq!(app.selected_sequence, SequencePattern::Steps);
+        assert!(std::sync::Arc::ptr_eq(
+            app.mml_input.phrase.as_ref().unwrap(),
+            &phrase
+        ));
+        assert_eq!(
+            crate::status::Status::load(&app.config_path.clone().unwrap())
+                .unwrap()
+                .sequence_pattern,
+            state
+        );
+    }
+    app.open_mml_editor();
+    app.mml_input.buffer = "C F G".into();
+    frame(&mut app, vec![key_event(egui::Key::Enter)]);
+    assert!(!app.mml_input.open);
     assert_eq!(app.sequence_pattern, SequencePattern::Off);
+    assert_eq!(app.selected_sequence, SequencePattern::Custom);
     let phrase = app.mml_input.phrase.clone().unwrap();
     for state in [SequencePattern::Off, SequencePattern::Custom] {
         app.sequence_pattern = state;

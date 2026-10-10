@@ -12,6 +12,7 @@ pub struct MmlInput {
     pub phrase: Option<Arc<Phrase>>,
     focus: bool,
     cursor_preview: crate::mml_preview::CursorPreview,
+    sequence_before_open: Option<SequencePattern>,
 }
 
 impl MmlInput {
@@ -36,6 +37,7 @@ impl MmlInput {
     pub fn cancel(&mut self) {
         self.open = false;
         self.error = None;
+        self.sequence_before_open = None;
     }
     pub fn convert(&mut self, rate: u32) -> Option<Arc<Phrase>> {
         match Phrase::parse(&self.buffer, rate) {
@@ -53,8 +55,28 @@ impl MmlInput {
 
 impl App {
     pub(crate) fn open_mml_editor(&mut self) {
+        if self.mml_input.open {
+            return;
+        }
+        self.mml_input.sequence_before_open =
+            (self.sequence_pattern != SequencePattern::Off).then_some(self.sequence_pattern);
         self.stop_sequence_for_mml();
         self.mml_input.open();
+    }
+
+    fn cancel_mml(&mut self) {
+        self.stop_mml_preview();
+        if let Some(pattern) = self.mml_input.sequence_before_open {
+            self.selected_sequence = pattern;
+            self.sequence_pattern = pattern;
+            for instance in &self.instances {
+                if let Some(voice) = &instance.voice {
+                    voice.set_sequence(pattern);
+                }
+            }
+        }
+        self.mml_input.cancel();
+        self.save_session();
     }
 
     fn stop_sequence_for_mml(&mut self) {
@@ -87,8 +109,7 @@ impl App {
         }
         self.stop_sequence_for_mml();
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
-            self.stop_mml_preview();
-            self.mml_input.cancel();
+            self.cancel_mml();
             return;
         }
         let ready = !self.actions_busy();
@@ -140,8 +161,7 @@ impl App {
                 });
             });
         if cancel {
-            self.stop_mml_preview();
-            self.mml_input.cancel();
+            self.cancel_mml();
         } else if confirm {
             self.confirm_mml();
         }
@@ -165,7 +185,7 @@ impl App {
         let old_selected = self.selected_sequence;
         let old_phrase = self.mml_input.phrase.replace(phrase);
         self.selected_sequence = SequencePattern::Custom;
-        if old_pattern != SequencePattern::Off {
+        if self.mml_input.sequence_before_open.is_some() {
             self.sequence_pattern = SequencePattern::Custom;
         }
         if let Err(error) = self.resume_audio() {
