@@ -14,6 +14,7 @@ mod favorites;
 mod favorites_store;
 mod favorites_ui;
 mod ffi;
+mod first_instrument_install;
 mod history;
 mod lissajous;
 mod lissajous_ui;
@@ -150,6 +151,7 @@ struct App {
     config_path: Result<std::path::PathBuf, String>,
     scanning: bool,
     confirm_rescan: bool,
+    first_instrument: first_instrument_install::FirstInstrument,
     deferred_scan: bool,
     fast_restore: bool,
     filter: String,
@@ -223,7 +225,14 @@ impl App {
                         None => String::new(),
                     };
                     if scan_succeeded {
-                        self.restore_session();
+                        if let Some(index) = self.first_instrument.on_scan(&self.plugins) {
+                            // Restoring too would leave `restoring` set behind this pending load.
+                            self.restore = None;
+                            self.restore_effect.clear();
+                            self.load_plugin(index);
+                        } else {
+                            self.restore_session();
+                        }
                     } else if self.restoring && self.instrument_id().is_some() {
                         self.load_failed(format!(
                             "{}; could not restore effect; playing instrument directly",
@@ -303,6 +312,7 @@ impl eframe::App for App {
         self.scope_panel(ctx, analysis_on_right);
         self.routing_panel(ctx, analysis_on_right);
         self.library_panel(ctx);
+        self.first_instrument_dialog(ctx);
         self.log_status_error(&previous_status);
     }
 }

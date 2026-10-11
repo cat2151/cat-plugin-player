@@ -110,6 +110,7 @@ impl App {
             config_path,
             scanning: false,
             confirm_rescan: false,
+            first_instrument: Default::default(),
             deferred_scan: true,
             fast_restore: false,
             filter: String::new(),
