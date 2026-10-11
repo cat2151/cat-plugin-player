@@ -1,0 +1,169 @@
+# Builds the Windows x64 release zips (VC++ runtime as DLLs / linked statically).
+# publish=false: build and check only; the zips are kept as run artifacts.
+# publish=true:  also (re)create the GitHub Release v<Cargo.toml version>, replacing an existing one.
+# See release-ci-option.md and docs/adr/0023-static-crt-release-build.md.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "GitHub Release を公開する（false はビルドと検査だけ）"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  # The uapmd commit that the local build was checked against (ADR 0021).
+  UAPMD_VERIFIED_SHA: a4a96938eb31ddcb70209d62caf0dcc6ea9d3abe
+
+jobs:
+  # Fix the sibling commits once, so that both builds and the notes use the same sources.
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.refs.outputs.version }}
+      uapmd: ${{ steps.refs.outputs.uapmd }}
+      tui: ${{ steps.refs.outputs.tui }}
+      server: ${{ steps.refs.outputs.server }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: Cargo.toml
+          sparse-checkout-cone-mode: false
+      - id: refs
+        run: |
+          set -euo pipefail
+          main_sha() { git ls-remote --exit-code "https://github.com/$1" refs/heads/main | cut -f1; }
+          {
+            echo "version=$(python3 -c "import tomllib; print(tomllib.load(open('Cargo.toml', 'rb'))['package']['version'])")"
+            echo "uapmd=$(main_sha atsushieno/uapmd)"
+            echo "tui=$(main_sha cat2151/clap-mml-render-tui)"
+            echo "server=$(main_sha cat2151/clap-mml-play-server)"
+          } >> "$GITHUB_OUTPUT"
+      - name: Write the release notes
+        env:
+          VERSION: ${{ steps.refs.outputs.version }}
+          UAPMD: ${{ steps.refs.outputs.uapmd }}
+          TUI: ${{ steps.refs.outputs.tui }}
+          SERVER: ${{ steps.refs.outputs.server }}
+        run: |
+          set -euo pipefail
+          if [ "$UAPMD" = "$UAPMD_VERIFIED_SHA" ]; then
+            verified="一致"
+          else
+            verified="不一致（手元で動作を確認していない uapmd の版でビルドした）"
+          fi
+          cat > notes.md <<EOF
+          cat-plugin-player v${VERSION} (Windows x64)
+
+          ## 配布物
+          - \`cat-plugin-player-${VERSION}-windows-x64-dynamic-crt.zip\`: VC++ ランタイムを DLL で使う版。Microsoft Visual C++ 再頒布可能パッケージ（x64、最新版）が必要
+          - \`cat-plugin-player-${VERSION}-windows-x64-static-crt.zip\`: VC++ ランタイムを静的リンクした版。再頒布可能パッケージは不要
+
+          ## ビルドに使った commit
+          - cat-plugin-player: ${GITHUB_SHA}
+          - clap-mml-render-tui: ${TUI}
+          - clap-mml-play-server: ${SERVER}
+          - uapmd（atsushieno/uapmd の main）: ${UAPMD}
+            - 手元で確認した uapmd ${UAPMD_VERIFIED_SHA} と${verified}
+          EOF
+          cat notes.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v5
+        with:
+          name: release-notes
+          path: notes.md
+          if-no-files-found: error
+
+  build:
+    needs: resolve
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        crt: [dynamic, static]
+    env:
+      ZIP: cat-plugin-player-${{ needs.resolve.outputs.version }}-windows-x64-${{ matrix.crt }}-crt.zip
+    steps:
+      - run: git config --global core.longpaths true
+      # Sibling layout of ADR 0012: Cargo.toml and build.rs refer to ../<sibling>.
+      - uses: actions/checkout@v5
+        with:
+          path: cat-plugin-player
+      - uses: actions/checkout@v5
+        with:
+          repository: atsushieno/uapmd
+          ref: ${{ needs.resolve.outputs.uapmd }}
+          path: uapmd
+      - uses: actions/checkout@v5
+        with:
+          repository: cat2151/clap-mml-render-tui
+          ref: ${{ needs.resolve.outputs.tui }}
+          path: clap-mml-render-tui
+      - uses: actions/checkout@v5
+        with:
+          repository: cat2151/clap-mml-play-server
+          ref: ${{ needs.resolve.outputs.server }}
+          path: clap-mml-play-server
+      # The runner image may lag behind the stable Rust that the code is built with locally.
+      - name: Update Rust and show tool versions
+        run: |
+          rustup update stable --no-self-update
+          rustup default stable
+          rustc -vV
+          cargo -V
+          cmake --version
+      # build.rs sees crt-static in CARGO_CFG_TARGET_FEATURE and configures the C++ side with /MT.
+      - name: Link the CRT statically
+        if: matrix.crt == 'static'
+        run: Add-Content -Path $env:GITHUB_ENV -Value "CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS=-C target-feature=+crt-static"
+      - name: Build
+        working-directory: cat-plugin-player
+        run: cargo build --release --locked
+      # The exe embeds uapmd_shim.dll and unpacks it at run time, so the DLL is checked where it was built.
+      - name: Check the CRT linkage
+        working-directory: cat-plugin-player
+        run: python scripts/crt_linkage.py ${{ matrix.crt }} target/release/cat-plugin-player.exe target/shim/out/uapmd_shim.dll
+      - name: Package
+        working-directory: cat-plugin-player
+        run: Compress-Archive -Path target/release/cat-plugin-player.exe, LICENSE -DestinationPath $env:ZIP
+      - uses: actions/upload-artifact@v5
+        with:
+          name: ${{ matrix.crt }}-crt
+          path: cat-plugin-player/${{ env.ZIP }}
+          if-no-files-found: error
+      - name: Test
+        working-directory: cat-plugin-player
+        run: cargo test --release --locked
+      - name: Disk usage
+        if: always()
+        run: Get-PSDrive -PSProvider FileSystem | Format-Table Name, Used, Free
+
+  publish:
+    if: inputs.publish
+    needs: [resolve, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: v${{ needs.resolve.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Remove the existing release and tag
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release delete "$TAG" --cleanup-tag --yes
+          fi
+          if gh api "repos/$GH_REPO/git/ref/tags/$TAG" > /dev/null 2>&1; then
+            gh api -X DELETE "repos/$GH_REPO/git/refs/tags/$TAG"
+          fi
+      - name: Create the release
+        run: gh release create "$TAG" dist/*.zip --target "$GITHUB_SHA" --title "$TAG" --notes-file dist/notes.md

@@ -92,7 +92,7 @@ PCoreの確認済み`UI_op=9/10`とテキスト末尾の空行は比較から除
 
 CLAP / VST3 / LV2等の形式別処理は、製品固有処理とは区別する。
 例えば `shim/uapmd_shim.cpp` のLV2文字列終端対応や
-`patches/uapmd/windows-vst3-loader/` のWindows VST3ローダー補修は形式単位の処理であり、上の本番例外数には含めない。
+`shim/windows_vst3_binary.h` のWindows VST3本体選択は形式単位の処理であり、上の本番例外数には含めない。
 
 ## 検証と再発時の入口
 

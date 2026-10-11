@@ -27,7 +27,6 @@ set(UAPMD_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 # The whole of uapmd gets configured, but EXCLUDE_FROM_ALL means that only what
 # uapmd_shim links against gets compiled.
 add_subdirectory("${UAPMD_DIR}" uapmd EXCLUDE_FROM_ALL)
-include("${CMAKE_CURRENT_SOURCE_DIR}/../patches/uapmd/windows-vst3-loader/CMakeLists.cmake")
 include("${CMAKE_CURRENT_SOURCE_DIR}/../patches/uapmd/clap-note-dialect/CMakeLists.cmake")
 include("${CMAKE_CURRENT_SOURCE_DIR}/../patches/uapmd/clap-state-load-error/CMakeLists.cmake")
 
@@ -57,3 +56,20 @@ set_target_properties(uapmd_shim PROPERTIES
         LIBRARY_OUTPUT_DIRECTORY "$<1:${UH_OUT_DIR}>"
         ARCHIVE_OUTPUT_DIRECTORY "$<1:${UH_OUT_DIR}>"
 )
+
+# build.rs passes MultiThreaded when Rust links the CRT statically. uapmd forces the DLL
+# runtime both in the cache and on some targets, so the runtime is set on every target
+# here, after uapmd and its dependencies have been added. Empty keeps uapmd's choice.
+if(UH_MSVC_RUNTIME_LIBRARY)
+    function(uh_set_msvc_runtime dir)
+        get_property(targets DIRECTORY "${dir}" PROPERTY BUILDSYSTEM_TARGETS)
+        foreach(target IN LISTS targets)
+            set_property(TARGET ${target} PROPERTY MSVC_RUNTIME_LIBRARY "${UH_MSVC_RUNTIME_LIBRARY}")
+        endforeach()
+        get_property(subdirs DIRECTORY "${dir}" PROPERTY SUBDIRECTORIES)
+        foreach(subdir IN LISTS subdirs)
+            uh_set_msvc_runtime("${subdir}")
+        endforeach()
+    endfunction()
+    uh_set_msvc_runtime("${CMAKE_CURRENT_SOURCE_DIR}")
+endif()

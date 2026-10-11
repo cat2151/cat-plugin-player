@@ -2,18 +2,26 @@
 //!
 //! Environment variables:
 //!   UAPMD_DIR        path to the uapmd checkout (default: ../uapmd, beside this package)
-//!   UH_GENERATOR     CMake generator (default: "Visual Studio 17 2022")
+//!   UH_GENERATOR     CMake generator (default: "Visual Studio 18 2026")
 //!   UH_SKIP_CMAKE=1  do not run CMake; just link what is already built
 //!   UH_RECONFIGURE=1 run the CMake configure step again
 //!
 //! The configure step runs once per build directory and is then skipped: uapmd pulls
 //! a patched dependency from a branch (ImTimeline), and configuring a second time
 //! tries to update and re-patch it, which fails. `cmake --build` still re-runs
-//! configure by itself when a CMakeLists.txt changes; FETCHCONTENT_UPDATES_DISCONNECTED
-//! keeps that from touching dependencies that are already downloaded.
+//! configure by itself when a CMakeLists.txt changes, and that re-applies uapmd's
+//! dependency patches: ImTimeline fails as already patched, and imnodes gets its patch
+//! a second time. Then `git checkout` both sources under target/shim/_deps, or delete
+//! target/shim. FETCHCONTENT_UPDATES_DISCONNECTED keeps branches from being updated.
 //!
 //! The shim is always built as Release, also for `cargo build` without --release:
 //! Rust always links the release CRT, and a Debug C++ build would use the debug one.
+//!
+//! The C++ side links the CRT the same way as Rust: statically (/MT) when the target
+//! feature `crt-static` is enabled (`-C target-feature=+crt-static`), otherwise as DLLs
+//! (/MD). The choice is fixed at configure time, so switching it needs a new build
+//! directory (delete target/shim); an existing one keeps the CRT it was configured with.
+//! See docs/adr/0023-static-crt-release-build.md.
 
 use std::env;
 use std::path::{Path, PathBuf};
@@ -53,23 +61,12 @@ fn main() {
         "owned_instance.h",
         "plugin_catalog.cpp",
         "plugin_catalog.h",
+        "windows_vst3_binary.h",
         "shutdown_overlay.cpp",
         "plugin_specific/shu_ui.h",
     ] {
         println!("cargo:rerun-if-changed={}", shim_dir.join(f).display());
     }
-    println!(
-        "cargo:rerun-if-changed={}",
-        manifest_dir
-            .join("patches/uapmd/windows-vst3-loader")
-            .display()
-    );
-    println!(
-        "cargo:rerun-if-changed={}",
-        uapmd_dir
-            .join("source/remidy/src/vst3/ClassModuleInfo.cpp")
-            .display()
-    );
     for v in [
         "UAPMD_DIR",
         "UH_GENERATOR",
@@ -97,7 +94,7 @@ fn main() {
 
     if env::var_os("UH_SKIP_CMAKE").is_none() {
         let generator =
-            env::var("UH_GENERATOR").unwrap_or_else(|_| "Visual Studio 17 2022".to_string());
+            env::var("UH_GENERATOR").unwrap_or_else(|_| "Visual Studio 18 2026".to_string());
         let stamp = build_dir.join(CONFIGURE_STAMP);
         if !stamp.exists() || env::var_os("UH_RECONFIGURE").is_some() {
             let mut configure = Command::new("cmake");
@@ -109,7 +106,11 @@ fn main() {
                 .arg("-G")
                 .arg(&generator)
                 .arg(format!("-DUAPMD_DIR={}", cmake_path(&uapmd_dir)))
-                .arg("-DFETCHCONTENT_UPDATES_DISCONNECTED=ON");
+                .arg("-DFETCHCONTENT_UPDATES_DISCONNECTED=ON")
+                .arg(format!(
+                    "-DUH_MSVC_RUNTIME_LIBRARY={}",
+                    msvc_runtime_library()
+                ));
             if generator.starts_with("Visual Studio") {
                 configure.arg("-A").arg("x64");
             } else {
@@ -138,6 +139,16 @@ fn main() {
         "cargo:rustc-env=UAPMD_SHIM_DLL={}",
         out_dir.join("uapmd_shim.dll").display()
     );
+}
+
+/// The CMake MSVC runtime that matches how Rust links the CRT; empty keeps uapmd's choice (DLL).
+fn msvc_runtime_library() -> &'static str {
+    let features = env::var("CARGO_CFG_TARGET_FEATURE").unwrap_or_default();
+    if features.split(',').any(|f| f == "crt-static") {
+        "MultiThreaded"
+    } else {
+        ""
+    }
 }
 
 /// CMake wants forward slashes and ordinary Windows paths, not verbatim paths

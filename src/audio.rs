@@ -227,7 +227,7 @@ impl Voice {
     /// notes and restarting the selected phrase from its first note.
     pub fn set_sequence(&self, pattern: SequencePattern) {
         self.sequence_pattern
-            .fetch_update(Ordering::Release, Ordering::Relaxed, |command| {
+            .try_update(Ordering::Release, Ordering::Relaxed, |command| {
                 Some((command.wrapping_add(256) & !0xff) | pattern as u64)
             })
             .unwrap();

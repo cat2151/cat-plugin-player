@@ -2,10 +2,10 @@
 
 ## Cause and bounded scope
 
-Verified dependency revision: `bc39b50faf2f2b02668de82d3d95f2bdbafd3c34`.
-Remote HEAD `a4a96938eb31ddcb70209d62caf0dcc6ea9d3abe` inspected on
-2026-10-08 still calls `setState(...)` followed by `finish("")` even when
-CLAP state.load returns false. The shim already propagates callback errors;
+Verified dependency revision: `a4a96938eb31ddcb70209d62caf0dcc6ea9d3abe`
+(CLAP sources and apply baseline are identical to the originally investigated
+`bc39b50faf2f2b02668de82d3d95f2bdbafd3c34`). It still calls `setState(...)`
+followed by `finish("")` even when CLAP state.load returns false. The shim already propagates callback errors;
 the missing link is remidy's CLAP backend. This can incorrectly commit a
 replacement instance or save a patch that the plugin rejected.
 

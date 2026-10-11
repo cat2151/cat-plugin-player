@@ -2,7 +2,8 @@
 
 Status: **未報告**; no external message has been sent.
 
-Affected upstream revision: `bc39b50faf2f2b02668de82d3d95f2bdbafd3c34`.
+Affected upstream revisions: `bc39b50faf2f2b02668de82d3d95f2bdbafd3c34` and
+`a4a96938eb31ddcb70209d62caf0dcc6ea9d3abe` (CLAP sources unchanged between them).
 
 `PluginInstanceCLAP.Events.cpp` unconditionally turns UMP Note On/Off into
 `CLAP_EVENT_NOTE_ON/OFF`. sforzando CLAP 2.1.2.4 input port 0 advertises

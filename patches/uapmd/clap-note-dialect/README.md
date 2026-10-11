@@ -2,7 +2,9 @@
 
 ## Cause and scope
 
-UAPMD revision `bc39b50faf2f2b02668de82d3d95f2bdbafd3c34` converts every UMP
+Verified dependency revision: `a4a96938eb31ddcb70209d62caf0dcc6ea9d3abe`
+(CLAP sources and apply baselines are identical to the originally investigated
+`bc39b50faf2f2b02668de82d3d95f2bdbafd3c34`). This revision converts every UMP
 Note On/Off into native CLAP Note events and drops CC. Installed sforzando CLAP
 2.1.2.4 reports input port 0 supported/preferred dialect `2` (MIDI only).
 The repair selects the input port's supported dialect: native CLAP when supported,

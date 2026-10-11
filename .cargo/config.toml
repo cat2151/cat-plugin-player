@@ -1,0 +1,6 @@
+# cc does not define NDEBUG; MSVC `assert` would embed absolute source paths in the exe.
+# Every profile on purpose. Do not add /W4: env flags come last and override crates' warnings(false).
+# See docs/adr/0022-ndebug-for-cc-dependencies.md.
+[env]
+CFLAGS_x86_64_pc_windows_msvc = "/DNDEBUG"
+CXXFLAGS_x86_64_pc_windows_msvc = "/DNDEBUG"

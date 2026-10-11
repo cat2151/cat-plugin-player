@@ -5,7 +5,7 @@
 #include <set>
 #if _WIN32
 #include <Windows.h>
-#include "../patches/uapmd/windows-vst3-loader/windows_vst3_binary.h"
+#include "windows_vst3_binary.h"
 #include <clap/clap.h>
 #include <pluginterfaces/base/ipluginbase.h>
 #include <pluginterfaces/vst/ivstaudioprocessor.h>

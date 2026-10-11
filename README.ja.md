@@ -111,6 +111,7 @@
 
 # ビルド & 動作確認 の手順
 - ※前提として、まず [UAPMD](https://github.com/atsushieno/uapmd) をビルドしてください。手順等もそちらを参照ください。Windowsなら `Microsoft C++ Build Tools` が入っていればかんたん！入っていないならAIにきいて入れればかんたん！全体にAI任せでかんたん！くらいのイメージです
+  - C++ 部分（UAPMD と shim）のビルドには Visual Studio 2026 の Build Tools（C++ ワークロード、MSVC v145）が必要です。VS 2022 などの別の版は確認の対象外です。入れ方の例: `winget install --id Microsoft.VisualStudio.BuildTools --override "--passive --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"`
 - ※次の前提として、Rustが入っていなければAIにきいて入れればかんたん！くらいのイメージです
 - 前述のとおり、 ../uapmd がビルド済みであることを確認します
 - Surge XT などのオーディオプラグイン（instrument）がinstall済みであることを確認します。例えばREAPERでSurge XTが鳴ることを確認します
@@ -152,7 +153,7 @@ cargo build --release
 
 UAPMD が兄弟の `uapmd` ディレクトリ以外にある場合は、先に `$env:UAPMD_DIR = 'X:\projects\uapmd'` を設定してください。ビルド時の UAPMD の場所は環境変数で指定します。config.toml はビルド設定として読みません。
 
-`cargo install` は使わず、既定の `target/release` に生成されたexeを直接実行します。ビルドはローカルのコード（未コミット変更を含む）と既存の `target/shim` を利用しますが、ソース変更によって再構成・再ビルドが必要になる場合があります。shim DLL は exe に同梱し、GUI 起動時にキャッシュディレクトリへ展開して読み込みます。
+`cargo install` は使わず、既定の `target/release` に生成されたexeを直接実行します。ビルドはローカルのコード（未コミット変更を含む）と既存の `target/shim` を利用しますが、ソース変更によって再構成・再ビルドが必要になる場合があります。`target/shim` を VS 2022 など別の版で作ってある場合はその版のままビルドされ続けるため、`target/shim` を削除してからビルドしてください（[ADR 0020](docs/adr/0020-visual-studio-2026-toolchain.md)）。shim DLL は exe に同梱し、GUI 起動時にキャッシュディレクトリへ展開して読み込みます。
 
 3repoの依存構成と運用方針は [ADR 0012](docs/adr/0012-local-dependencies-and-release-execution.md) を参照してください。catでのビルドにTUIのlocal切替は不要です。TUI自身で横断ビルドする場合はTUIの既存 `python scripts/cross_repo_local.py on` 手順を使い、offは人間が担当します。ローカル参照は未commit変更も使い、Cargo.lockは各checkoutの内容を固定しません。検証時は各repoのHEADと差分を記録してください。
 

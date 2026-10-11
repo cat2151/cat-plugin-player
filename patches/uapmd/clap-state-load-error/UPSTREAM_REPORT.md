@@ -6,8 +6,8 @@ In UAPMD/remidy revision bc39b50faf2f2b02668de82d3d95f2bdbafd3c34,
 `PluginInstanceCLAP::PluginStatesCLAP::loadState` queues `setState` and then
 calls `finish("")`. The setter only prints an error when normal CLAP state.load
 or draft state-context.load returns false. Missing state extension is also
-reported as successful completion. The same pattern is present at inspected
-remote HEAD a4a96938eb31ddcb70209d62caf0dcc6ea9d3abe (2026-10-08).
+reported as successful completion. The same pattern is present at
+a4a96938eb31ddcb70209d62caf0dcc6ea9d3abe.
 
 Reproduction: instantiate a CLAP with a state loader that returns false, call
 the asynchronous remidy state loader, and inspect the completion error. It is
