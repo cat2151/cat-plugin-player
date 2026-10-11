@@ -11,7 +11,7 @@
 
 # インストール、音色&エフェクトのブラウズ
 
-もしオーディオプラグインをインストールしていないなら、このようにwingetで[Surge XT](https://surge-synthesizer.github.io/)をインストールしてすぐ使えます
+もしオーディオプラグインをインストールしていないなら、このようにアプリが自動で[Surge XT](https://surge-synthesizer.github.io/)をインストールします。かんたん！
 
 https://github.com/user-attachments/assets/c4a7cec0-ebfd-4cea-bc21-bbfc4dd8e92d
 
