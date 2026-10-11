@@ -9,9 +9,11 @@
 - 現代は、ほしいUXがあれば、バイブコーディングで実現できます。
 - そうすることにしました。
 
-# インストール、音色&エフェクトのブラウズ
+# ダウンロード
 
-Windowsバイナリを日次バッチで生成しています。[リリース欄](https://github.com/cat2151/cat-plugin-player/releases)を参照ください
+[Windows版をダウンロード](https://github.com/cat2151/cat-plugin-player/releases/download/v0.1.0/cat-plugin-player-0.1.0-windows-x64.zip)
+
+# 説明動画 : オーディオプラグインの自動インストール、音色&エフェクトのブラウズ
 
 もしオーディオプラグインをインストールしていないなら、このようにアプリが自動で[Surge XT](https://surge-synthesizer.github.io/)をインストールします。かんたん！
 
