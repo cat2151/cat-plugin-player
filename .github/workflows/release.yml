@@ -1,10 +1,13 @@
-# Builds the Windows x64 release zips (VC++ runtime as DLLs / linked statically).
-# publish=false: build and check only; the zips are kept as run artifacts.
-# publish=true:  also (re)create the GitHub Release v<Cargo.toml version>, replacing an existing one.
+# Builds the Windows x64 release zip (VC++ runtime linked statically).
+# schedule:          build, check and (re)create the GitHub Release v<Cargo.toml version>, replacing an existing one.
+# workflow_dispatch: publish=false builds and checks only, keeping the zip as a run artifact; publish=true also publishes.
 # See release-ci-option.md and docs/adr/0023-static-crt-release-build.md.
 name: Release
 
 on:
+  schedule:
+    # 01:23 JST.
+    - cron: "23 16 * * *"
   workflow_dispatch:
     inputs:
       publish:
@@ -20,7 +23,7 @@ env:
   UAPMD_VERIFIED_SHA: a4a96938eb31ddcb70209d62caf0dcc6ea9d3abe
 
 jobs:
-  # Fix the sibling commits once, so that both builds and the notes use the same sources.
+  # Fix the sibling commits once, so that the build and the notes use the same sources.
   resolve:
     runs-on: ubuntu-latest
     outputs:
@@ -29,7 +32,7 @@ jobs:
       tui: ${{ steps.refs.outputs.tui }}
       server: ${{ steps.refs.outputs.server }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           sparse-checkout: Cargo.toml
           sparse-checkout-cone-mode: false
@@ -60,8 +63,7 @@ jobs:
           cat-plugin-player v${VERSION} (Windows x64)
 
           ## 配布物
-          - \`cat-plugin-player-${VERSION}-windows-x64-dynamic-crt.zip\`: VC++ ランタイムを DLL で使う版。Microsoft Visual C++ 再頒布可能パッケージ（x64、最新版）が必要
-          - \`cat-plugin-player-${VERSION}-windows-x64-static-crt.zip\`: VC++ ランタイムを静的リンクした版。再頒布可能パッケージは不要
+          - \`cat-plugin-player-${VERSION}-windows-x64.zip\`: exe と LICENSE。VC++ ランタイムを静的リンクしているので、Microsoft Visual C++ 再頒布可能パッケージは不要
 
           ## ビルドに使った commit
           - cat-plugin-player: ${GITHUB_SHA}
@@ -71,7 +73,7 @@ jobs:
             - 手元で確認した uapmd ${UAPMD_VERIFIED_SHA} と${verified}
           EOF
           cat notes.md >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: release-notes
           path: notes.md
@@ -80,29 +82,27 @@ jobs:
   build:
     needs: resolve
     runs-on: windows-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        crt: [dynamic, static]
     env:
-      ZIP: cat-plugin-player-${{ needs.resolve.outputs.version }}-windows-x64-${{ matrix.crt }}-crt.zip
+      ZIP: cat-plugin-player-${{ needs.resolve.outputs.version }}-windows-x64.zip
+      # build.rs sees crt-static in CARGO_CFG_TARGET_FEATURE and configures the C++ side with /MT.
+      CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS: -C target-feature=+crt-static
     steps:
       - run: git config --global core.longpaths true
       # Sibling layout of ADR 0012: Cargo.toml and build.rs refer to ../<sibling>.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           path: cat-plugin-player
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           repository: atsushieno/uapmd
           ref: ${{ needs.resolve.outputs.uapmd }}
           path: uapmd
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           repository: cat2151/clap-mml-render-tui
           ref: ${{ needs.resolve.outputs.tui }}
           path: clap-mml-render-tui
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           repository: cat2151/clap-mml-play-server
           ref: ${{ needs.resolve.outputs.server }}
@@ -115,23 +115,19 @@ jobs:
           rustc -vV
           cargo -V
           cmake --version
-      # build.rs sees crt-static in CARGO_CFG_TARGET_FEATURE and configures the C++ side with /MT.
-      - name: Link the CRT statically
-        if: matrix.crt == 'static'
-        run: Add-Content -Path $env:GITHUB_ENV -Value "CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS=-C target-feature=+crt-static"
       - name: Build
         working-directory: cat-plugin-player
         run: cargo build --release --locked
       # The exe embeds uapmd_shim.dll and unpacks it at run time, so the DLL is checked where it was built.
       - name: Check the CRT linkage
         working-directory: cat-plugin-player
-        run: python scripts/crt_linkage.py ${{ matrix.crt }} target/release/cat-plugin-player.exe target/shim/out/uapmd_shim.dll
+        run: python scripts/crt_linkage.py target/release/cat-plugin-player.exe target/shim/out/uapmd_shim.dll
       - name: Package
         working-directory: cat-plugin-player
         run: Compress-Archive -Path target/release/cat-plugin-player.exe, LICENSE -DestinationPath $env:ZIP
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.crt }}-crt
+          name: windows-x64
           path: cat-plugin-player/${{ env.ZIP }}
           if-no-files-found: error
       - name: Test
@@ -141,10 +137,16 @@ jobs:
         if: always()
         run: Get-PSDrive -PSProvider FileSystem | Format-Table Name, Used, Free
 
+  # Runs only after resolve and build (including the CRT check and the tests) succeed,
+  # so a failed day leaves the previous release in place.
   publish:
-    if: inputs.publish
+    if: github.event_name == 'schedule' || inputs.publish
     needs: [resolve, build]
     runs-on: ubuntu-latest
+    # A scheduled and a manual run must not delete each other's release halfway.
+    concurrency:
+      group: release-publish
+      cancel-in-progress: false
     permissions:
       contents: write
     env:
@@ -152,7 +154,7 @@ jobs:
       GH_REPO: ${{ github.repository }}
       TAG: v${{ needs.resolve.outputs.version }}
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true

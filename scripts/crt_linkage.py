@@ -1,8 +1,7 @@
-"""Check how built binaries link the C/C++ runtime, from `dumpbin /dependents`.
+"""Check that built binaries link the C/C++ runtime statically, from `dumpbin /dependents`.
 
 Usage:
-    python scripts/crt_linkage.py dynamic <file>...   # each file must import VCRUNTIME140
-    python scripts/crt_linkage.py static <file>...    # no file may import a VC++ or UCRT DLL
+    python scripts/crt_linkage.py <file>...   # no file may import a VC++ or UCRT DLL
 """
 
 import re
@@ -33,17 +32,14 @@ def dependents(tool, path):
 
 
 def main():
-    if len(sys.argv) < 3 or sys.argv[1] not in ("dynamic", "static"):
+    if len(sys.argv) < 2:
         sys.exit(__doc__)
-    mode, files = sys.argv[1], [Path(p) for p in sys.argv[2:]]
     tool = dumpbin()
     failed = False
-    for path in files:
-        dlls = dependents(tool, path)
-        crt = [d for d in dlls if VC_RUNTIME.match(d) or UCRT.match(d)]
-        ok = any(VC_RUNTIME.match(d) for d in dlls) if mode == "dynamic" else not crt
-        print(f"[{'OK' if ok else 'NG'}] {mode}: {path.name} -> CRT DLLs: {', '.join(crt) or '(none)'}")
-        failed |= not ok
+    for path in map(Path, sys.argv[1:]):
+        crt = [d for d in dependents(tool, path) if VC_RUNTIME.match(d) or UCRT.match(d)]
+        print(f"[{'NG' if crt else 'OK'}] static: {path.name} -> CRT DLLs: {', '.join(crt) or '(none)'}")
+        failed |= bool(crt)
     return 1 if failed else 0
 
 
