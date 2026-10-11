@@ -45,6 +45,7 @@ mod seq;
 mod sequence_modulation;
 mod spectrum;
 mod spectrum_ui;
+mod surge_patch_catalog;
 mod timed_sequence;
 use sequence_modulation::SequenceModulation;
 mod effect_browser;

@@ -30,6 +30,8 @@ cmrt-core = { path = "../clap-mml-play-server/core-lib" }
 cmrt-patch-select = { path = "../clap-mml-render-tui/patch-select" }
 cmrt-tui-core = { path = "../clap-mml-render-tui/tui-core" }
 rand = "0.8"
+# Fetches the Surge XT patch catalog when cmrt's cache is absent (same major as cmrt).
+ureq = "3"
 
 [patch."https://github.com/cat2151/clap-mml-play-server"]
 cmrt-core = { path = "../clap-mml-play-server/core-lib" }

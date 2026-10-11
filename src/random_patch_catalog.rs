@@ -168,10 +168,23 @@ impl Catalog {
     }
 }
 
+/// cmrt's own cache when it exists; otherwise the Surge XT catalog (ADR 0025).
 pub(crate) fn load() -> LoadResult {
-    let (snapshot, _) = clap_mml_render_tui::patch_catalog_cache::load()
-        .map_err(|error| format!("{error:#}"))?
-        .into_parts();
+    use clap_mml_render_tui::patch_catalog_cache;
+    let cmrt_cache_exists =
+        patch_catalog_cache::cache_file_path().is_some_and(|path| path.exists());
+    let loaded = if cmrt_cache_exists {
+        patch_catalog_cache::load()
+    } else {
+        patch_catalog_cache::load_from(&crate::surge_patch_catalog::path()?)
+    };
+    candidates(loaded.map_err(|error| format!("{error:#}"))?)
+}
+
+pub(crate) fn candidates(
+    loaded: clap_mml_render_tui::patch_catalog_cache::LoadedPatchCatalogCache,
+) -> LoadResult {
+    let (snapshot, _) = loaded.into_parts();
     let mut candidates = Vec::new();
     for patch in snapshot.audio_patches() {
         let plugin = snapshot
