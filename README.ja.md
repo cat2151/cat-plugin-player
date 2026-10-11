@@ -10,6 +10,7 @@
 - そうすることにしました。
 
 # インストール、音色&エフェクトのブラウズ
+- もしオーディオプラグインをインストールしていないなら、このようにwingetでSurge XTをインストールしてすぐ使えます
 https://github.com/user-attachments/assets/c4a7cec0-ebfd-4cea-bc21-bbfc4dd8e92d
 
 # 機能
