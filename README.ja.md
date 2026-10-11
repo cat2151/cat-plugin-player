@@ -11,6 +11,8 @@
 
 # インストール、音色&エフェクトのブラウズ
 
+Windowsバイナリを日次バッチで生成しています。[リリース欄](https://github.com/cat2151/cat-plugin-player/releases)を参照ください
+
 もしオーディオプラグインをインストールしていないなら、このようにアプリが自動で[Surge XT](https://surge-synthesizer.github.io/)をインストールします。かんたん！
 
 https://github.com/user-attachments/assets/c4a7cec0-ebfd-4cea-bc21-bbfc4dd8e92d
@@ -127,17 +129,7 @@ https://github.com/user-attachments/assets/c4a7cec0-ebfd-4cea-bc21-bbfc4dd8e92d
   - 探索は音声処理とは別のスレッドで行います。低いnote・多い周期数では表示の更新が遅くなることがあります。表示用データが途切れた場合は履歴をリセットします
   - 起動時の表示設定は4周期・ゼロクロスです。表示設定は保存しません
 
-# ビルド & 動作確認 の手順
-- ※前提として、まず [UAPMD](https://github.com/atsushieno/uapmd) をビルドしてください。手順等もそちらを参照ください。Windowsなら `Microsoft C++ Build Tools` が入っていればかんたん！入っていないならAIにきいて入れればかんたん！全体にAI任せでかんたん！くらいのイメージです
-  - C++ 部分（UAPMD と shim）のビルドには Visual Studio 2026 の Build Tools（C++ ワークロード、MSVC v145）が必要です。VS 2022 などの別の版は確認の対象外です。入れ方の例: `winget install --id Microsoft.VisualStudio.BuildTools --override "--passive --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"`
-- ※次の前提として、Rustが入っていなければAIにきいて入れればかんたん！くらいのイメージです
-- 前述のとおり、 ../uapmd がビルド済みであることを確認します
-- Surge XT などのオーディオプラグイン（instrument）がinstall済みであることを確認します。例えばREAPERでSurge XTが鳴ることを確認します
-- `cargo run` します（アプリがデバッグビルドされます）
-- 画面が開くことを確認します
-- Surge XT などが画面にlistされることを確認します
-- Loadボタンをクリックします
-- Loadされ、音が鳴ることを確認します
+
 
 # いろいろ
 
@@ -180,18 +172,20 @@ UAPMD が兄弟の `uapmd` ディレクトリ以外にある場合は、先に `
 # 今後のブレインストーミング
 - ※気分で変更する可能性があります
 - VST3とGUIに対応している、という、cmrtにない強みの部分を伸ばす
-  - GUIの自動操作？
-    - GUIで操作したものをlog化し、cmrtでTUIでサクサク操作を再現？プラグインごとの個別対応のヒントに？
+  - GUIのedit結果statusをcmrtと連携
+    - editした音色やエフェクトをcmrtで読み込んで利用
   - eguiでいろいろ遊ぶ
     - 鍵盤表示？
-    - grid sequencer？
+    - drum sequencer？
+    - SMFビジュアライズ、複数SMFを合奏、音色とエフェクトを差し替え？
+    - それらは別アプリに切り出したほうがよい？それとも音色とエフェクトの差し替えがあるからこのアプリでやるほうがよい？どのようなワークフローを想定している？
 - cmrtの各種crateを利用して、いろいろやる
   - ※crateの洗練にもなり、こちらは利用することで恩恵があるので、win-win
-  - patch selector
-    - CLAPオーディオプラグインのプリセットパッチを検知できます
   - CLI import / export
     - cmrt keyboard画面はCLIから、patchとeffectとアルペジオなどを指定して、一発で鳴らせます。同じことを可能に（cmrt をcat-plugin-player に変更するだけで鳴るレベルに）
       - 頻繁に破壊的変更してよい。あとから手作業で移行作業は可能。変更をおそれて身動きできなくて進歩がとまるよりマシ
+  - SMF import / export
+    - 現在、SMFにオーディオプラグイン名とpatch名を記録して出力は実装済み、それを発展させる
 
 # コンセプト、目指すもの
 - 楽器
