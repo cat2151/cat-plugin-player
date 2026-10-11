@@ -16,6 +16,8 @@
 https://github.com/user-attachments/assets/c4a7cec0-ebfd-4cea-bc21-bbfc4dd8e92d
 
 # 機能
+- 自動インストール
+  - もしオーディオプラグインをインストールしていないなら、前述のようにアプリが自動で[Surge XT](https://surge-synthesizer.github.io/)をインストールします
 - 検出
   - 起動すると、installされているプラグインを自動で検出します
 - 演奏
