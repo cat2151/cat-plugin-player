@@ -6,8 +6,8 @@ use std::sync::mpsc::{self, TryRecvError};
 impl App {
     pub(crate) fn update_browser_snapshot(&mut self, ctx: &egui::Context) {
         let browser = &mut self.patch_browser;
-        if browser.generation != self.random_patch_catalog.generation {
-            browser.generation = self.random_patch_catalog.generation;
+        if browser.generation != self.patch_catalog.generation {
+            browser.generation = self.patch_catalog.generation;
             browser.solo_draft = None;
             browser.condition_menu = false;
             browser.snapshot = None;
@@ -47,11 +47,11 @@ impl App {
             || browser.snapshot.is_some()
             || browser.build.is_some()
             || browser.build_error.is_some()
-            || self.random_patch_catalog.notice().is_some()
+            || self.patch_catalog.notice().is_some()
         {
             return;
         }
-        let candidates = self.random_patch_catalog.candidates().cloned().collect();
+        let candidates = self.patch_catalog.candidates().cloned().collect();
         let config = self.config_path.clone();
         let presets = browser.store.as_ref().map(|store| store.presets.clone());
         let (tx, rx) = mpsc::channel();

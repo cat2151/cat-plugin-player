@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2021"
 build = "build.rs"
 
+[features]
+default = []
+recording-mode = []
+
 [dependencies]
 # Pinned: this is the eframe API the code below was written against.
 eframe = "0.31"

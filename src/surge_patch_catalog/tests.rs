@@ -1,5 +1,5 @@
 use super::*;
-use crate::random_patch_catalog::{candidates, SURGE_ID};
+use crate::patch_catalog::{candidates, SURGE_ID};
 use clap_mml_render_tui::patch_catalog_cache::load_from;
 
 fn catalog(format_version: u32, display: &str) -> Vec<u8> {
@@ -138,7 +138,7 @@ fn published_catalog_builds_every_surge_candidate() {
 #[ignore]
 fn published_url_serves_a_valid_catalog() {
     let destination = destination("network");
-    let fetched = fetch().and_then(|bytes| replace_if_valid(&bytes, &destination));
+    let fetched = fetch(URL).and_then(|bytes| replace_if_valid(&bytes, &destination));
     cleanup(&destination);
     fetched.unwrap();
 }

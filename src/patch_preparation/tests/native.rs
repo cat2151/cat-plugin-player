@@ -1,7 +1,7 @@
 //! Real shim/chain acceptance with narrowly injected transaction failures.
 use super::*;
 use crate::{
-    config::PluginKey, plugin_list::PluginKind, random_patch_apply::Operation, state_store,
+    config::PluginKey, patch_apply::Operation, plugin_list::PluginKind, state_store,
     SequencePattern,
 };
 use std::path::{Path, PathBuf};
@@ -86,15 +86,14 @@ fn files(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
 
 #[test]
 #[ignore = "requires compiled CLAP fixture and S06_NATIVE_WORK_DIR"]
-fn native_random_transaction_boundaries_and_preservation() {
+fn native_patch_transaction_boundaries_and_preservation() {
     let _library = crate::native_library::load().unwrap();
-    transaction_cases(false);
-    transaction_cases(true);
+    transaction_cases();
     native_preparation_busy_actions_and_applied_save_failure();
-    native_rollback_recovery_and_button();
+    native_rollback_recovery();
 }
 
-fn transaction_cases(direct: bool) {
+fn transaction_cases() {
     let root = PathBuf::from(std::env::var_os("S06_NATIVE_WORK_DIR").unwrap());
     let normal = key("normal");
     let other = key("context");
@@ -136,10 +135,7 @@ fn transaction_cases(direct: bool) {
         ("replacement-stopped-success", &other, vec![], vec![5], true),
         ("current-playing-success", &normal, vec![], vec![5], false),
     ] {
-        let path = root
-            .join(if direct { "browser" } else { "random" })
-            .join(case)
-            .join("config.toml");
+        let path = root.join("browser").join(case).join("config.toml");
         let mut app = app(&path);
         let index = add(&mut app, &normal);
         add(&mut app, &other);
@@ -180,20 +176,18 @@ fn transaction_cases(direct: bool) {
         let before = files(path.parent().unwrap());
         let pattern = app.sequence_pattern;
         let favorites = app.favorites.active.clone();
-        app.random_failures = failure;
+        app.patch_failures = failure;
         // Target lookup must select an instrument identity even when the same
         // CLAP ID is also used as an effect in the connected chain.
         let prepared = prepared(target, &bytes);
-        if direct {
-            app.patch_browser
-                .requests
-                .select(prepared.candidate.clone(), 1);
-            app.patch_browser.requests.next().unwrap();
-            app.patch_browser.requests.ready().unwrap();
-        }
-        app.apply_random_patch(prepared);
+        app.patch_browser
+            .requests
+            .select(prepared.candidate.clone(), 1);
+        app.patch_browser.requests.next().unwrap();
+        app.patch_browser.requests.ready().unwrap();
+        app.apply_patch(prepared);
         wait(&mut app);
-        assert!(app.pending.is_none() && !app.random_busy());
+        assert!(app.pending.is_none() && !app.preset_change_busy());
         assert_eq!(app.host.save_state(effects[0]).unwrap(), [1]);
         assert_eq!(app.effect_ids(), effects);
         assert_eq!(app.effect_bypassed, bypass);
@@ -201,25 +195,19 @@ fn transaction_cases(direct: bool) {
         assert_eq!(app.sequence_modulation, modulation);
         if case.ends_with("success") {
             assert!(
-                app.status.contains(if direct {
-                    "Browse patch:"
-                } else {
-                    "Random patch:"
-                }),
+                app.status.contains("Browse patch:"),
                 "{case}: {}",
                 app.status
             );
-            if direct {
-                assert_eq!(
-                    app.patch_browser
-                        .requests
-                        .applied
-                        .as_ref()
-                        .unwrap()
-                        .plugin_id,
-                    target.id
-                );
-            }
+            assert_eq!(
+                app.patch_browser
+                    .requests
+                    .applied
+                    .as_ref()
+                    .unwrap()
+                    .plugin_id,
+                target.id
+            );
             let current = app.instrument_id().unwrap();
             assert_eq!(app.host.save_state(current).unwrap(), [5]);
             assert_eq!(app.sequence_pattern, pattern);
@@ -233,11 +221,7 @@ fn transaction_cases(direct: bool) {
             }
         } else {
             assert!(
-                app.status.contains(if direct {
-                    "Browse patch failed"
-                } else {
-                    "Random patch failed"
-                }),
+                app.status.contains("Browse patch failed"),
                 "{case}: {}",
                 app.status
             );
@@ -278,7 +262,8 @@ fn native_preparation_busy_actions_and_applied_save_failure() {
     app.save_session();
     let before = files(path.parent().unwrap());
     let (release, wait_worker) = mpsc::channel();
-    app.random_patch
+    app.patch_browser
+        .preparation
         .start_with(candidate(), Default::default(), move |_| {
             wait_worker.recv().unwrap();
             Err("delayed failure".into())
@@ -314,15 +299,18 @@ fn native_preparation_busy_actions_and_applied_save_failure() {
     assert_eq!(app.sequence_pattern, old);
     release.send(()).unwrap();
     let deadline = Instant::now() + Duration::from_secs(5);
-    while app.random_busy() {
-        app.poll_random_patch();
+    let result = loop {
+        if let Some(result) = app.patch_browser.preparation.poll() {
+            break result;
+        }
         assert!(Instant::now() < deadline);
         std::thread::yield_now();
-    }
-    assert!(app.status.contains("delayed failure"));
+    };
+    assert!(result.err().unwrap().contains("delayed failure"));
+    assert!(!app.preset_change_busy());
     // Failed persistence after native commit must retain the applied sound.
     app.config_path = Err("injected saving destination failure".into());
-    app.apply_random_patch(prepared(&normal, &[5]));
+    app.apply_patch(prepared(&normal, &[5]));
     assert!(
         app.status.contains("applied, saving failed"),
         "{}",
@@ -332,7 +320,7 @@ fn native_preparation_busy_actions_and_applied_save_failure() {
     assert_eq!(files(path.parent().unwrap()), before);
 }
 
-fn native_rollback_recovery_and_button() {
+fn native_rollback_recovery() {
     let root = PathBuf::from(std::env::var_os("S06_NATIVE_WORK_DIR").unwrap());
     let path = root.join("recovery").join("config.toml");
     let mut app = app(&path);
@@ -341,70 +329,21 @@ fn native_rollback_recovery_and_button() {
     app.load_plugin(index);
     wait(&mut app);
     let id = app.instrument_id().unwrap();
-    app.random_failures = vec![Operation::Chain, Operation::Rollback];
-    app.apply_random_patch(prepared(&normal, &[5]));
+    app.patch_failures = vec![Operation::Chain, Operation::Rollback];
+    app.apply_patch(prepared(&normal, &[5]));
     assert!(app.unsafe_state.contains(&id));
-    app.random_failures.clear();
+    app.patch_failures.clear();
     app.load_plugin(index);
     wait(&mut app);
     assert_ne!(app.instrument_id(), Some(id));
     assert!(app.unsafe_state.is_empty());
-    app.apply_random_patch(prepared(&normal, &[6]));
-    assert!(app.status.contains("Random patch:"));
+    app.apply_patch(prepared(&normal, &[6]));
+    assert!(app.status.contains("Browse patch:"));
     assert_eq!(state_store::load(&path, &normal).unwrap(), Some(vec![6]));
-    // A true Sequence-pane click starts preparation. A second click is disabled
-    // while the owned receiver exists, even before the GUI consumes its result.
-    app.random_patch_catalog = crate::random_patch_catalog::Catalog::from_candidates(
-        vec![prepared(&normal, &[1]).candidate],
-        &app.plugins,
-    );
-    let ctx = egui::Context::default();
-    let output = ctx.run(Default::default(), |ctx| {
-        egui::CentralPanel::default().show(ctx, |ui| app.playback_controls(ui));
-    });
-    let position = output
-        .shapes
-        .iter()
-        .find_map(|shape| match &shape.shape {
-            egui::epaint::Shape::Text(text) if text.galley.text() == "Random patch" => {
-                Some(text.pos + text.galley.size() / 2.0)
-            }
-            _ => None,
-        })
-        .expect("Random patch button missing");
-    let click = || egui::RawInput {
-        events: vec![
-            egui::Event::PointerMoved(position),
-            egui::Event::PointerButton {
-                pos: position,
-                button: egui::PointerButton::Primary,
-                pressed: true,
-                modifiers: egui::Modifiers::NONE,
-            },
-            egui::Event::PointerButton {
-                pos: position,
-                button: egui::PointerButton::Primary,
-                pressed: false,
-                modifiers: egui::Modifiers::NONE,
-            },
-        ],
-        ..Default::default()
-    };
-    let _ = ctx.run(click(), |ctx| {
-        egui::CentralPanel::default().show(ctx, |ui| app.playback_controls(ui));
-    });
-    assert!(app.random_busy());
-    let status = app.status.clone();
-    let _ = ctx.run(click(), |ctx| {
-        egui::CentralPanel::default().show(ctx, |ui| app.playback_controls(ui));
-    });
-    assert_eq!(app.status, status);
-    assert!(app.random_busy());
     // A scan-list change after preparation cannot apply a stale CLAP identity.
-    app.random_patch = Default::default();
     app.plugins[index].format = "VST3".into();
     let previous = app.instrument_id();
-    app.apply_random_patch(prepared(&normal, &[5]));
+    app.apply_patch(prepared(&normal, &[5]));
     assert!(app.status.contains("no longer available"));
     assert_eq!(app.instrument_id(), previous);
 }

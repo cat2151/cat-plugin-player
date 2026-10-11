@@ -13,6 +13,7 @@ pub(crate) fn candidate(plugin: &str, name: &str, category: &str, kind: &str) ->
         name: name.into(),
         category: category.into(),
         kind: kind.into(),
+        state: None,
     }
 }
 
@@ -181,3 +182,20 @@ fn saved_query_survives_round_trip() {
 }
 
 mod native;
+
+#[test]
+fn every_listed_category_and_kind_has_effects() {
+    let mut browser = browser();
+    for category in 0..browser.categories.len() {
+        browser.choose_category(category);
+        for kind in 0..browser.kinds.len() {
+            browser.choose_kind(kind);
+            assert!(
+                !browser.results.is_empty(),
+                "{} / {} is empty",
+                browser.categories[category],
+                browser.kinds[kind]
+            );
+        }
+    }
+}

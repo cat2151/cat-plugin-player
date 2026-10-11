@@ -1,34 +1,21 @@
-//! Prepare a shared-core effect preset in an owned temporary CLAP instance.
-use crate::{random_effect_catalog::Candidate, random_patch::choose, App};
+//! Prepare an effect preset state: prepared ahead (ADR 0028), or in an owned temporary CLAP instance.
+use crate::{effect_catalog::Candidate, App};
 use eframe::egui;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 
 #[cfg(test)]
-#[path = "random_effect_tests.rs"]
+#[path = "effect_preparation_tests.rs"]
 mod tests;
 
 pub(crate) struct Prepared {
     pub candidate: Candidate,
     pub target: Option<i32>,
     pub state: Vec<u8>,
-    /// Requested by the effect browser rather than the Random effect button.
-    pub browse: bool,
-}
-
-impl Prepared {
-    pub fn operation(&self) -> &'static str {
-        if self.browse {
-            "Browse effect"
-        } else {
-            "Random effect"
-        }
-    }
 }
 
 #[derive(Default)]
 pub(crate) struct Preparation {
     receiver: Option<Receiver<Result<Prepared, String>>>,
-    browse: bool,
 }
 
 impl Preparation {
@@ -40,21 +27,27 @@ impl Preparation {
         &mut self,
         candidate: Candidate,
         target: Option<i32>,
-        browse: bool,
         bundle_path: String,
         sample_rate: f64,
         ctx: &egui::Context,
     ) {
         let (tx, rx) = mpsc::channel();
         self.receiver = Some(rx);
-        self.browse = browse;
+        if let Some(state) = candidate.state.clone() {
+            let _ = tx.send(Ok(Prepared {
+                candidate,
+                target,
+                state: state.to_vec(),
+            }));
+            ctx.request_repaint();
+            return;
+        }
         let ctx = ctx.clone();
         std::thread::spawn(move || {
             let result = prepare(&candidate, &bundle_path, sample_rate).map(|state| Prepared {
                 candidate,
                 target,
                 state,
-                browse,
             });
             let _ = tx.send(result);
             ctx.request_repaint();
@@ -73,30 +66,16 @@ impl Preparation {
 }
 
 fn prepare(candidate: &Candidate, bundle: &str, sample_rate: f64) -> Result<Vec<u8>, String> {
-    let action = || {
-        let entry = cmrt_core::load_entry(bundle)?;
-        let mut renderer = cmrt_core::effect::EffectRenderer::new(
-            &entry,
-            &candidate.plugin_id,
-            sample_rate,
-            crate::audio::MAX_BLOCK_FRAMES as usize,
-        )?;
-        renderer.load_preset(&candidate.preset)?;
-        renderer.save_state()
-    };
-    action().map_err(|error| format!("{error:#}"))
+    crate::surge_fx_states::prepare_state(
+        bundle,
+        &candidate.plugin_id,
+        &candidate.preset,
+        sample_rate,
+        crate::audio::MAX_BLOCK_FRAMES as usize,
+    )
 }
 
 impl App {
-    pub(crate) fn random_effect_candidates(
-        &self,
-        target: Option<i32>,
-    ) -> impl Iterator<Item = &Candidate> {
-        self.random_effect_catalog
-            .installed(&self.plugins)
-            .filter(move |candidate| !self.effect_plugin_taken(&candidate.plugin_id, target))
-    }
-
     /// The one-instance-per-identity routing rule. The target slot may use
     /// another preset of its own plugin.
     pub(crate) fn effect_plugin_taken(&self, plugin_id: &str, target: Option<i32>) -> bool {
@@ -108,32 +87,17 @@ impl App {
         })
     }
 
-    pub(crate) fn start_random_effect(&mut self, ctx: &egui::Context) {
-        if self.actions_busy() || self.instrument_id().is_none() {
-            return;
-        }
-        let mut rng = rand::thread_rng();
-        let target = choose(self.effect_ids().into_iter(), &mut rng);
-        let Some(candidate) = choose(self.random_effect_candidates(target), &mut rng).cloned()
-        else {
-            self.status = "Random effect unavailable: no eligible preset for this slot".into();
-            return;
-        };
-        self.start_effect(candidate, target, false, ctx);
-    }
-
     /// The caller has checked that the actions are idle and an instrument is loaded.
     pub(crate) fn start_effect(
         &mut self,
         candidate: Candidate,
         target: Option<i32>,
-        browse: bool,
         ctx: &egui::Context,
     ) {
         let Some(plugin) = self
             .plugins
             .iter()
-            .find(|plugin| crate::random_effect_catalog::matches_plugin(&candidate, plugin))
+            .find(|plugin| crate::effect_catalog::matches_plugin(&candidate, plugin))
         else {
             self.status = "Browse effect failed: plugin no longer available".into();
             return;
@@ -142,26 +106,22 @@ impl App {
         // The instrument patch keeps playing; only pending browser requests are stale.
         self.patch_browser.requests.invalidate();
         self.status = format!("Preparing effect: {}...", candidate.preset.display);
-        self.random_effect.start(
+        self.effect_preparation.start(
             candidate,
             target,
-            browse,
             bundle,
             f64::from(self.sample_rate()),
             ctx,
         );
     }
 
-    pub(crate) fn poll_random_effect(&mut self) {
-        if let Some(result) = self.random_effect.poll() {
+    pub(crate) fn poll_effect_preparation(&mut self) {
+        if let Some(result) = self.effect_preparation.poll() {
             match result {
                 // A newer browser selection replaces this one before it is heard.
-                Ok(prepared) if prepared.browse && self.effect_browser.desired.is_some() => {}
-                Ok(prepared) => self.apply_random_effect(prepared),
-                Err(error) if self.random_effect.browse => {
-                    self.status = format!("Browse effect failed: {error}");
-                }
-                Err(error) => self.status = format!("Random effect failed: {error}"),
+                Ok(_) if self.effect_browser.desired.is_some() => {}
+                Ok(prepared) => self.apply_effect(prepared),
+                Err(error) => self.status = format!("Browse effect failed: {error}"),
             }
         }
     }

@@ -1,8 +1,9 @@
 //! Browser state and integration with the existing main-thread patch transaction.
+use crate::patch_browser_catalog::{Listing, Snapshot};
+use crate::patch_filter_store::Store;
 use crate::status::{BrowserFilter, PatchIdentity};
-use crate::{patch_browser_catalog::Snapshot, patch_filter_store::Store};
-use crate::{patch_browser_requests::Requests, random_patch::Preparation, App};
-use crate::{patch_browser_ui::RowTint, random_patch_catalog::Candidate};
+use crate::{patch_browser_requests::Requests, patch_preparation::Preparation, App};
+use crate::{patch_browser_ui::RowTint, patch_catalog::Candidate};
 use cmrt_patch_select::FilterGroup;
 use std::sync::mpsc::Receiver;
 
@@ -25,6 +26,7 @@ pub(crate) struct Browser {
     pub solo_draft: Option<String>,
     pub condition_menu: bool,
     pub results: Vec<usize>,
+    pub listing: Listing,
     pub row_labels: Vec<String>,
     pub row_tints: Vec<RowTint>,
     /// Saved preset label, resolved once the first snapshot names the presets again.
@@ -152,7 +154,16 @@ impl Browser {
         let Some(snapshot) = &self.snapshot else {
             return;
         };
+        self.listing = snapshot.listing(&self.query);
+        // A restored or Solo / Mute narrowed role or preset may be hidden; fall back to a listed one.
+        if !self.listing.role(self.role) {
+            self.role = 0;
+            self.preset = 0;
+        }
         self.preset = self.preset.min(snapshot.presets[self.role].len() - 1);
+        if !self.listing.preset(self.role, self.preset) {
+            self.preset = 0;
+        }
         match snapshot.filter(self.role, self.preset, &self.query) {
             Ok(results) => {
                 self.error = None;
@@ -202,14 +213,6 @@ impl App {
         self.patch_browser.restore_playing = None;
         self.patch_browser.selected = None;
     }
-    pub(crate) fn patch_operation_name(&self) -> &'static str {
-        if self.patch_browser.requests.applying.is_some() {
-            "Browse patch"
-        } else {
-            "Random patch"
-        }
-    }
-
     pub(crate) fn poll_browser_patch(&mut self, ctx: &eframe::egui::Context) {
         if let Some(result) = self.patch_browser.preparation.poll() {
             match result {
@@ -219,13 +222,12 @@ impl App {
                         || self.deferred_scan
                         || self.restoring
                         || self.pending.is_some()
-                        || self.random_patch.busy()
-                        || self.random_effect.busy()
+                        || self.effect_preparation.busy()
                     {
                         self.patch_browser.requests.invalidate();
                     }
                     if self.patch_browser.requests.ready().is_some() {
-                        self.apply_random_patch(prepared);
+                        self.apply_patch(prepared);
                     }
                 }
                 Err(error) => {

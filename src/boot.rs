@@ -125,16 +125,19 @@ impl App {
             scope_ui: crate::scope_ui::ScopeUi::with_on_right(on_right),
             plugin_icons: Default::default(),
             repaint_heartbeat: None,
-            random_patch_catalog: Default::default(),
-            random_patch: Default::default(),
+            patch_catalog: Default::default(),
             patch_browser: crate::patch_browser::Browser::restored(browser_filter),
             effect_browser: crate::effect_browser::EffectBrowser::restored(effect_filter),
-            random_effect: Default::default(),
-            random_effect_catalog: Default::default(),
+            auto_start_pending: true,
+            browser_auto_instrument: false,
+            browser_auto_effect: None,
+            effect_preparation: Default::default(),
+            effect_swap_fade: false,
+            effect_catalog: Default::default(),
             unsafe_state: Default::default(),
             shutdown: Default::default(),
             #[cfg(test)]
-            random_failures: Default::default(),
+            patch_failures: Default::default(),
         }
     }
 

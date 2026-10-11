@@ -9,7 +9,7 @@ CLAP `com.floe-audio.floe` の場合だけ最初のフレーズを100ms遅らせ
 名前・vendor・pathでは識別しない。既存Surge XTの待機は維持する。
 
 `session::prepare_voice`は主音源のidentityから待機を決めるため、effectとしての
-Floeには適用しない。新規ロード、state復元、Favorite／History／Random patch後の
+Floeには適用しない。新規ロード、state復元、Favorite／History／Browse patches後の
 音声再構築も同じ入口を通る。Sequencerのサンプル時間で待ち、待機中もDSPは進む。
 UIやcallbackでsleepせず、先頭音を捨てずにフレーズ全体を遅らせる。
 MML先頭休符は100msに加算される。通常のPlayや同一ストリーム内のrestartで

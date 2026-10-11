@@ -1,6 +1,6 @@
 //! Virtual multi-column effect rows: plugin and kind tints, taken plugins dimmed.
 use super::*;
-use crate::{patch_browser_ui::row_colors, random_effect_catalog::Candidate};
+use crate::{effect_catalog::Candidate, patch_browser_ui::row_colors};
 
 impl EffectBrowser {
     pub(super) fn rows(&mut self, ui: &mut egui::Ui, view: &View) {

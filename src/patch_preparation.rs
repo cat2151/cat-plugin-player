@@ -1,5 +1,5 @@
 //! Owned preparation work; only temporary cmrt instances live on the worker.
-use crate::{random_patch_catalog::Candidate, App};
+use crate::{patch_catalog::Candidate, App};
 use eframe::egui;
 use rand::Rng;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
@@ -65,65 +65,25 @@ impl Preparation {
 }
 
 impl App {
-    pub(crate) fn random_busy(&self) -> bool {
-        self.random_patch.busy()
-            || self.patch_browser.preparation.busy()
-            || self.random_effect.busy()
+    pub(crate) fn preset_change_busy(&self) -> bool {
+        self.patch_browser.preparation.busy()
+            || self.effect_preparation.busy()
             || self.pending.as_ref().is_some_and(|pending| {
                 matches!(
                     pending.purpose,
-                    crate::session_load::LoadPurpose::Random(_)
-                        | crate::session_load::LoadPurpose::RandomEffect(_)
+                    crate::session_load::LoadPurpose::Patch(_)
+                        | crate::session_load::LoadPurpose::EffectPreset(_)
                 )
             })
     }
 
     pub(crate) fn actions_busy(&self) -> bool {
-        crate::random_patch_catalog::busy(
+        crate::patch_catalog::busy(
             self.scanning || self.deferred_scan,
             self.restoring,
             self.pending.is_some(),
-            self.random_patch.busy()
-                || self.random_effect.busy()
-                || self.patch_browser.preparation.busy(),
+            self.effect_preparation.busy() || self.patch_browser.preparation.busy(),
         )
-    }
-
-    pub(crate) fn start_random_patch(&mut self, ctx: &egui::Context) {
-        if self.actions_busy() {
-            return;
-        }
-        let Some(mut candidate) = choose(
-            self.random_patch_catalog.candidates(),
-            &mut rand::thread_rng(),
-        )
-        .cloned() else {
-            return;
-        };
-        let Some(installed) = self.plugins.iter().find(|p| {
-            p.format == candidate.format
-                && p.id == candidate.plugin_id
-                && p.kind == crate::plugin_list::PluginKind::Instrument
-        }) else {
-            return;
-        };
-        // A rescan may replace the bundle without changing its format/ID.
-        candidate.bundle_path = installed.bundle_path.clone().into();
-        self.invalidate_browser_live();
-        self.status = format!(
-            "Preparing {}: {}...",
-            candidate.plugin_name, candidate.display
-        );
-        self.random_patch.start(candidate, ctx);
-    }
-
-    pub(crate) fn poll_random_patch(&mut self) {
-        if let Some(result) = self.random_patch.poll() {
-            match result {
-                Ok(prepared) => self.apply_random_patch(prepared),
-                Err(error) => self.status = format!("Random patch failed: {error}"),
-            }
-        }
     }
 }
 

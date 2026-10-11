@@ -38,14 +38,14 @@ pub(super) fn render(app: &App, id: i32) -> Vec<f32> {
 
 #[test]
 #[ignore = "requires installed Surge XT CLAP, factory Bass 1/2 and S07_NATIVE_WORK_DIR"]
-fn native_real_surge_random_state_sound_and_stopped_play() {
+fn native_real_surge_patch_state_sound_and_stopped_play() {
     let _library = crate::native_library::load().unwrap();
     let root = PathBuf::from(std::env::var_os("S07_NATIVE_WORK_DIR").unwrap());
     let bundle = std::env::var_os("S07_SURGE_BUNDLE").unwrap();
     let patches = PathBuf::from(std::env::var_os("S07_SURGE_PATCHES").unwrap());
     let surge = PluginKey {
         format: "CLAP".into(),
-        id: crate::random_patch_catalog::SURGE_ID.into(),
+        id: crate::patch_catalog::SURGE_ID.into(),
         name: "Surge XT".into(),
         vendor: "Surge Synth Team".into(),
         bundle_path: PathBuf::from(bundle).to_string_lossy().into_owned(),
@@ -65,9 +65,9 @@ fn native_real_surge_random_state_sound_and_stopped_play() {
     app.selected_sequence = SequencePattern::Steps;
     let second =
         cmrt_patches::prepare_clap_patch_state(&surge.id, &patches.join("Bass 2.fxp")).unwrap();
-    app.apply_random_patch(prepared(&surge, &second));
+    app.apply_patch(prepared(&surge, &second));
     wait(&mut app);
-    assert!(app.status.contains("Random patch:"), "{}", app.status);
+    assert!(app.status.contains("Browse patch:"), "{}", app.status);
     assert_eq!(app.instrument_id(), Some(id));
     assert_eq!(app.sequence_pattern, SequencePattern::Off);
     let saved = state_store::load(&path, &surge).unwrap().unwrap();

@@ -1,6 +1,6 @@
 //! Monokai tints for the most significant difference among the current results.
 use super::*;
-use crate::random_patch_catalog::Candidate;
+use crate::patch_catalog::Candidate;
 use cmrt_patch_select::FilterPreset;
 use std::collections::HashMap;
 

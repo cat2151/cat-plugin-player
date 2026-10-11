@@ -1,17 +1,17 @@
-use crate::{random_effect_catalog::Catalog, App};
+use crate::{effect_catalog::Catalog, App};
 use std::time::{Duration, Instant};
 
 fn settle(app: &mut App, ctx: &eframe::egui::Context) {
     let deadline = Instant::now() + Duration::from_secs(30);
     while app.scanning
         || app.pending.is_some()
-        || app.random_effect.busy()
+        || app.effect_preparation.busy()
         || app.effect_browser.desired.is_some()
     {
         assert!(Instant::now() < deadline, "{}", app.status);
         app.host.pump();
         app.handle_events();
-        app.poll_random_effect();
+        app.poll_effect_preparation();
         app.poll_effect_browser(ctx);
         std::thread::sleep(Duration::from_millis(1));
     }
@@ -50,13 +50,13 @@ fn native_browse_effect_adds_then_replaces_its_slot_latest_only() {
     app.deferred_scan = false;
     app.start_scan(false);
     settle(&mut app, &ctx);
-    app.random_effect_catalog = Catalog::from_candidates({
+    app.effect_catalog = Catalog::from_candidates({
         let catalog = cmrt_core::AudioEffectCatalog::discover();
         catalog
             .presets()
             .iter()
             .filter(|preset| preset.display.starts_with("Dragonfly"))
-            .filter_map(|preset| crate::random_effect_catalog::Candidate::new(&catalog, preset))
+            .filter_map(|preset| crate::effect_catalog::Candidate::new(&catalog, preset))
             .collect()
     });
     let source = app
@@ -90,7 +90,7 @@ fn native_browse_effect_adds_then_replaces_its_slot_latest_only() {
     // Selections made while one is preparing collapse to the latest.
     select(&mut app, "Dragonfly Plate");
     app.poll_effect_browser(&ctx);
-    assert!(app.random_effect.busy());
+    assert!(app.effect_preparation.busy());
     select(&mut app, "Dragonfly Hall");
     settle(&mut app, &ctx);
     assert_eq!(effect_plugin(&app), [hall], "{}", app.status);

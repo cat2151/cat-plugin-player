@@ -3,11 +3,16 @@
 //! using the sequence controls.
 
 mod audio;
+mod audio_fade;
 mod boot;
+mod browser_load;
 mod cli;
 mod config;
 mod correlation;
 mod correlation_ui;
+mod effect_apply;
+mod effect_catalog;
+mod effect_preparation;
 mod error_log;
 mod favorite_playback;
 mod favorites;
@@ -21,17 +26,16 @@ mod lissajous_ui;
 mod mml_input;
 mod mml_preview;
 mod native_library;
+mod patch_apply;
+mod patch_catalog;
+mod patch_preparation;
 mod plugin_icons;
 mod plugin_list;
 mod plugin_specific;
 mod plugins_ui;
 mod preview;
-mod random_effect;
-mod random_effect_apply;
-mod random_effect_catalog;
-mod random_patch;
-mod random_patch_apply;
-mod random_patch_catalog;
+#[cfg(feature = "recording-mode")]
+mod recording;
 mod repaint_heartbeat;
 mod routing_ui;
 mod scope;
@@ -45,6 +49,7 @@ mod seq;
 mod sequence_modulation;
 mod spectrum;
 mod spectrum_ui;
+mod surge_fx_states;
 mod surge_patch_catalog;
 mod timed_sequence;
 use sequence_modulation::SequenceModulation;
@@ -161,15 +166,19 @@ struct App {
     scope_ui: scope_ui::ScopeUi,
     plugin_icons: plugin_icons::PluginIcons,
     repaint_heartbeat: Option<repaint_heartbeat::RepaintHeartbeat>,
-    random_patch_catalog: random_patch_catalog::Catalog,
-    random_patch: random_patch::Preparation,
+    patch_catalog: patch_catalog::Catalog,
     patch_browser: patch_browser::Browser,
     effect_browser: effect_browser::EffectBrowser,
-    random_effect: random_effect::Preparation,
-    random_effect_catalog: random_effect_catalog::Catalog,
+    auto_start_pending: bool,
+    browser_auto_instrument: bool,
+    browser_auto_effect: Option<browser_load::EffectLoad>,
+    effect_preparation: effect_preparation::Preparation,
+    /// Voices started while an effect swap is in progress fade in (ADR 0027).
+    effect_swap_fade: bool,
+    effect_catalog: effect_catalog::Catalog,
     unsafe_state: std::collections::HashSet<i32>,
     #[cfg(test)]
-    random_failures: Vec<random_patch_apply::Operation>,
+    patch_failures: Vec<patch_apply::Operation>,
     // Keep the overlay alive through native instance and host destruction.
     shutdown: shutdown::Shutdown,
 }
@@ -182,7 +191,7 @@ impl App {
     }
 
     fn start_scan(&mut self, rescan: bool) {
-        if self.random_busy() {
+        if self.preset_change_busy() {
             return;
         }
         startup::mark(Stage::ScanRequested);
@@ -218,7 +227,7 @@ impl App {
                 Event::ScanDone(error) => {
                     self.scanning = false;
                     self.plugins = self.host.plugins();
-                    self.random_patch_catalog.reconcile(&self.plugins);
+                    self.patch_catalog.reconcile(&self.plugins);
                     startup::mark(Stage::CatalogReady);
                     let scan_succeeded = error.is_none();
                     self.status = match error {
@@ -230,7 +239,7 @@ impl App {
                             // Restoring too would leave `restoring` set behind this pending load.
                             self.restore = None;
                             self.restore_effect.clear();
-                            self.load_plugin(index);
+                            self.load_auto_instrument(index);
                         } else {
                             self.restore_session();
                         }
@@ -267,20 +276,22 @@ impl eframe::App for App {
         self.handle_events();
         self.initialize_favorites();
         self.capture_plugin_icons(ctx);
-        self.poll_random_patch();
-        self.poll_random_effect();
-        self.random_effect_catalog.update(
+        self.poll_effect_preparation();
+        if let Some(notice) = self.effect_catalog.update(
             !self.scanning && !self.deferred_scan && !self.restoring,
             ctx,
-        );
+        ) {
+            eprintln!("{notice}");
+            self.status = notice;
+        }
         let rendered = self.instances.iter().any(|instance| {
             instance
                 .voice
                 .as_ref()
                 .is_some_and(audio::Voice::has_rendered)
         });
-        if let Some(message) = self.random_patch_catalog.update(rendered, ctx) {
-            self.random_patch_catalog.reconcile(&self.plugins);
+        if let Some(message) = self.patch_catalog.update(rendered, ctx) {
+            self.patch_catalog.reconcile(&self.plugins);
             if !message.is_empty() {
                 eprintln!("{message}");
                 self.status = message;
@@ -292,6 +303,7 @@ impl eframe::App for App {
         }
         startup::flush_if_ready();
 
+        self.poll_browser_load();
         self.browser_ui(ctx);
         self.poll_browser_patch(ctx);
         self.poll_effect_browser(ctx);

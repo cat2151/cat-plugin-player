@@ -64,10 +64,13 @@ pub struct Voice {
     rendered: Arc<AtomicBool>,
     scope: crate::scope::Scope,
     preview: Arc<crate::preview::Mailbox>,
+    fade_out: Arc<AtomicBool>,
+    faded: Arc<AtomicBool>,
 }
 
 impl Voice {
     /// Starts with the selected pattern, including the stopped state.
+    #[allow(clippy::too_many_arguments)]
     pub fn start(
         output: &Output,
         processor: ffi::Processor,
@@ -76,7 +79,13 @@ impl Voice {
         modulation: SequenceModulation,
         start_delay: std::time::Duration,
         phrase: Option<Arc<crate::timed_sequence::Phrase>>,
+        fade_in: bool,
     ) -> Result<Self, String> {
+        let mut fade = crate::audio_fade::Fade::new(output.sample_rate(), fade_in);
+        let fade_out = Arc::new(AtomicBool::new(false));
+        let fade_out_flag = Arc::clone(&fade_out);
+        let faded = Arc::new(AtomicBool::new(false));
+        let faded_flag = Arc::clone(&faded);
         let preview = Arc::new(crate::preview::Mailbox::default());
         let preview_flag = preview.clone();
         let mut seen_preview = 0;
@@ -138,6 +147,7 @@ impl Voice {
                     let modulation =
                         SequenceModulation::from_u8(modulation_flag.load(Ordering::Relaxed));
                     sequencer.set_modulation(modulation);
+                    let fading_out = fade_out_flag.load(Ordering::Acquire);
                     let block = MAX_BLOCK_FRAMES as usize * channels;
                     for chunk in data.chunks_mut(block) {
                         ump.clear();
@@ -146,6 +156,7 @@ impl Voice {
                         }
                         sequencer.render(pattern, velocity, chunk.len() / channels, &mut ump);
                         let rendered = render.process(ump.as_slice(), chunk, channels);
+                        fade.apply(chunk, channels, fading_out);
                         if let Some(source) =
                             delivered_cc1_source(ump.as_slice(), modulation, rendered)
                         {
@@ -159,6 +170,9 @@ impl Voice {
                             startup::mark(Stage::FirstSignalRendered);
                             trace_signal = false;
                         }
+                    }
+                    if fade.finish_callback(fading_out) {
+                        faded_flag.store(true, Ordering::Release);
                     }
                     if first_render {
                         rendered_flag.store(true, Ordering::Release);
@@ -187,7 +201,21 @@ impl Voice {
             rendered,
             scope,
             preview,
+            fade_out,
+            faded,
         })
+    }
+
+    /// Ramps the output to silence and returns once the device has played it,
+    /// or after a timeout when callbacks stall. The stream keeps running silent.
+    pub(crate) fn fade_out(&self) {
+        self.fade_out.store(true, Ordering::Release);
+        let deadline = std::time::Instant::now()
+            + crate::audio_fade::FADE
+            + std::time::Duration::from_millis(250);
+        while !self.faded.load(Ordering::Acquire) && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
     }
 
     pub(crate) fn preview(&self, notes: Option<crate::preview::Notes>) {

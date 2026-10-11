@@ -1,6 +1,6 @@
 //! Cached row names and visible-row-only painting; native identity is never shortened.
 use super::*;
-use crate::random_patch_catalog::Candidate;
+use crate::patch_catalog::Candidate;
 use row_colors::RowTint;
 use std::collections::{HashMap, HashSet};
 

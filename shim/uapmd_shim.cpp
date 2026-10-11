@@ -294,9 +294,13 @@ int32_t uh_scan_async(UhHost* host, int32_t rescan, UhScanDoneFn done, void* use
             std::vector<AudioPluginCatalogEntry> catalog;
             PluginKinds kinds;
             try {
-                host->api->performPluginScanning(rescan != 0);
-                catalog = host->api->pluginCatalogEntries();
-                completeClapCatalog(*host->api, catalog);
+                if (rescan == 2) {
+                    catalog = recordingCatalog(*host->api);
+                } else {
+                    host->api->performPluginScanning(rescan != 0);
+                    catalog = host->api->pluginCatalogEntries();
+                    completeClapCatalog(*host->api, catalog);
+                }
                 kinds = readPluginKinds(catalog);
             } catch (const std::exception& e) {
                 error = e.what();

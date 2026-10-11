@@ -72,6 +72,10 @@ pub fn save_prefer_clap(path: &Path, enabled: bool) -> Result<(), String> {
 }
 
 pub fn path() -> Result<PathBuf, String> {
+    #[cfg(feature = "recording-mode")]
+    return crate::recording::config_path();
+
+    #[cfg(not(feature = "recording-mode"))]
     dirs::config_local_dir()
         .map(|directory| directory.join("cat-plugin-player").join("config.toml"))
         .ok_or_else(|| "could not locate the local config directory".into())

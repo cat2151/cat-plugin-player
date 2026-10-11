@@ -2,10 +2,10 @@
 use crate::{
     audio,
     config::PluginKey,
+    effect_preparation::Prepared,
     ffi::PluginInfo,
     on_instance,
     plugin_list::PluginKind,
-    random_effect::Prepared,
     session_load::{LoadPurpose, PendingLoad},
     state_store, App, Instance,
 };
@@ -16,19 +16,14 @@ pub(crate) struct Replacement {
 }
 
 impl App {
-    pub(crate) fn apply_random_effect(&mut self, prepared: Prepared) {
+    pub(crate) fn apply_effect(&mut self, prepared: Prepared) {
         let Some(plugin) = self
             .plugins
             .iter()
-            .find(|plugin| {
-                crate::random_effect_catalog::matches_plugin(&prepared.candidate, plugin)
-            })
+            .find(|plugin| crate::effect_catalog::matches_plugin(&prepared.candidate, plugin))
             .cloned()
         else {
-            self.status = format!(
-                "{} failed: plugin no longer available",
-                prepared.operation()
-            );
+            self.status = "Browse effect failed: plugin no longer available".into();
             return;
         };
         if self.instrument_id().is_none()
@@ -42,12 +37,10 @@ impl App {
                     && Some(instance.id) != prepared.target
             })
         {
-            self.status = format!(
-                "{} failed: routing changed during preparation",
-                prepared.operation()
-            );
+            self.status = "Browse effect failed: routing changed during preparation".into();
             return;
         }
+        self.start_effect_swap_fade(&plugin, prepared.target);
         self.pause_audio();
         let old_state = match prepared
             .target
@@ -65,20 +58,19 @@ impl App {
         {
             Ok(state) => state,
             Err(error) => {
-                self.status = format!(
-                    "{} failed: could not save previous state: {error}",
-                    prepared.operation()
-                );
+                self.status =
+                    format!("Browse effect failed: could not save previous state: {error}");
                 if let Err(error) = self.resume_audio() {
                     self.status.push_str(&format!("; no audio: {error}"));
                 }
+                self.effect_swap_fade = false;
                 return;
             }
         };
         self.status = format!("Loading effect: {}...", prepared.candidate.preset.display);
         self.pending = Some(PendingLoad {
             plugin: plugin.clone(),
-            purpose: LoadPurpose::RandomEffect(Replacement {
+            purpose: LoadPurpose::EffectPreset(Replacement {
                 prepared,
                 old_state,
             }),
@@ -92,7 +84,22 @@ impl App {
         );
     }
 
-    pub(crate) fn random_effect_instance_created(
+    /// ADR 0027: fade out now, and fade in the voices started until the swap ends.
+    fn start_effect_swap_fade(&mut self, plugin: &PluginInfo, target: Option<i32>) {
+        let old = target
+            .and_then(|target| self.instances.iter().find(|instance| instance.id == target))
+            .map(|instance| &instance.plugin);
+        self.effect_swap_fade =
+            crate::plugin_specific::fades_effect_swap(&PluginKey::from_plugin(plugin))
+                || old.is_some_and(crate::plugin_specific::fades_effect_swap);
+        if self.effect_swap_fade {
+            for voice in self.instances.iter().filter_map(|i| i.voice.as_ref()) {
+                voice.fade_out();
+            }
+        }
+    }
+
+    pub(crate) fn effect_instance_created(
         &mut self,
         plugin: PluginInfo,
         replacement: Replacement,
@@ -132,10 +139,11 @@ impl App {
                 if id >= 0 {
                     self.host.destroy_instance(id);
                 }
-                self.status = format!("{} failed: {error}", prepared.operation());
+                self.status = format!("Browse effect failed: {error}");
                 if let Err(error) = self.resume_audio() {
                     self.status.push_str(&format!("; no audio: {error}"));
                 }
+                self.effect_swap_fade = false;
                 return;
             }
         };
@@ -169,14 +177,8 @@ impl App {
             .find(|instance| instance.id == source)
             .unwrap()
             .voice = voice;
-        self.status = format!(
-            "{}: {}",
-            prepared.operation(),
-            prepared.candidate.preset.display
-        );
-        if prepared.browse {
-            self.effect_browser.applied(id, prepared.candidate.clone());
-        }
+        self.status = format!("Browse effect: {}", prepared.candidate.preset.display);
+        self.effect_browser.applied(id, prepared.candidate.clone());
         self.pause_audio();
         let saved = self
             .config_path
@@ -191,6 +193,7 @@ impl App {
                 state_store::save(path, &key, &prepared.state)
             });
         let resumed = self.resume_audio();
+        self.effect_swap_fade = false;
         self.save_session();
         if let Some(error) = saved.err().or_else(|| self.config_error.clone()) {
             self.status

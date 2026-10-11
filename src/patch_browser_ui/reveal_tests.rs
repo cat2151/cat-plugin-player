@@ -21,7 +21,7 @@ fn open_moves_cursor_to_playing_patch_without_requesting_it() {
     let ctx = egui::Context::default();
     let mut browser = three();
     let mut playing = candidate("a", "Alpha", "P3", None);
-    // Random patch candidates carry the installed bundle path, not the catalog one.
+    // Applied candidates carry the installed bundle path, not the catalog one.
     playing.bundle_path = "X:/elsewhere/a.clap".into();
     browser.requests.applied = Some(playing);
     browser.reveal_playing();
@@ -113,7 +113,6 @@ fn patch_applied_after_startup_wins_over_the_saved_one() {
     let mut old = three();
     old.requests.applied = Some(candidate("a", "Alpha", "P1", None));
     let mut browser = Browser::restored(old.saved_filter());
-    // e.g. Random patch before the browser was ever opened.
     browser.requests.applied = Some(candidate("a", "Alpha", "P2", None));
     browser.snapshot = three().snapshot;
     browser.resolve_restored_playing();

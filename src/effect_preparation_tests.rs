@@ -1,8 +1,8 @@
 use super::*;
 use crate::{
     config::PluginKey,
+    effect_catalog::{Candidate, Catalog},
     plugin_list::PluginKind,
-    random_effect_catalog::{Candidate, Catalog},
 };
 use std::{
     path::Path,
@@ -11,17 +11,17 @@ use std::{
 
 fn settle(app: &mut App) {
     let deadline = Instant::now() + Duration::from_secs(30);
-    while app.scanning || app.pending.is_some() || app.random_effect.busy() {
+    while app.scanning || app.pending.is_some() || app.effect_preparation.busy() {
         assert!(Instant::now() < deadline, "{}", app.status);
         app.host.pump();
         app.handle_events();
-        app.poll_random_effect();
+        app.poll_effect_preparation();
         std::thread::sleep(Duration::from_millis(1));
     }
 }
 
 fn candidate(app: &App, name: &str) -> Candidate {
-    app.random_effect_catalog
+    app.effect_catalog
         .installed(&app.plugins)
         .find(|candidate| candidate.preset.display.starts_with(name))
         .expect("required effect catalog preset missing")
@@ -32,61 +32,23 @@ fn apply(app: &mut App, candidate: &Candidate, target: Option<i32>, bytes: Optio
     let plugin = app
         .plugins
         .iter()
-        .find(|plugin| crate::random_effect_catalog::matches_plugin(candidate, plugin))
+        .find(|plugin| crate::effect_catalog::matches_plugin(candidate, plugin))
         .unwrap();
     let state = bytes.unwrap_or_else(|| prepare(candidate, &plugin.bundle_path, 48000.0).unwrap());
-    app.apply_random_effect(Prepared {
+    app.apply_effect(Prepared {
         candidate: candidate.clone(),
         target,
         state,
-        browse: false,
     });
     settle(app);
 }
 
-fn click_random_effect(app: &mut App, ctx: &egui::Context, width: f32) {
-    let input = || egui::RawInput {
-        screen_rect: Some(egui::Rect::from_min_size(
-            egui::Pos2::ZERO,
-            egui::vec2(width, 600.0),
-        )),
-        ..Default::default()
-    };
-    let draw = |app: &mut App, ctx: &egui::Context| {
-        egui::CentralPanel::default().show(ctx, |ui| app.playback_controls(ui));
-    };
-    let _ = ctx.run(input(), |ctx| draw(app, ctx));
-    let frame = ctx.run(input(), |ctx| draw(app, ctx));
-    let position = frame
-        .shapes
-        .iter()
-        .find_map(|shape| match &shape.shape {
-            egui::Shape::Text(text) if text.galley.job.text == "Random effect" => {
-                Some(text.pos + text.galley.size() / 2.0)
-            }
-            _ => None,
-        })
-        .expect("Random effect must render even without Random patch candidates");
-    for pressed in [true, false] {
-        let mut input = input();
-        input.events = vec![
-            egui::Event::PointerMoved(position),
-            egui::Event::PointerButton {
-                pos: position,
-                button: egui::PointerButton::Primary,
-                pressed,
-                modifiers: Default::default(),
-            },
-        ];
-        let _ = ctx.run(input, |ctx| draw(app, ctx));
-    }
-}
-
 #[test]
 #[ignore = "requires installed Dexed and Dragonfly Hall/Room/Plate CLAP; real shim test"]
-fn native_random_effect_add_replace_failure_and_restore() {
+fn native_effect_add_replace_failure_and_restore() {
     let _library = crate::native_library::load().unwrap();
-    let directory = std::env::temp_dir().join(format!("cat-random-effect-{}", std::process::id()));
+    let directory =
+        std::env::temp_dir().join(format!("cat-effect-preparation-{}", std::process::id()));
     assert!(!directory.exists());
     let path = directory.join("config.toml");
     let mut app = App::prepare();
@@ -97,7 +59,7 @@ fn native_random_effect_add_replace_failure_and_restore() {
     app.deferred_scan = false;
     app.start_scan(false);
     settle(&mut app);
-    app.random_effect_catalog = Catalog::from_candidates({
+    app.effect_catalog = Catalog::from_candidates({
         let catalog = cmrt_core::AudioEffectCatalog::discover();
         catalog
             .presets()
@@ -137,46 +99,14 @@ fn native_random_effect_add_replace_failure_and_restore() {
     let before = app.effect_ids();
     app.effect_bypassed = true;
     let neighbor_state = app.host.save_state(before[1]).unwrap();
-    assert!(!app
-        .random_effect_candidates(Some(before[0]))
-        .any(|c| c.plugin_id == hall.plugin_id));
-    assert!(app
-        .random_effect_candidates(Some(before[1]))
-        .any(|c| c.plugin_id == hall.plugin_id));
+    assert!(app.effect_plugin_taken(&hall.plugin_id, Some(before[0])));
+    assert!(!app.effect_plugin_taken(&hall.plugin_id, Some(before[1])));
     apply(&mut app, &plate, Some(before[0]), None);
     assert_eq!(app.effect_ids().len(), 2);
     assert_eq!(app.effect_ids()[1], before[1]);
     assert_eq!(app.host.save_state(before[1]).unwrap(), neighbor_state);
     assert_eq!(app.instances[1].plugin.id, plate.plugin_id);
     assert!(app.effect_bypassed);
-    // Preparation and asynchronous load gates cover both random buttons.
-    let ctx = egui::Context::default();
-    for iteration in 0..8 {
-        let pattern = if iteration % 2 == 0 {
-            crate::SequencePattern::Off
-        } else {
-            crate::SequencePattern::Steps
-        };
-        app.sequence_pattern = pattern;
-        let selected = pattern.selection(app.selected_sequence);
-        click_random_effect(
-            &mut app,
-            &ctx,
-            if iteration % 2 == 0 { 900.0 } else { 600.0 },
-        );
-        assert!(app.actions_busy());
-        assert!(app.random_busy());
-        let ids = app.effect_ids();
-        app.start_random_effect(&ctx);
-        app.start_random_patch(&ctx);
-        assert!(!app.remove_plugin(ids[0]));
-        settle(&mut app);
-        assert_eq!(app.effect_ids().len(), 2, "{}", app.status);
-        assert_eq!(app.instrument_id(), Some(source_id));
-        assert_eq!(app.sequence_pattern, pattern);
-        assert_eq!(app.selected_sequence, selected);
-        assert!(app.effect_bypassed);
-    }
     // A native state rejection must preserve instance IDs and the disk session.
     let fixture_path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("target/shim/Release/clap_state_test_plugin.clap");
@@ -196,7 +126,7 @@ fn native_random_effect_add_replace_failure_and_restore() {
     let disk = std::fs::read(crate::status::path(&path)).unwrap();
     apply(&mut app, &bad, Some(ids[0]), Some(vec![0]));
     assert!(
-        app.status.contains("Random effect failed"),
+        app.status.contains("Browse effect failed"),
         "{}",
         app.status
     );
@@ -214,7 +144,7 @@ fn native_random_effect_add_replace_failure_and_restore() {
     app.plugins.push(incompatible);
     apply(&mut app, &bad_chain, Some(ids[0]), Some(source_state));
     assert!(
-        app.status.contains("Random effect failed"),
+        app.status.contains("Browse effect failed"),
         "{}",
         app.status
     );
@@ -227,14 +157,13 @@ fn native_random_effect_add_replace_failure_and_restore() {
     // Creation failure follows the same path without destroying the old effect.
     app.pause_audio();
     let plugin = app.plugins.last().unwrap().clone();
-    app.random_effect_instance_created(
+    app.effect_instance_created(
         plugin,
-        crate::random_effect_apply::Replacement {
+        crate::effect_apply::Replacement {
             prepared: Prepared {
                 candidate: bad,
                 target: Some(ids[0]),
                 state: vec![1],
-                browse: false,
             },
             old_state: None,
         },
@@ -268,4 +197,89 @@ fn native_random_effect_add_replace_failure_and_restore() {
             .collect::<Vec<_>>()
     );
     assert!(restored.effect_bypassed);
+}
+
+#[test]
+fn prepared_state_is_delivered_without_a_worker_instance() {
+    let mut candidate =
+        crate::effect_browser::tests::candidate("surge", "Rotary/Fast", "Modulation", "Rotary");
+    candidate.state = Some(vec![7, 8].into());
+    let mut preparation = Preparation::default();
+    // A bundle that cannot load proves no temporary instance is attempted.
+    preparation.start(
+        candidate,
+        Some(3),
+        "X:/missing.clap".into(),
+        48_000.0,
+        &egui::Context::default(),
+    );
+    let prepared = preparation.poll().unwrap().unwrap();
+    assert_eq!(prepared.state, [7, 8]);
+    assert_eq!(prepared.target, Some(3));
+    assert!(!preparation.busy());
+}
+
+#[test]
+#[ignore = "requires installed Surge XT and Surge XT Effects CLAP and ../cat-music-patterns; real shim test"]
+fn native_surge_fx_browse_loads_published_states_without_a_temporary_instance() {
+    let _library = crate::native_library::load().unwrap();
+    let directory = std::env::temp_dir().join(format!("cat-surge-fx-{}", std::process::id()));
+    let mut app = App::prepare();
+    app.config_path = Ok(directory.join("config.toml"));
+    app.restore = None;
+    app.restore_effect.clear();
+    app.output = None;
+    app.deferred_scan = false;
+    app.start_scan(false);
+    settle(&mut app);
+    let table = crate::surge_fx_states::Table::parse(
+        &std::fs::read(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../cat-music-patterns/surge-xt-fx-states.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let catalog = cmrt_core::AudioEffectCatalog::discover();
+    let candidates: Vec<Candidate> = catalog
+        .presets()
+        .iter()
+        .filter_map(|preset| Candidate::new(&catalog, preset))
+        .filter(|candidate| candidate.plugin_id == crate::surge_fx_states::PLUGIN_ID)
+        .map(|mut candidate| {
+            let bytes = std::fs::read(&candidate.preset.path).unwrap();
+            candidate.state = Some(table.state(&bytes).unwrap().into());
+            candidate
+        })
+        .collect();
+    // Every 15th preset spans the effect types without loading all 291.
+    let sample: Vec<Candidate> = candidates.iter().step_by(15).cloned().collect();
+    app.effect_catalog = Catalog::from_candidates(candidates);
+    let source = app
+        .plugins
+        .iter()
+        .position(|plugin| plugin.name == "Surge XT" && plugin.format == "CLAP")
+        .unwrap();
+    app.load_plugin(source);
+    settle(&mut app);
+    let ctx = egui::Context::default();
+    let mut target = None;
+    for candidate in &sample {
+        app.start_effect(candidate.clone(), target, &ctx);
+        // The prepared state arrives at once: no worker thread, no temporary instance.
+        app.poll_effect_preparation();
+        assert!(!app.effect_preparation.busy(), "{}", candidate.name);
+        settle(&mut app);
+        let ids = app.effect_ids();
+        assert_eq!(ids.len(), 1, "{}: {}", candidate.name, app.status);
+        assert!(!crate::error_log::is_error(&app.status), "{}", app.status);
+        assert_eq!(
+            app.host.save_state(ids[0]).unwrap(),
+            candidate.state.as_deref().unwrap(),
+            "{}",
+            candidate.name
+        );
+        target = Some(ids[0]);
+    }
+    let _ = std::fs::remove_dir_all(directory);
 }

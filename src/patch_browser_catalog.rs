@@ -1,10 +1,11 @@
 //! An immutable selector snapshot; indices never cross snapshot generations.
-use crate::random_patch_catalog::Candidate;
+use crate::patch_catalog::Candidate;
 use cmrt_patch_select::{
     filter_candidates, sort_for_selector, FilterGroup, FilterPreset, PatchCatalogEntry,
     PreparedPresets,
 };
-use cmrt_patches::{PatchRoleIndex, PatchRoleInput};
+use cmrt_patches::{PatchRoleIndex, PatchRoleInput, PluginTerm};
+use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, VecDeque};
 
 pub(crate) struct Snapshot {
@@ -12,6 +13,8 @@ pub(crate) struct Snapshot {
     pub entries: Vec<PatchCatalogEntry>,
     pub presets: Vec<Vec<FilterPreset>>,
     pub instrument_names: Vec<String>,
+    /// The last listing and its Solo / Mute terms; search typing reuses it.
+    listing: RefCell<Option<(String, Listing)>>,
 }
 
 impl Snapshot {
@@ -99,11 +102,74 @@ impl Snapshot {
             entries,
             presets,
             instrument_names,
+            listing: RefCell::default(),
         })
+    }
+
+    /// Roles and built-in presets with no patch under the Solo / Mute terms of `query` are hidden.
+    /// Free-text terms are left out so typing a search never reshapes the panes.
+    /// The overall `ALL`, each role's `ALL`, and user presets (kept for Delete) always stay.
+    pub fn listing(&self, query: &str) -> Listing {
+        let plugins: Vec<_> = query
+            .split_whitespace()
+            .filter(|term| PluginTerm::parse(term).is_some())
+            .collect();
+        let plugins = plugins.join(" ");
+        if let Some((cached, listing)) = &*self.listing.borrow() {
+            if *cached == plugins {
+                return listing.clone();
+            }
+        }
+        let has = |preset: &FilterPreset| {
+            filter_candidates(&self.entries, &preset.matches, &plugins)
+                .is_ok_and(|results| !results.is_empty())
+        };
+        let listing = Listing {
+            roles: self
+                .presets
+                .iter()
+                .enumerate()
+                .map(|(role, presets)| role == 0 || has(&presets[0]))
+                .collect(),
+            presets: self
+                .presets
+                .iter()
+                .map(|presets| {
+                    presets
+                        .iter()
+                        .enumerate()
+                        .map(|(index, preset)| index == 0 || preset.is_user || has(preset))
+                        .collect()
+                })
+                .collect(),
+        };
+        *self.listing.borrow_mut() = Some((plugins, listing.clone()));
+        listing
     }
 
     pub fn filter(&self, role: usize, preset: usize, query: &str) -> Result<Vec<usize>, String> {
         filter_candidates(&self.entries, &self.presets[role][preset].matches, query)
+    }
+}
+
+/// Which Role / Preset rows the left panes show; anything not yet computed is shown.
+#[derive(Clone, Default)]
+pub(crate) struct Listing {
+    roles: Vec<bool>,
+    presets: Vec<Vec<bool>>,
+}
+
+impl Listing {
+    pub fn role(&self, role: usize) -> bool {
+        self.roles.get(role).copied().unwrap_or(true)
+    }
+
+    pub fn preset(&self, role: usize, preset: usize) -> bool {
+        self.presets
+            .get(role)
+            .and_then(|presets| presets.get(preset))
+            .copied()
+            .unwrap_or(true)
     }
 }
 

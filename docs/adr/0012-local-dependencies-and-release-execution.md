@@ -2,7 +2,6 @@
 
 - 状態: 採用。UAPMDの既存ローカル参照を維持し、TUI・play-serverのCargo参照を実装済み。
 - 決定者: user。常時ローカル依存と、cargo installを使わずtarget/releaseから運用することを明示承認。
-- 関連計画: [Random patch handoff](../../random-patch-handoff.md)
 
 ## 背景
 

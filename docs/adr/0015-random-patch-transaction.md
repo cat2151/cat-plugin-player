@@ -1,6 +1,6 @@
 # 0015: Surge XT CLAP random patch transaction
 
-Status: Accepted.
+Status: Accepted. The Random patch button is removed ([ADR 0019](0019-random-patch-all-catalog.md)); Browse patches applies patches through this transaction.
 
 The first experiment chooses uniformly among eligible Surge XT CLAP patches.
 The existing catalog reader owns plugin identity and display/path semantics;

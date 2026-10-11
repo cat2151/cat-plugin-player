@@ -37,7 +37,6 @@ enum State {
 pub(crate) struct Catalog {
     state: State,
     eligible: Vec<usize>,
-    instrument_names: Vec<String>,
     pub generation: u64,
 }
 
@@ -47,7 +46,6 @@ impl Catalog {
         let mut catalog = Self {
             state: State::Ready(candidates),
             eligible: Vec::new(),
-            instrument_names: Vec::new(),
             generation: 0,
         };
         catalog.reconcile(plugins);
@@ -89,7 +87,7 @@ impl Catalog {
             }
             Err(error) => {
                 self.state = State::Unavailable(error.clone());
-                Some(format!("Random patch unavailable: {error}"))
+                Some(format!("Patch catalog unavailable: {error}"))
             }
         }
     }
@@ -98,7 +96,6 @@ impl Catalog {
     pub fn reconcile(&mut self, plugins: &[PluginInfo]) {
         self.generation += 1;
         self.eligible.clear();
-        self.instrument_names.clear();
         if let State::Ready(candidates) = &self.state {
             self.eligible.extend(
                 candidates
@@ -115,21 +112,7 @@ impl Catalog {
                             .then_some(index)
                     }),
             );
-            let mut names = std::collections::BTreeMap::new();
-            for &index in &self.eligible {
-                let candidate = &candidates[index];
-                names
-                    .entry((&candidate.format, &candidate.plugin_id))
-                    .or_insert(&candidate.plugin_name);
-            }
-            self.instrument_names = names.values().map(|name| (*name).clone()).collect();
-            self.instrument_names.sort();
         }
-    }
-
-    pub fn button(&self, ui: &mut egui::Ui, busy: bool) -> bool {
-        self.button_response(ui, busy)
-            .is_some_and(|response| response.clicked())
     }
 
     pub fn candidates(&self) -> impl Iterator<Item = &Candidate> {
@@ -148,31 +131,13 @@ impl Catalog {
             State::Ready(_) => None,
         }
     }
-
-    fn button_response(&self, ui: &mut egui::Ui, busy: bool) -> Option<egui::Response> {
-        if self.eligible.is_empty() {
-            return None;
-        }
-        let sample = self.candidates().next()?;
-        Some(
-            ui.add_enabled(!busy, egui::Button::new("Random patch"))
-                .on_hover_text(format!(
-                    "Choose uniformly from {} patches across {} instruments: {}.\nKeeps stopped playback stopped; restarts the current phrase when playing.\nExample: {}\n{}",
-                    self.eligible.len(),
-                    self.instrument_names.len(),
-                    self.instrument_names.join(", "),
-                    sample.display,
-                    sample.path.display()
-                )),
-        )
-    }
 }
 
 /// cmrt's own cache when it exists; otherwise the Surge XT catalog (ADR 0025).
 pub(crate) fn load() -> LoadResult {
     use clap_mml_render_tui::patch_catalog_cache;
-    let cmrt_cache_exists =
-        patch_catalog_cache::cache_file_path().is_some_and(|path| path.exists());
+    let cmrt_cache_exists = !cfg!(feature = "recording-mode")
+        && patch_catalog_cache::cache_file_path().is_some_and(|path| path.exists());
     let loaded = if cmrt_cache_exists {
         patch_catalog_cache::load()
     } else {

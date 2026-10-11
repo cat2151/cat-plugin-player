@@ -33,6 +33,9 @@ impl Browser {
             .max_height(ui.available_height())
             .show(ui, |ui| {
                 for (index, role) in FilterGroup::ALL.iter().enumerate() {
+                    if !self.listing.role(index) {
+                        continue;
+                    }
                     if ui
                         .selectable_label(self.role == index, role.label())
                         .clicked()
@@ -58,6 +61,9 @@ impl Browser {
                     .iter()
                     .enumerate()
                 {
+                    if !self.listing.preset(self.role, index) {
+                        continue;
+                    }
                     ui.horizontal(|ui| {
                         if ui
                             .selectable_label(self.preset == index, &preset.label)

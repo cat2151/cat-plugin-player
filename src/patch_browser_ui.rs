@@ -33,7 +33,7 @@ impl App {
             }
             ctx.show_viewport_immediate(browser_viewport(), builder, |ctx, _class| {
                 self.patch_browser
-                    .show(ctx, self.random_patch_catalog.notice(), &self.status);
+                    .show(ctx, self.patch_catalog.notice(), &self.status);
                 // The live Host dispatcher remains in the root main-thread update.
                 // Child focus and worker progress must keep that update awake.
                 ctx.request_repaint_after_for(
@@ -212,7 +212,7 @@ impl Browser {
             return;
         }
         if let Some(index) =
-            crate::random_patch::choose(self.results.iter().copied(), &mut rand::thread_rng())
+            crate::patch_preparation::choose(self.results.iter().copied(), &mut rand::thread_rng())
         {
             self.select(index);
         }

@@ -2,11 +2,11 @@
 use super::*;
 
 #[test]
-#[ignore = "requires installed catalog plugins and RANDOM_GATE_WORK_DIR / RANDOM_GATE_PLUGIN"]
+#[ignore = "requires installed catalog plugins and PATCH_GATE_WORK_DIR / PATCH_GATE_PLUGIN"]
 fn native_preparation_cross_host_gate() {
     let _library = crate::native_library::load().unwrap();
-    let requested = std::env::var("RANDOM_GATE_PLUGIN").unwrap();
-    let root = PathBuf::from(std::env::var_os("RANDOM_GATE_WORK_DIR").unwrap());
+    let requested = std::env::var("PATCH_GATE_PLUGIN").unwrap();
+    let root = PathBuf::from(std::env::var_os("PATCH_GATE_WORK_DIR").unwrap());
     let (snapshot, _) = clap_mml_render_tui::patch_catalog_cache::load()
         .unwrap()
         .into_parts();
@@ -87,7 +87,7 @@ fn native_preparation_cross_host_gate() {
         assert!(!state.is_empty());
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(root.join(format!("prepared-{index}.state")), &state).unwrap();
-        let candidate = crate::random_patch_catalog::Candidate {
+        let candidate = crate::patch_catalog::Candidate {
             format: "CLAP".into(),
             plugin_id: requested.clone(),
             plugin_name: plugin.name.clone(),
@@ -105,13 +105,13 @@ fn native_preparation_cross_host_gate() {
             SequencePattern::Steps
         };
         current.sequence_pattern = pattern;
-        current.apply_random_patch(Prepared {
+        current.apply_patch(Prepared {
             candidate,
             state: state.clone(),
         });
         wait(&mut current);
         assert!(
-            current.status.contains("Random patch:"),
+            current.status.contains("Browse patch:"),
             "{}",
             current.status
         );

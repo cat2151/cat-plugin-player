@@ -7,3 +7,5 @@ using PluginKinds = std::map<std::pair<std::string, std::string>, std::string>;
 void completeClapCatalog(uapmd_plugin_hosting::AudioPluginHostingAPI& api,
                          std::vector<uapmd_plugin_hosting::AudioPluginCatalogEntry>& entries);
 PluginKinds readPluginKinds(const std::vector<uapmd_plugin_hosting::AudioPluginCatalogEntry>& entries);
+std::vector<uapmd_plugin_hosting::AudioPluginCatalogEntry> recordingCatalog(
+    uapmd_plugin_hosting::AudioPluginHostingAPI& api);

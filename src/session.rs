@@ -98,6 +98,7 @@ impl App {
             self.sequence_modulation,
             start_delay,
             self.mml_input.phrase.clone(),
+            self.effect_swap_fade,
         )
         .map(Some)
     }
@@ -136,7 +137,7 @@ impl App {
 
     pub(crate) fn save_session(&mut self) {
         if !self.unsafe_state.is_empty()
-            || self.random_busy()
+            || self.preset_change_busy()
             || (self.selected_sequence == crate::SequencePattern::Custom
                 && self.mml_input.phrase.is_none())
         {

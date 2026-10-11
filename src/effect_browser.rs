@@ -1,8 +1,7 @@
 //! Effect browser state: Category / Kind / search filtering and the target slot.
-//! Filtering follows the clap-mml-render-tui effect selector; applying reuses the
-//! Random effect preparation and replacement path.
+//! Filtering follows the clap-mml-render-tui effect selector.
 use crate::{
-    random_effect_catalog::Candidate,
+    effect_catalog::Candidate,
     status::{EffectBrowserFilter, EffectPresetKey},
     App,
 };
@@ -281,7 +280,7 @@ impl EffectBrowser {
 
     pub fn select_random(&mut self) {
         if let Some(index) =
-            crate::random_patch::choose(self.results.iter().copied(), &mut rand::thread_rng())
+            crate::patch_preparation::choose(self.results.iter().copied(), &mut rand::thread_rng())
         {
             self.select(index);
         }
@@ -305,16 +304,18 @@ impl App {
     pub(crate) fn open_effect_browser(&mut self) {
         let ids = self.effect_ids();
         self.effect_browser.open_window(&ids);
+        self.browser_auto_effect = Some(crate::browser_load::EffectLoad::NeedSource);
+        self.poll_browser_load();
     }
 
     /// Sends the latest selection once the previous native work has finished.
     pub(crate) fn poll_effect_browser(&mut self, ctx: &egui::Context) {
         let ids = self.effect_ids();
         self.effect_browser.sync_target(&ids);
-        let generation = self.random_effect_catalog.generation;
+        let generation = self.effect_catalog.generation;
         if self.effect_browser.open && self.effect_browser.stale(generation) {
             let candidates = self
-                .random_effect_catalog
+                .effect_catalog
                 .installed(&self.plugins)
                 .cloned()
                 .collect();
@@ -334,7 +335,7 @@ impl App {
                 candidate.plugin_name
             );
         } else {
-            self.start_effect(candidate, target, true, ctx);
+            self.start_effect(candidate, target, ctx);
         }
     }
 }

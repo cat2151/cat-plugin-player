@@ -385,3 +385,6 @@ mod scroll_tests;
 
 #[path = "status_tests.rs"]
 mod status_tests;
+
+#[path = "empty_pane_tests.rs"]
+mod empty_pane_tests;

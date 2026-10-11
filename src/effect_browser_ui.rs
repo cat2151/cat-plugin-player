@@ -43,8 +43,8 @@ impl App {
         let view = View {
             slots,
             taken,
-            loading: self.random_effect_catalog.loading(),
-            busy: self.effect_browser.desired.is_some() || self.random_effect.busy(),
+            loading: self.effect_catalog.loading(),
+            busy: self.effect_browser.desired.is_some() || self.effect_preparation.busy(),
             status: &self.status,
             success: self
                 .effect_browser

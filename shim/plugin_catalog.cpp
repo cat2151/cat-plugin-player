@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstring>
 #include <set>
+#include <stdexcept>
 #if _WIN32
 #include <Windows.h>
 #include "windows_vst3_binary.h"
@@ -12,6 +13,34 @@
 #endif
 
 using namespace uapmd_plugin_hosting;
+
+std::vector<AudioPluginCatalogEntry> recordingCatalog(AudioPluginHostingAPI& api) {
+    std::vector<AudioPluginCatalogEntry> entries;
+    for (auto* format : api.pluginFormats()) {
+        if (format->name() != "CLAP") continue;
+        auto* scanner = dynamic_cast<AudioPluginFileOrUrlScanning*>(format->scanning());
+        if (!scanner) throw std::runtime_error("recording scan: no CLAP file scanner");
+        // Enumerates paths only, without loading other installed plugins.
+        scanner->getAllFastScannablePlugins();
+        for (const auto& bundle : scanner->enumerateCandidateBundles(false)) {
+            const auto name = bundle.filename().wstring();
+            if (_wcsicmp(name.c_str(), L"Surge XT.clap") != 0 &&
+                _wcsicmp(name.c_str(), L"Surge XT Effects.clap") != 0) continue;
+            std::string error;
+            scanner->scanBundle(bundle, false, 0.0, [&](AudioPluginCatalogEntry entry) {
+                if (entry.pluginId() == "org.surge-synth-team.surge-xt" ||
+                    entry.pluginId() == "org.surge-synth-team.surge-xt-fx") {
+                    if (std::none_of(entries.begin(), entries.end(), [&](const auto& existing) {
+                        return existing.pluginId() == entry.pluginId();
+                    })) entries.push_back(std::move(entry));
+                }
+            }, [&](std::string message) { error = std::move(message); });
+            if (!error.empty()) throw std::runtime_error("recording scan: " + error);
+        }
+        return entries;
+    }
+    throw std::runtime_error("recording scan: CLAP format is unavailable");
+}
 
 void completeClapCatalog(AudioPluginHostingAPI& api, std::vector<AudioPluginCatalogEntry>& entries) {
     auto tool = PluginScanTool::create();

@@ -117,36 +117,6 @@ fn unavailable_empty_and_missing_target_stay_hidden_without_retry() {
 }
 
 #[test]
-fn conditional_ui_disables_each_busy_phase() {
-    let ctx = egui::Context::default();
-    let mut catalog = Catalog::default();
-    let _ = ctx.run(Default::default(), |ctx| {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            assert!(catalog.button_response(ui, false).is_none());
-        });
-    });
-    catalog.state = State::Ready(vec![candidate()]);
-    catalog.reconcile(&[plugin("CLAP", SURGE_ID)]);
-    for flags in [
-        (false, false, false, false),
-        (true, false, false, false),
-        (false, true, false, false),
-        (false, false, true, false),
-        (false, false, false, true),
-    ] {
-        let blocked = busy(flags.0, flags.1, flags.2, flags.3);
-        let _ = ctx.run(Default::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
-                assert_eq!(
-                    catalog.button_response(ui, blocked).unwrap().enabled(),
-                    !blocked
-                );
-            });
-        });
-    }
-}
-
-#[test]
 fn seven_identities_same_names_programs_and_effect_exclusion() {
     let ids = [
         SURGE_ID,
@@ -175,11 +145,6 @@ fn seven_identities_same_names_programs_and_effect_exclusion() {
     }
     let mut catalog = Catalog::from_candidates(candidates, &installed);
     assert_eq!(catalog.candidates().count(), 9);
-    assert_eq!(
-        catalog.instrument_names.len(),
-        7,
-        "count identities even with identical names"
-    );
     let dexed: Vec<_> = catalog
         .candidates()
         .filter(|c| c.plugin_id == ids[1])
@@ -192,7 +157,6 @@ fn seven_identities_same_names_programs_and_effect_exclusion() {
     changed.pop();
     catalog.reconcile(&changed);
     assert_eq!(catalog.candidates().count(), 4);
-    assert_eq!(catalog.instrument_names.len(), 4);
     assert!(catalog
         .candidates()
         .all(|c| c.plugin_id != ids[1] && c.plugin_id != ids[2] && c.plugin_id != ids[6]));

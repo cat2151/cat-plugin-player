@@ -65,6 +65,8 @@ UH_API void uh_pump(UhHost* host);
 UH_API void uh_pump_startup(UhHost* host);
 
 /* Scans on a worker thread. rescan == 0 uses the plugin list cache when there is one.
+ * rescan == 1 refreshes the normal scan; rescan == 2 scans only installed Surge
+ * XT / XT Effects CLAP bundles without reading or writing the plugin list cache.
  * Returns 0 if started, -1 if a scan is already running. */
 UH_API int32_t uh_scan_async(UhHost* host, int32_t rescan, UhScanDoneFn done, void* user);
 

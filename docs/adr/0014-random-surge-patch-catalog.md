@@ -1,6 +1,6 @@
 # 0014: Random patch の Surge XT CLAP catalog 境界
 
-状態: 採用。
+状態: 採用。Random patch ボタンは撤去した（[ADR 0019](0019-random-patch-all-catalog.md)）。この catalog 境界は Browse patches の候補に使う。
 
 初回実験は Surge XT CLAP の patch に限る。既存 cmrt catalog reader を GUI の
 Voice callback 完了確認後に一度だけ worker から呼ぶ。起動前半と audio callback

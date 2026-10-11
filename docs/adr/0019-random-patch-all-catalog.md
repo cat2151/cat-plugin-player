@@ -1,6 +1,15 @@
 # 0019: Random patch を既存 cmrt カタログの7音源へ拡張する
 
-日付: 2026-10-10。状態: 実装済み。7音源の機械検証は通過。release版の人間による聴取・操作確認は未確認。
+状態: 実装済み。7音源の機械検証は通過。release版の人間による聴取・操作確認は未確認。
+
+Random patch ボタンは撤去した（下の「ボタンの撤去」）。候補と準備・適用は Browse patches が使う。
+
+## ボタンの撤去
+
+Sequence 横の Random patch と Random effect のボタンを撤去する。Browse patches／Browse effects の
+`Random` ボタンと `R` キーで、絞り込んだ結果からランダムに選べ、全候補からの抽選は不要になった。
+使わないボタンが並ぶと操作の邪魔になるため、残す案は採らない。ブラウザー内のランダム選択は残す。
+候補・準備・適用・失敗時復旧はブラウザーが使うので残し、名前を `patch_*`／`effect_*` にする。
 
 ## 背景と決定
 
@@ -35,7 +44,7 @@ effect chain を高速で空回しせず、通常の音声 callback が実時間
 
 ## 検証と制約
 
-Stage 1 は実 Dexed の同一 cartridge program 0/1、Floe の二つの Celtic Harp preset、
+検証は実 Dexed の同一 cartridge program 0/1、Floe の二つの Celtic Harp preset、
 sforzando TableWarp2.sfz / Airy Bells.ariax を一時 instance で準備して別 UAPMD instance
 へ復元し、発音と音声差を確認した。sforzando の保存 state に program 座標と ARIA params
 が残ることも確認した。Floe の DLL lifecycle は別 host の所有管理と同一ではないため、

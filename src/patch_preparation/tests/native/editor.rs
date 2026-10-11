@@ -115,13 +115,13 @@ fn native_mml_editor_keys_and_patch_transport() {
     for state in [SequencePattern::Off, SequencePattern::Custom] {
         app.sequence_pattern = state;
         let mut patch = prepared(&key("normal"), &[5]);
-        app.random_failures = vec![Operation::Apply];
-        app.apply_random_patch(patch);
+        app.patch_failures = vec![Operation::Apply];
+        app.apply_patch(patch);
         assert_eq!(app.sequence_pattern, state);
-        app.random_failures.clear();
+        app.patch_failures.clear();
         patch = prepared(&key("normal"), &[5]);
-        app.apply_random_patch(patch);
-        assert!(app.status.contains("Random patch:"), "{}", app.status);
+        app.apply_patch(patch);
+        assert!(app.status.contains("Browse patch:"), "{}", app.status);
         assert_eq!(app.sequence_pattern, state);
         assert!(std::sync::Arc::ptr_eq(
             app.mml_input.phrase.as_ref().unwrap(),

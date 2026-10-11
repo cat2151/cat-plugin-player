@@ -82,7 +82,7 @@ fn user_conditions_reclassify_with_shared_rules() {
 #[ignore = "read-only installed catalog and performance acceptance"]
 fn installed_browser_snapshot_and_condition_timings() {
     let started = std::time::Instant::now();
-    let candidates = crate::random_patch_catalog::load().unwrap();
+    let candidates = crate::patch_catalog::load().unwrap();
     let loaded = started.elapsed();
     let count = candidates.len();
     assert!(candidates

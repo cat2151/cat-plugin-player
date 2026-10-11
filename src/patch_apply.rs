@@ -4,8 +4,8 @@ use crate::{
     config::PluginKey,
     ffi::PluginInfo,
     on_instance,
+    patch_preparation::Prepared,
     plugin_list::PluginKind,
-    random_patch::Prepared,
     session_load::{LoadPurpose, PendingLoad},
     state_store, App, Instance, SequencePattern,
 };
@@ -28,7 +28,7 @@ pub(crate) enum Operation {
 }
 
 pub(crate) fn backup(key: PluginKey, state: Vec<u8>) -> Result<(PluginKey, Vec<u8>), String> {
-    if key.format == "CLAP" && key.id == crate::random_patch_catalog::SURGE_ID && state.is_empty() {
+    if key.format == "CLAP" && key.id == crate::patch_catalog::SURGE_ID && state.is_empty() {
         Err("empty Surge instrument backup".into())
     } else {
         Ok((key, state))
@@ -36,21 +36,21 @@ pub(crate) fn backup(key: PluginKey, state: Vec<u8>) -> Result<(PluginKey, Vec<u
 }
 
 impl App {
-    fn random_operation<T>(
+    fn patch_operation<T>(
         &mut self,
         operation: Operation,
         action: impl FnOnce(&mut Self) -> Result<T, String>,
     ) -> Result<T, String> {
         #[cfg(test)]
-        if self.random_failures.contains(&operation) {
-            return Err("injected random transaction failure".into());
+        if self.patch_failures.contains(&operation) {
+            return Err("injected patch transaction failure".into());
         }
         #[cfg(not(test))]
         let _ = operation;
         action(self)
     }
 
-    pub(crate) fn apply_random_patch(&mut self, prepared: Prepared) {
+    pub(crate) fn apply_patch(&mut self, prepared: Prepared) {
         let candidate = &prepared.candidate;
         // Resolve current scan identity again, never retain an index in a candidate.
         let Some(plugin) = self
@@ -63,10 +63,7 @@ impl App {
             })
             .cloned()
         else {
-            self.status = format!(
-                "{} failed: target plugin no longer available",
-                self.patch_operation_name()
-            );
+            self.status = "Browse patch failed: target plugin no longer available".into();
             self.patch_browser.requests.finish(false);
             return;
         };
@@ -76,7 +73,7 @@ impl App {
         let old_state = match self
             .instrument_id()
             .map(|id| {
-                self.random_operation(Operation::Backup, |app| app.host.save_state(id))
+                self.patch_operation(Operation::Backup, |app| app.host.save_state(id))
                     .and_then(|state| {
                         backup(
                             self.instances
@@ -93,10 +90,10 @@ impl App {
         {
             Ok(state) => state,
             Err(error) => {
-                self.random_failed(
+                self.patch_failed(
                     old_pattern,
                     &old_sweeps,
-                    format!("{} failed: {error}", self.patch_operation_name()),
+                    format!("Browse patch failed: {error}"),
                 );
                 return;
             }
@@ -118,18 +115,14 @@ impl App {
             })
             .map(|i| i.id);
         if let Some(id) = existing {
-            self.random_current(id, replacement);
+            self.patch_current(id, replacement);
         } else {
-            self.status = format!(
-                "Loading {}: {}...",
-                self.patch_operation_name(),
-                plugin.name
-            );
+            self.status = format!("Loading Browse patch: {}...", plugin.name);
             self.pending = Some(PendingLoad {
                 plugin: plugin.clone(),
-                purpose: LoadPurpose::Random(Box::new(replacement)),
+                purpose: LoadPurpose::Patch(Box::new(replacement)),
             });
-            if let Err(error) = self.random_operation(Operation::Create, |_| Ok(())) {
+            if let Err(error) = self.patch_operation(Operation::Create, |_| Ok(())) {
                 self.instance_created(-1, Some(error));
                 return;
             }
@@ -143,13 +136,13 @@ impl App {
         }
     }
 
-    fn random_current(&mut self, id: i32, replacement: Replacement) {
+    fn patch_current(&mut self, id: i32, replacement: Replacement) {
         let result = self
-            .random_operation(Operation::Apply, |app| {
+            .patch_operation(Operation::Apply, |app| {
                 app.host.load_state(id, &replacement.prepared.state)
             })
             .and_then(|()| {
-                self.random_operation(Operation::Chain, |app| {
+                self.patch_operation(Operation::Chain, |app| {
                     app.prepare_voice(id, &app.effect_ids(), false, None)
                 })
             });
@@ -159,22 +152,21 @@ impl App {
                 instance.voice = voice;
                 instance.sweep_cc1 = false;
                 self.unsafe_state.remove(&id);
-                self.random_succeeded(id, replacement);
+                self.patch_succeeded(id, replacement);
             }
             Err(error) => {
                 self.pause_audio();
                 let state = &replacement.old_state.as_ref().unwrap().1;
-                let rollback = self
-                    .random_operation(Operation::Rollback, |app| app.host.load_state(id, state));
+                let rollback =
+                    self.patch_operation(Operation::Rollback, |app| app.host.load_state(id, state));
                 if rollback.is_err() {
                     self.unsafe_state.insert(id);
                 }
-                self.random_failed(
+                self.patch_failed(
                     replacement.old_pattern,
                     &replacement.old_sweeps,
                     format!(
-                        "{} failed: {error}{}",
-                        self.patch_operation_name(),
+                        "Browse patch failed: {error}{}",
                         rollback.err().map_or(String::new(), |error| format!(
                             "; state rollback failed: {error}; saving suppressed"
                         ))
@@ -184,7 +176,7 @@ impl App {
         }
     }
 
-    pub(crate) fn random_instance_created(
+    pub(crate) fn patch_instance_created(
         &mut self,
         plugin: PluginInfo,
         replacement: Replacement,
@@ -195,20 +187,20 @@ impl App {
             if id >= 0 {
                 self.host.destroy_instance(id);
             }
-            self.random_failed(
+            self.patch_failed(
                 replacement.old_pattern,
                 &replacement.old_sweeps,
-                format!("{} failed: {error}", self.patch_operation_name()),
+                format!("Browse patch failed: {error}"),
             );
             return;
         }
         let key = PluginKey::from_plugin(&plugin);
         let result = self
-            .random_operation(Operation::Apply, |app| {
+            .patch_operation(Operation::Apply, |app| {
                 app.host.load_state(id, &replacement.prepared.state)
             })
             .and_then(|()| {
-                self.random_operation(Operation::Chain, |app| {
+                self.patch_operation(Operation::Chain, |app| {
                     app.prepare_voice(id, &app.effect_ids(), false, Some(&key))
                 })
             });
@@ -216,10 +208,10 @@ impl App {
             Ok(voice) => voice,
             Err(error) => {
                 self.host.destroy_instance(id);
-                self.random_failed(
+                self.patch_failed(
                     replacement.old_pattern,
                     &replacement.old_sweeps,
-                    format!("{} failed: {error}", self.patch_operation_name()),
+                    format!("Browse patch failed: {error}"),
                 );
                 return;
             }
@@ -241,10 +233,10 @@ impl App {
             },
         );
         self.restored = Some(key);
-        self.random_succeeded(id, replacement);
+        self.patch_succeeded(id, replacement);
     }
 
-    fn random_failed(&mut self, pattern: SequencePattern, sweeps: &[(i32, bool)], message: String) {
+    fn patch_failed(&mut self, pattern: SequencePattern, sweeps: &[(i32, bool)], message: String) {
         self.patch_browser.requests.finish(false);
         self.sequence_pattern = pattern;
         for &(id, sweep) in sweeps {
@@ -252,7 +244,7 @@ impl App {
                 instance.sweep_cc1 = sweep;
             }
         }
-        let resumed = self.random_operation(Operation::Resume, |app| app.resume_audio());
+        let resumed = self.patch_operation(Operation::Resume, |app| app.resume_audio());
         self.status = format!(
             "{message}{}",
             resumed
@@ -261,13 +253,12 @@ impl App {
         );
     }
 
-    fn random_succeeded(&mut self, id: i32, replacement: Replacement) {
+    fn patch_succeeded(&mut self, id: i32, replacement: Replacement) {
         self.favorites.active.retain(|(instance, _)| {
             *instance != id && self.instances.iter().any(|i| i.id == *instance)
         });
         self.status = format!(
-            "{}: {} — {}{}",
-            self.patch_operation_name(),
+            "Browse patch: {} — {}{}",
             replacement.prepared.candidate.plugin_name,
             replacement.prepared.candidate.display,
             if self.output.is_none() {
@@ -277,7 +268,6 @@ impl App {
             }
         );
         self.patch_browser.requests.finish(true);
-        // Random patches play catalog patches too; the browser opens at them.
         self.patch_browser.requests.applied = Some(replacement.prepared.candidate.clone());
         // Save both old and applied bytes with the existing state store. No favorite capture.
         self.pause_audio();

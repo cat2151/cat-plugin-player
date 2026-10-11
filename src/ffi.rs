@@ -198,7 +198,13 @@ impl Host {
 
     /// Returns false if a scan is already running.
     pub fn scan_async(&self, rescan: bool, done: UhScanDoneFn, user: *mut c_void) -> bool {
-        unsafe { uh_scan_async(self.raw, rescan as i32, Some(done), user) == 0 }
+        // ABI mode 2 scans only real Surge CLAP bundles, without the shared cache.
+        let mode = if cfg!(feature = "recording-mode") {
+            2
+        } else {
+            rescan as i32
+        };
+        unsafe { uh_scan_async(self.raw, mode, Some(done), user) == 0 }
     }
 
     pub fn plugins(&self) -> Vec<PluginInfo> {

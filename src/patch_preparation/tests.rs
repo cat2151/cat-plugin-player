@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 pub(super) fn candidate() -> Candidate {
     Candidate {
         format: "CLAP".into(),
-        plugin_id: crate::random_patch_catalog::SURGE_ID.into(),
+        plugin_id: crate::patch_catalog::SURGE_ID.into(),
         plugin_name: "Surge XT".into(),
         display: "Bass/One.fxp".into(),
         path: "X:/patches/One.fxp".into(),
@@ -74,13 +74,13 @@ mod native;
 fn empty_surge_backup_is_rejected_before_native_mutation() {
     let mut key = crate::config::PluginKey {
         format: "CLAP".into(),
-        id: crate::random_patch_catalog::SURGE_ID.into(),
+        id: crate::patch_catalog::SURGE_ID.into(),
         name: "Surge XT".into(),
         vendor: String::new(),
         bundle_path: String::new(),
     };
-    assert!(crate::random_patch_apply::backup(key.clone(), vec![]).is_err());
-    assert!(crate::random_patch_apply::backup(key.clone(), vec![1]).is_ok());
+    assert!(crate::patch_apply::backup(key.clone(), vec![]).is_err());
+    assert!(crate::patch_apply::backup(key.clone(), vec![1]).is_ok());
     key.id = "another-plugin".into();
-    assert!(crate::random_patch_apply::backup(key, vec![]).is_ok());
+    assert!(crate::patch_apply::backup(key, vec![]).is_ok());
 }

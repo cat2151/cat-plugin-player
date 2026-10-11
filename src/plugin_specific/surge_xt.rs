@@ -13,6 +13,11 @@ fn matches_plugin(plugin: &PluginKey) -> bool {
     )
 }
 
+// ADR 0027: a resumed instrument tail through a fresh Surge XT effect starts at full level.
+pub(super) fn is_effects(plugin: &PluginKey) -> bool {
+    plugin.format == "CLAP" && plugin.id == "org.surge-synth-team.surge-xt-fx"
+}
+
 // ADR 0008: provisional settling time while the audio thread applies restored state.
 pub(super) fn automatic_note_start_delay(plugin: &PluginKey) -> std::time::Duration {
     if matches_plugin(plugin) {

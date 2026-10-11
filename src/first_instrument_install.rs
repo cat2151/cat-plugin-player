@@ -1,7 +1,7 @@
 //! Offer Surge XT through winget when a scan finds no instrument (ADR 0024).
 mod text;
 
-use crate::{ffi::PluginInfo, plugin_list::PluginKind, random_patch_catalog::SURGE_ID, App};
+use crate::{ffi::PluginInfo, patch_catalog::SURGE_ID, plugin_list::PluginKind, App};
 use eframe::egui;
 use std::io::BufRead;
 use std::process::{Command, Stdio};
@@ -94,7 +94,11 @@ impl FirstInstrument {
 }
 
 fn command_line() -> String {
-    format!("winget install --id {PACKAGE_ID} -e --source winget --silent --disable-interactivity --accept-package-agreements --accept-source-agreements")
+    let line = format!("winget install --id {PACKAGE_ID} -e --source winget --silent --disable-interactivity --accept-package-agreements --accept-source-agreements");
+    // Inno Setup's RestartManager can otherwise close OBS while recording (ADR 0026).
+    #[cfg(feature = "recording-mode")]
+    let line = format!("{line} --custom /NOCLOSEAPPLICATIONS");
+    line
 }
 
 /// Piped winget prints no byte progress, and its wording follows the Windows language,
@@ -291,6 +295,7 @@ impl App {
         self.first_instrument.job = None;
         match result {
             Ok(()) => {
+                self.effect_catalog.refresh_after_install();
                 self.first_instrument.installed = true;
                 if let Dialog::Installing { step, .. } = &mut self.first_instrument.dialog {
                     *step = Step::Loading;
@@ -405,5 +410,15 @@ mod tests {
         assert!(line.starts_with("winget install --id SurgeSynth.SurgeXT -e "));
         assert!(line.contains("--silent --disable-interactivity"));
         assert!(!line.contains("  "), "args are split on single spaces");
+        let args: Vec<_> = line.split(' ').skip(1).collect();
+        let custom = args.iter().position(|arg| *arg == "--custom");
+        if cfg!(feature = "recording-mode") {
+            assert_eq!(
+                args[custom.expect("keep recorder running") + 1],
+                "/NOCLOSEAPPLICATIONS"
+            );
+        } else {
+            assert_eq!(custom, None);
+        }
     }
 }

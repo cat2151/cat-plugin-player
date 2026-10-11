@@ -7,19 +7,21 @@ pub(crate) struct PendingLoad {
 }
 pub(crate) enum LoadPurpose {
     Manual,
+    AutoInstrument,
+    BrowserEffect,
     Restore,
     Favorite(
         crate::favorites_store::Favorite,
         Vec<u8>,
         crate::favorite_playback::Playback,
     ),
-    Random(Box<crate::random_patch_apply::Replacement>),
-    RandomEffect(crate::random_effect_apply::Replacement),
+    Patch(Box<crate::patch_apply::Replacement>),
+    EffectPreset(crate::effect_apply::Replacement),
 }
 
 impl App {
     pub(crate) fn load_plugin(&mut self, index: usize) {
-        if self.pending.is_some() || self.scanning || self.random_busy() {
+        if self.pending.is_some() || self.scanning || self.preset_change_busy() {
             return;
         }
         let plugin = self.plugins[index].clone();
@@ -114,17 +116,22 @@ impl App {
             return;
         };
         let plugin = pending.plugin;
+        let auto_play = matches!(pending.purpose, LoadPurpose::AutoInstrument);
+        let browser_effect = matches!(pending.purpose, LoadPurpose::BrowserEffect);
         let favorite = match pending.purpose {
-            LoadPurpose::RandomEffect(prepared) => {
-                self.random_effect_instance_created(plugin, prepared, id, error);
+            LoadPurpose::EffectPreset(prepared) => {
+                self.effect_instance_created(plugin, prepared, id, error);
                 return;
             }
-            LoadPurpose::Random(replacement) => {
-                self.random_instance_created(plugin, *replacement, id, error);
+            LoadPurpose::Patch(replacement) => {
+                self.patch_instance_created(plugin, *replacement, id, error);
                 return;
             }
             LoadPurpose::Favorite(favorite, state, playback) => Some((favorite, state, playback)),
-            LoadPurpose::Manual | LoadPurpose::Restore => None,
+            LoadPurpose::Manual
+            | LoadPurpose::Restore
+            | LoadPurpose::AutoInstrument
+            | LoadPurpose::BrowserEffect => None,
         };
         let label = format!("{} [{}]", plugin.name, plugin.format);
         if let Some(error) = error.or_else(|| (id < 0).then(|| "creation failed".into())) {
@@ -159,6 +166,9 @@ impl App {
         let old_sequence = self.sequence_pattern;
         let old_selected = self.selected_sequence;
         let old_input = self.mml_input.clone();
+        if auto_play {
+            self.sequence_pattern = self.sequence_pattern.selection(self.selected_sequence);
+        }
         let favorite = favorite.map(|(favorite, state, playback)| {
             self.apply_playback(playback);
             (favorite, state)
@@ -194,6 +204,9 @@ impl App {
             voice: None,
             sweep_cc1: false,
         });
+        if browser_effect && self.effect_browser.open {
+            self.effect_browser.target = Some(id);
+        }
         // Keep source at index zero without changing the effect order.
         if kind == PluginKind::Instrument {
             let source = self.instances.pop().unwrap();

@@ -6,14 +6,14 @@
 
 ## 決定
 
-- patch browser と Random patch の候補の読み元を、cmrt の `patch_catalog_cache::cache_file_path()` が**存在するか**で選ぶ。
+- patch browser の候補の読み元を、cmrt の `patch_catalog_cache::cache_file_path()` が**存在するか**で選ぶ。
   存在すれば従来どおり cmrt の `load()`。存在しなければ Surge XT 用 catalog を `load_from()` で読む。
   存在するが読めない場合は従来どおりエラーとし、Surge XT 用へは切り替えない。候補を組む処理は共通（[ADR 0019](0019-random-patch-all-catalog.md)）。
 - Surge XT 用 catalog は `https://raw.githubusercontent.com/cat2151/cat-music-patterns/main/surge-xt-patch-catalog.json`。
   既存の catalog worker（[ADR 0014](0014-random-surge-patch-catalog.md)）の中で、起動ごとに1回取得する。タイムアウトは全体で10秒。
 - 取得した bytes は保存先と同じディレクトリの一時ファイルに書き、cmrt の `load_from()` が通ったときだけ
   `%LOCALAPPDATA%\cat-plugin-player\patch-catalog\surge-xt.json` を atomic に置き換える。
-  取得または検査に失敗したら前回のファイルを使い、それも無ければ既存の `Random patch unavailable` として出す。
+  取得または検査に失敗したら前回のファイルを使い、それも無ければ既存の `Patch catalog unavailable` として出す。
 - catalog は `scripts/extract_surge_xt_patch_catalog.py` で cmrt の catalog から Surge XT の CLAP（`id:org.surge-synth-team.surge-xt`）分だけを切り出して作る。
   ディスクに無い patch は落とし、catalog に無い `*.fxp` がディスクにあれば停止する。書き出す前に、ドライブ付きパスが
   `C:\Program Files\` か `C:\ProgramData\` で始まることを確かめる。

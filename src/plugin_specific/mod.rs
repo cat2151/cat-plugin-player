@@ -28,6 +28,11 @@ pub(crate) fn same_favorite_state(plugin: &PluginKey, left: &[u8], right: &[u8])
         || surge_xt::same_sound(plugin, left, right)
 }
 
+/// ADR 0027: the swapped-out or swapped-in effect needs a gain ramp around the swap.
+pub(crate) fn fades_effect_swap(plugin: &PluginKey) -> bool {
+    surge_xt::is_effects(plugin)
+}
+
 pub(crate) fn same_favorite_state_with_sweep(
     plugin: &PluginKey,
     left: &[u8],

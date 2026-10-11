@@ -9,11 +9,16 @@ const DLL: &[u8] = include_bytes!(env!("UAPMD_SHIM_DLL"));
 pub fn load() -> Result<libloading::Library, Box<dyn std::error::Error + Send + Sync>> {
     let mut hash = DefaultHasher::new();
     DLL.hash(&mut hash);
-    let directory = dirs::cache_dir()
+    #[cfg(feature = "recording-mode")]
+    let root = crate::recording::config_path()?
+        .parent()
+        .ok_or("recording config has no parent")?
+        .to_path_buf();
+    #[cfg(not(feature = "recording-mode"))]
+    let root = dirs::cache_dir()
         .ok_or("キャッシュディレクトリを取得できません")?
-        .join("cat-plugin-player")
-        .join("native")
-        .join(format!("{:016x}", hash.finish()));
+        .join("cat-plugin-player");
+    let directory = root.join("native").join(format!("{:016x}", hash.finish()));
     std::fs::create_dir_all(&directory)?;
     let path = directory.join("uapmd_shim.dll");
     if !path.is_file() {

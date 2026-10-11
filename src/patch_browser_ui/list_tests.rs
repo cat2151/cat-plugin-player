@@ -3,7 +3,7 @@ use super::*;
 #[test]
 #[ignore = "read-only installed catalog and grid painting performance"]
 fn installed_grid_virtualization_and_frame_timings() {
-    let candidates = crate::random_patch_catalog::load().unwrap();
+    let candidates = crate::patch_catalog::load().unwrap();
     let count = candidates.len();
     let mut browser = Browser {
         open: true,

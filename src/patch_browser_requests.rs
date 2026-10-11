@@ -1,5 +1,5 @@
 //! Latest-only intent and the two-key heavy-load gate, independent of native work.
-use crate::random_patch_catalog::Candidate;
+use crate::patch_catalog::Candidate;
 
 #[derive(Clone, Debug)]
 pub(crate) struct Ticket {
