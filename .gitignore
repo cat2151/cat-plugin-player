@@ -1,2 +1,3 @@
 target/
 /uapmd/
+__pycache__/
