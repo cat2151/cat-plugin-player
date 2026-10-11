@@ -24,7 +24,7 @@
   なので、リリースバイナリを作る CI だけで assert を無効にしても、目的を達成できない。
 - cargo の `[env]` は profile 別に分けられない（項目は value・force・relative だけで、`[profile.*]` に env は無い）。
   cc 1.6.0 は NDEBUG を定義せず、`PROFILE` も見ない（見るのは `OPT_LEVEL` と `DEBUG` だけ）。
-- release.py や CI のときだけ環境変数を付けると、普段の exe と配布物が一致せず、普段の exe には
+- CI のときだけ環境変数を付けると、普段の exe と配布物が一致せず、普段の exe には
   tree-sitter の絶対パスが残る。切り替えるたびに cc を使う crate とその下流が再ビルドされる。
 
 ### `/W4` を足さない理由
@@ -50,6 +50,6 @@
 | --- | --- |
 | `CARGO_HOME` の config.toml に置く | 他の repo と CI に効かない |
 | shell で `CFLAGS` を設定してビルドする | 設定し忘れたビルドで気づかずパスが入る |
-| release.py や CI のときだけ環境変数を付ける | 「release のときだけ無効にしない理由」のとおり |
+| CI のときだけ環境変数を付ける | 「release のときだけ無効にしない理由」のとおり |
 | `CL` 環境変数で `/DNDEBUG` を渡す | cc が監視しないので、変えても再ビルドが起きない。shim の MSBuild にも効いてしまう |
 | `/W4` も足す | 「`/W4` を足さない理由」のとおり |

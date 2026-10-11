@@ -1,7 +1,9 @@
 # Builds the Windows x64 release zip (VC++ runtime linked statically).
 # schedule:          build, check and (re)create the GitHub Release v<Cargo.toml version>, replacing an existing one.
-# workflow_dispatch: publish=false builds and checks only, keeping the zip as a run artifact; publish=true also publishes.
-# See release-ci-option.md and docs/adr/0023-static-crt-release-build.md.
+#                    Skips build and publish when the four commits equal those of the published release.
+# workflow_dispatch: always builds. publish=false builds and checks only, keeping the zip as a run artifact;
+#                    publish=true also publishes.
+# See docs/adr/0023-static-crt-release-build.md.
 name: Release
 
 on:
@@ -31,6 +33,7 @@ jobs:
       uapmd: ${{ steps.refs.outputs.uapmd }}
       tui: ${{ steps.refs.outputs.tui }}
       server: ${{ steps.refs.outputs.server }}
+      build: ${{ steps.changed.outputs.build }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -40,18 +43,52 @@ jobs:
         run: |
           set -euo pipefail
           main_sha() { git ls-remote --exit-code "https://github.com/$1" refs/heads/main | cut -f1; }
+          uapmd=$(main_sha atsushieno/uapmd)
+          tui=$(main_sha cat2151/clap-mml-render-tui)
+          server=$(main_sha cat2151/clap-mml-play-server)
           {
             echo "version=$(python3 -c "import tomllib; print(tomllib.load(open('Cargo.toml', 'rb'))['package']['version'])")"
-            echo "uapmd=$(main_sha atsushieno/uapmd)"
-            echo "tui=$(main_sha cat2151/clap-mml-render-tui)"
-            echo "server=$(main_sha cat2151/clap-mml-play-server)"
+            echo "uapmd=$uapmd"
+            echo "tui=$tui"
+            echo "server=$server"
+            echo "inputs=<!-- build-inputs cat=$GITHUB_SHA clap-mml-render-tui=$tui clap-mml-play-server=$server uapmd=$uapmd -->"
           } >> "$GITHUB_OUTPUT"
+      # The notes carry this line, so the next scheduled run can tell whether anything changed.
+      - name: Compare with the published release
+        id: changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          TAG: v${{ steps.refs.outputs.version }}
+          INPUTS: ${{ steps.refs.outputs.inputs }}
+        run: |
+          set -euo pipefail
+          published=$(gh release view "$TAG" --json body --jq .body 2> /dev/null | tr -d '\r' | grep -F '<!-- build-inputs ' | head -n 1) || published=""
+          if [ "$EVENT" != schedule ]; then
+            build=true; reason="手動起動なので、変更の有無に関係なくビルドする"
+          elif [ -z "$published" ]; then
+            build=true; reason="公開中の $TAG が無いか、build-inputs の行を読めないのでビルドする"
+          elif [ "$published" = "$INPUTS" ]; then
+            build=false; reason="公開中の $TAG と同じ commit なので、build と publish を飛ばす"
+          else
+            build=true; reason="公開中の $TAG と commit が違うのでビルドする"
+          fi
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          {
+            echo "## 再ビルドの判定"
+            echo "- $reason"
+            echo "- 今回: \`$INPUTS\`"
+            echo "- 公開中: \`${published:-なし}\`"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Write the release notes
         env:
           VERSION: ${{ steps.refs.outputs.version }}
           UAPMD: ${{ steps.refs.outputs.uapmd }}
           TUI: ${{ steps.refs.outputs.tui }}
           SERVER: ${{ steps.refs.outputs.server }}
+          INPUTS: ${{ steps.refs.outputs.inputs }}
         run: |
           set -euo pipefail
           if [ "$UAPMD" = "$UAPMD_VERIFIED_SHA" ]; then
@@ -65,12 +102,19 @@ jobs:
           ## 配布物
           - \`cat-plugin-player-${VERSION}-windows-x64.zip\`: exe と LICENSE。VC++ ランタイムを静的リンクしているので、Microsoft Visual C++ 再頒布可能パッケージは不要
 
+          ## この版について
+          - GitHub Actions が毎日自動でビルドし、公開している（下の commit がどれも変わらない日は作り直さない）
+          - 通っているのは自動の検査（ビルド、VC++ ランタイムのリンク検査、テスト）だけで、人による動作確認はしていない
+          - uapmd は上流の main を使うので、作者が手元で確かめた版と違う場合がある（下の「ビルドに使った commit」）
+
           ## ビルドに使った commit
           - cat-plugin-player: ${GITHUB_SHA}
           - clap-mml-render-tui: ${TUI}
           - clap-mml-play-server: ${SERVER}
           - uapmd（atsushieno/uapmd の main）: ${UAPMD}
             - 手元で確認した uapmd ${UAPMD_VERIFIED_SHA} と${verified}
+
+          ${INPUTS}
           EOF
           cat notes.md >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v7
@@ -81,6 +125,8 @@ jobs:
 
   build:
     needs: resolve
+    # A skipped build also skips publish, and the run still ends as a success.
+    if: needs.resolve.outputs.build == 'true'
     runs-on: windows-latest
     env:
       ZIP: cat-plugin-player-${{ needs.resolve.outputs.version }}-windows-x64.zip
