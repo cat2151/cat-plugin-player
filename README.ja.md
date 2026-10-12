@@ -201,7 +201,7 @@ cat-music-patternsへのcommit・pushは人間が行います。形式と理由�
 
 # 今後のブレインストーミング
 - ※気分で変更する可能性があります
-- VST3とGUIに対応している、という、cmrtにない強みの部分を伸ばす
+- VST3とGUIに対応している、という、[cmrt](https://cat2151.github.io/clap-mml-render-tui/README.ja)にない強みの部分を伸ばす
   - GUIのedit結果statusをcmrtと連携
     - editした音色やエフェクトをcmrtで読み込んで利用
   - eguiでいろいろ遊ぶ
