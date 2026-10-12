@@ -38,7 +38,13 @@ https://github.com/user-attachments/assets/c4a7cec0-ebfd-4cea-bc21-bbfc4dd8e92d
 
 ※↑このセクションは人間が書きます。AIがここに書くことを禁止します
 
-# 機能（AIによる詳細な追記。読みづらいのであとでなおすつもり）
+# AIが編集するセクション
+
+読みづらいのであとでなおすつもり。折りたたんでおきます
+
+<details><summary>機能の詳細、ほか</summary>
+
+## 機能（AIによる詳細な追記）
 
 オシロスコープの表示方式と制約は[ADR 0001](docs/adr/0001-scope-follows-waveform-position.md)に記録しています。
 
@@ -133,13 +139,7 @@ https://github.com/user-attachments/assets/c4a7cec0-ebfd-4cea-bc21-bbfc4dd8e92d
   - 探索は音声処理とは別のスレッドで行います。低いnote・多い周期数では表示の更新が遅くなることがあります。表示用データが途切れた場合は履歴をリセットします
   - 起動時の表示設定は4周期・ゼロクロスです。表示設定は保存しません
 
-
-
-# いろいろ
-
-AIが生成した文章で、読みづらいです。あとでなおすつもり
-
-## ウィンドウの位置・サイズ設定
+## 設定 : ウィンドウの位置・サイズ
 
 `%LOCALAPPDATA%\cat-plugin-player\config.toml` に本体の起動位置・サイズとプラグインGUIの配置方式を指定できます。アプリを終了してから編集してください。セッションやお気に入りの選択状態は同じディレクトリの `status.json` に保存し、通常の保存では TOML を書き換えません。旧 TOML に混在している状態は初回起動時に移行し、元ファイルを `config.toml.before-status-migration.bak` に保存してから状態項目だけを除去します。設定のコメント・書式・未知の項目を保持し、削除項目に付いていた独立したコメントは末尾に残します。既存の `status.json` がある場合はそちらを優先します。
 
@@ -173,9 +173,9 @@ UAPMD が兄弟の `uapmd` ディレクトリ以外にある場合は、先に `
 
 引数なしで GUI を起動します。`--help` と `--version` も使えます。
 
-# 開発者用
+## 開発者用
 
-## 録画
+### 録画
 
 紹介録画で初回導入を再現するときは `cargo build --release --features recording-mode` を使います。
 起動ごとに `%LOCALAPPDATA%\cat-plugin-player-recordings\` 配下へ空の保存先を作り、
@@ -185,7 +185,7 @@ Surge XTの不在は偽装せず、撮影前に実際に人間またはcoding ag
 撮影後は `cargo build --release` で通常のexeへ戻してください。
 対象範囲・制限は [ADR 0026](docs/adr/0026-recording-mode.md) を参照してください。
 
-## Surge XT Effectsのstate表
+### Surge XT Effectsのstate表
 
 Surge XTを更新したときなどは、Surge XT Effectsをインストールした環境で次を実行して表を作り直します。
 
@@ -194,6 +194,10 @@ cargo run --release --example export_surge_fx_states -- ..\cat-music-patterns\su
 ```
 
 cat-music-patternsへのcommit・pushは人間が行います。形式と理由は[ADR 0028](docs/adr/0028-surge-xt-fx-prepared-states.md)を参照してください。
+
+※↑AIはこのh1セクションのみに書いてください
+
+</details>
 
 # 今後のブレインストーミング
 - ※気分で変更する可能性があります
