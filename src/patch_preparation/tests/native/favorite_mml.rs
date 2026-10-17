@@ -21,6 +21,7 @@ fn native_favorite_mml_restore_and_rejection() {
         app.load_plugin(index);
         wait(&mut app);
         let capture = |text: &str| FavoriteCapture {
+            preset_name: None,
             sequence_pattern: SequencePattern::Off,
             selected_sequence: Some(SequencePattern::Custom),
             mml: Some(text.into()),
@@ -119,6 +120,7 @@ fn native_favorite_mml_restore_and_rejection() {
                 kind: PluginKind::Effect,
                 voice: None,
                 sweep_cc1: false,
+                preset_name: None,
             });
             app.load_favorite(&favorite.id);
             wait(&mut app);

@@ -1,6 +1,6 @@
 # ADR 0003: 依存ライブラリの補修をpatchesに集約し、ビルド用コピーへ適用する
 
-- 状態: 採用（UAPMDのCLAP補修2件で使用中）
+- 状態: 採用（UAPMDの補修3件で使用中）
 - 記録範囲: 現在の `patches/` の構成と適用方式。新しい補修の導入を承認するものではない。
 
 ## 何の話か
@@ -32,6 +32,7 @@
 | --- | --- | --- |
 | UAPMD / remidyのCLAP入力Note形式 | [clap-note-dialect](../../patches/uapmd/clap-note-dialect/README.md) | [ADR 0005](0005-clap-input-note-dialect.md) |
 | UAPMD / remidyのCLAP state読込失敗 | [clap-state-load-error](../../patches/uapmd/clap-state-load-error/README.md) | [ADR 0013](0013-clap-state-load-error.md) |
+| UAPMD / PluginScanToolのdata directory競合 | [scan-tool-data-dir-race](../../patches/uapmd/scan-tool-data-dir-race/README.md) | [ADR 0032](0032-scan-tool-data-dir-race.md) |
 
 撤去済み: Windows VST3ローダー（[ADR 0021](0021-remove-windows-vst3-loader-patch.md)）。
 

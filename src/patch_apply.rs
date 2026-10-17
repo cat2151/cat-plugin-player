@@ -126,13 +126,15 @@ impl App {
                 self.instance_created(-1, Some(error));
                 return;
             }
-            self.host.create_instance(
-                plugin.index,
-                self.sample_rate(),
-                audio::MAX_BLOCK_FRAMES,
-                on_instance,
-                std::ptr::null_mut(),
-            );
+            unsafe {
+                self.host.create_instance(
+                    plugin.index,
+                    self.sample_rate(),
+                    audio::MAX_BLOCK_FRAMES,
+                    on_instance,
+                    std::ptr::null_mut(),
+                )
+            };
         }
     }
 
@@ -230,6 +232,7 @@ impl App {
                 kind: PluginKind::Instrument,
                 voice,
                 sweep_cc1: false,
+                preset_name: None,
             },
         );
         self.restored = Some(key);
@@ -254,6 +257,11 @@ impl App {
     }
 
     fn patch_succeeded(&mut self, id: i32, replacement: Replacement) {
+        self.instances
+            .iter_mut()
+            .find(|i| i.id == id)
+            .unwrap()
+            .preset_name = Some(replacement.prepared.candidate.display.clone());
         self.favorites.active.retain(|(instance, _)| {
             *instance != id && self.instances.iter().any(|i| i.id == *instance)
         });
@@ -282,9 +290,15 @@ impl App {
             // Surge may accept state.load before its audio thread installs it.
             // Persist the successful owned input rather than rereading old sound.
             let current = &self.instances.iter().find(|i| i.id == id).unwrap().plugin;
-            state_store::save(path, current, &replacement.prepared.state)
+            state_store::save_named(
+                path,
+                current,
+                &replacement.prepared.state,
+                Some(&replacement.prepared.candidate.display),
+            )
         })();
         let resumed = self.resume_audio();
+        self.selection_committed();
         self.save_session();
         let error = saved.err().or_else(|| self.config_error.clone());
         if let Some(error) = error {

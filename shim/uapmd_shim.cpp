@@ -28,6 +28,7 @@
 #include <cstring>
 
 #include <uapmd-plugin-hosting/uapmd-plugin-hosting.hpp>
+#include <uapmd-graph/uapmd-graph.hpp>
 #include <remidy-gui/remidy-gui.hpp>
 
 using uapmd_plugin_hosting::AudioPluginCatalogEntry;
@@ -102,6 +103,8 @@ struct UhHost {
     std::unique_ptr<AudioPluginHostingAPI> api;
     std::vector<AudioPluginCatalogEntry> catalog;
     PluginKinds kinds;
+    std::optional<std::vector<AudioPluginCatalogEntry>> scanned_catalog;
+    PluginKinds scanned_kinds;
     std::map<int32_t, std::unique_ptr<OwnedInstance>> instances;
     int32_t next_instance_id{0};
     int32_t pending_instances{0};
@@ -114,15 +117,19 @@ struct UhHost {
     std::atomic<bool> scanning{false};
 };
 
-// Everything one plugin instance needs on the audio thread.
+// Everything one plugin instance needs on the audio thread. A chain uses `ctx`
+// for its effects graph and keeps the instrument, if any, in `stages`.
 struct UhProcessor {
     uapmd_plugin_hosting::AudioPluginInstanceAPI* instance{};
     remidy::MasterContext master{};
     remidy::AudioProcessContext ctx;
     uint32_t max_frames{};
     std::vector<std::unique_ptr<UhProcessor>> stages;
-    std::vector<float> scratch_a, scratch_b;
-    bool bypass{};
+    std::unique_ptr<uapmd_graph::AudioPluginGraph> effects;
+    // In chain order; owned by `effects`.
+    std::vector<uapmd_graph::AudioPluginNode*> effect_nodes;
+    std::vector<float> scratch_a;
+    bool effects_only{};
 
     explicit UhProcessor(uint32_t eventBufferBytes) : ctx(master, eventBufferBytes) {}
 };
@@ -312,9 +319,16 @@ int32_t uh_scan_async(UhHost* host, int32_t rescan, UhScanDoneFn done, void* use
 #if _WIN32
             if (SUCCEEDED(apartment)) CoUninitialize();
 #endif
-            g_loop->post([host, done, user, error, catalog = std::move(catalog), kinds = std::move(kinds)]() mutable {
-                host->catalog = std::move(catalog);
-                host->kinds = std::move(kinds);
+            g_loop->post([host, rescan, done, user, error, catalog = std::move(catalog), kinds = std::move(kinds)]() mutable {
+                if (error.empty() && rescan == 3) {
+                    // State calls also drain g_loop. Do not change indices
+                    // inside a transaction which still owns a catalog index.
+                    host->scanned_catalog = std::move(catalog);
+                    host->scanned_kinds = std::move(kinds);
+                } else if (error.empty()) {
+                    host->catalog = std::move(catalog);
+                    host->kinds = std::move(kinds);
+                }
                 host->scanning.store(false);
                 if (done)
                     done(user, error.empty() ? nullptr : error.c_str());
@@ -325,6 +339,14 @@ int32_t uh_scan_async(UhHost* host, int32_t rescan, UhScanDoneFn done, void* use
         host->scanning.store(false);
         return -1;
     }
+}
+
+int32_t uh_scan_accept(UhHost* host) {
+    if (!host || !host->scanned_catalog) return 0;
+    host->catalog = std::move(*host->scanned_catalog);
+    host->kinds = std::move(host->scanned_kinds);
+    host->scanned_catalog.reset();
+    return 1;
 }
 
 int32_t uh_plugin_count(UhHost* host) {
@@ -555,19 +577,43 @@ void uh_processor_destroy(UhProcessor* processor) {
     delete processor;
 }
 
+// Widens each bus to what the plugin needs, as uapmd's sequencer does for a
+// track context shared by its graph.
+static std::vector<remidy::AudioBusSpec> mergeBusSpecs(
+        std::vector<remidy::AudioBusSpec> merged,
+        const std::vector<remidy::AudioBusConfiguration*>& pluginBuses, uint32_t frames) {
+    for (size_t i = 0; i < pluginBuses.size(); ++i) {
+        auto* bus = pluginBuses[i];
+        if (!bus || !bus->enabled())
+            continue;
+        const remidy::AudioBusSpec required{bus->role(), bus->channelLayout().channels(), frames};
+        if (i >= merged.size()) {
+            merged.emplace_back(required);
+        } else {
+            merged[i].channels = std::max(merged[i].channels, required.channels);
+            if (required.role == remidy::AudioBusRole::Main)
+                merged[i].role = remidy::AudioBusRole::Main;
+        }
+    }
+    return merged;
+}
+
 UhProcessor* uh_chain_create(UhHost* host, int32_t instrument_id,
                              const int32_t* effect_ids, int32_t effect_count,
-                             int32_t bypass, uint32_t sample_rate, uint32_t max_frames) {
+                             uint32_t sample_rate, uint32_t max_frames) {
     if (effect_count < 0 || (effect_count > 0 && !effect_ids))
         return nullptr;
     try {
         auto chain = std::make_unique<UhProcessor>(kEventBufferBytes);
         chain->max_frames = max_frames;
-        chain->bypass = bypass != 0;
+        chain->effects_only = instrument_id == -1;
         chain->scratch_a.resize(static_cast<size_t>(max_frames) * 2);
-        chain->scratch_b.resize(static_cast<size_t>(max_frames) * 2);
+        chain->master.sampleRate(static_cast<int32_t>(sample_rate));
+        chain->master.isPlaying(true);
+        chain->ctx.configureMainBus(2, 2, max_frames);
+        chain->effects = uapmd_graph::AudioPluginGraph::create(kEventBufferBytes);
         std::set<int32_t> ids;
-        for (int32_t i = -1; i < effect_count; ++i) {
+        for (int32_t i = chain->effects_only ? 0 : -1; i < effect_count; ++i) {
             const int32_t id = i < 0 ? instrument_id : effect_ids[i];
             if (!ids.insert(id).second)
                 return nullptr;
@@ -578,12 +624,70 @@ UhProcessor* uh_chain_create(UhHost* host, int32_t instrument_id,
             const auto out = stage->ctx.outputChannelCount(0);
             if (out < 1 || out > 2 || (i >= 0 && (in < 1 || in > 2)))
                 return nullptr;
-            chain->stages.push_back(std::move(stage));
+            if (i < 0) {
+                chain->stages.push_back(std::move(stage));
+                continue;
+            }
+            auto* buses = stage->instance->audioBuses();
+            auto& ctx = chain->ctx;
+            ctx.configureAudioInputBuses(mergeBusSpecs(ctx.audioInputSpecs(), buses->audioInputBuses(), max_frames));
+            ctx.configureAudioOutputBuses(mergeBusSpecs(ctx.audioOutputSpecs(), buses->audioOutputBuses(), max_frames));
+            if (chain->effects->appendNodeSimple(id, stage->instance, [] {}) != 0)
+                return nullptr;
+            auto* node = chain->effects->getPluginNode(id);
+            if (!node)
+                return nullptr;
+            node->bypassed(false);
+            chain->effect_nodes.push_back(node);
         }
         return chain.release();
     } catch (...) {
         return nullptr;
     }
+}
+
+int32_t uh_chain_set_bypassed(UhProcessor* chain, int32_t effect_index, int32_t bypassed) {
+    if (!chain || effect_index < 0 || static_cast<size_t>(effect_index) >= chain->effect_nodes.size())
+        return -1;
+    chain->effect_nodes[static_cast<size_t>(effect_index)]->bypassed(bypassed != 0);
+    return 0;
+}
+
+// Runs the effects graph over stereo interleaved audio in place.
+static int32_t processEffects(UhProcessor* chain, float* stereo, int32_t frames) {
+    if (chain->effect_nodes.empty())
+        return 0;
+    remidy::AudioThreadScope audioThreadRole;
+    auto& ctx = chain->ctx;
+    ctx.frameCount(frames);
+    ctx.clearAudioInputs();
+    ctx.clearAudioOutputs();
+    const int32_t inChannels = ctx.inputChannelCount(0);
+    for (int32_t ch = 0; ch < inChannels; ++ch) {
+        float* dst = ctx.getFloatInBuffer(0, static_cast<uint32_t>(ch));
+        if (!dst)
+            continue;
+        for (int32_t i = 0; i < frames; ++i)
+            dst[i] = stereo[i * 2 + std::min(ch, 1)];
+    }
+    int32_t status = 0;
+    try {
+        status = chain->effects->processAudio(ctx);
+    } catch (...) {
+        status = -5;
+    }
+    chain->master.playbackPositionSamples(chain->master.playbackPositionSamples() + frames);
+    if (status != 0)
+        return status;
+    const float* left = ctx.getFloatOutBuffer(0, 0);
+    const float* right = ctx.outputChannelCount(0) > 1 ? ctx.getFloatOutBuffer(0, 1) : left;
+    if (!left || !right)
+        return -1;
+    for (int32_t i = 0; i < frames; ++i) {
+        stereo[i * 2] = left[i];
+        stereo[i * 2 + 1] = right[i];
+    }
+    return 0;
 }
 
 // A stereo inter-stage buffer keeps device channel count out of routing.
@@ -660,6 +764,11 @@ static int32_t processStage(UhProcessor* processor, const float* input,
 int32_t uh_processor_process(UhProcessor* processor,
                              const uint32_t* ump_words, int32_t ump_word_count,
                              float* out_interleaved, int32_t out_channels, int32_t frames) {
+    if (processor && processor->effects_only) {
+        if (!out_interleaved || out_channels <= 0 || frames <= 0) return -1;
+        std::memset(out_interleaved, 0, static_cast<size_t>(frames) * out_channels * sizeof(float));
+        return uh_processor_process_input(processor, out_interleaved, out_channels, frames);
+    }
     if (!processor || processor->stages.empty())
         return processStage(processor, nullptr, ump_words, ump_word_count,
                             out_interleaved, out_channels, frames);
@@ -669,18 +778,14 @@ int32_t uh_processor_process(UhProcessor* processor,
     if (static_cast<uint32_t>(frames) > processor->max_frames)
         return -1;
     float* current = processor->scratch_a.data();
-    float* next = processor->scratch_b.data();
     auto status = processStage(processor->stages[0].get(), nullptr, ump_words, ump_word_count,
                                current, 2, frames);
     if (status != 0)
         return status;
-    if (!processor->bypass) {
-        for (size_t i = 1; i < processor->stages.size(); ++i) {
-            status = processStage(processor->stages[i].get(), current, nullptr, 0, next, 2, frames);
-            if (status != 0)
-                return status;
-            std::swap(current, next);
-        }
+    status = processEffects(processor, current, frames);
+    if (status != 0) {
+        std::memset(out_interleaved, 0, static_cast<size_t>(frames) * out_channels * sizeof(float));
+        return status;
     }
     for (int32_t i = 0; i < frames; ++i) {
         if (out_channels == 1)
@@ -688,6 +793,30 @@ int32_t uh_processor_process(UhProcessor* processor,
         else {
             out_interleaved[static_cast<size_t>(i) * out_channels] = current[i * 2];
             out_interleaved[static_cast<size_t>(i) * out_channels + 1] = current[i * 2 + 1];
+        }
+    }
+    return 0;
+}
+
+int32_t uh_processor_process_input(UhProcessor* processor, float* samples,
+                                    int32_t channels, int32_t frames) {
+    if (!samples || channels <= 0 || frames <= 0) return -1;
+    const size_t len = static_cast<size_t>(frames) * channels;
+    auto fail = [&] { std::memset(samples, 0, len * sizeof(float)); return -1; };
+    if (!processor || !processor->effects_only || static_cast<uint32_t>(frames) > processor->max_frames)
+        return fail();
+    if (processor->effect_nodes.empty()) return 0;
+    float* current = processor->scratch_a.data();
+    for (int32_t i = 0; i < frames; ++i) {
+        current[i * 2] = samples[static_cast<size_t>(i) * channels];
+        current[i * 2 + 1] = samples[static_cast<size_t>(i) * channels + (channels == 1 ? 0 : 1)];
+    }
+    if (processEffects(processor, current, frames) != 0) return fail();
+    for (int32_t i = 0; i < frames; ++i) {
+        if (channels == 1) samples[i] = (current[i * 2] + current[i * 2 + 1]) * 0.5f;
+        else {
+            samples[static_cast<size_t>(i) * channels] = current[i * 2];
+            samples[static_cast<size_t>(i) * channels + 1] = current[i * 2 + 1];
         }
     }
     return 0;

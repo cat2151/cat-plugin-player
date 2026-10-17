@@ -54,6 +54,7 @@ impl Output {
 pub struct Voice {
     _stream: Option<cpal::Stream>,
     _processor: ffi::Processor,
+    _preview_chain: Option<crate::chain::Chain>,
     // Low byte: pattern. High bytes: restart generation, published atomically.
     sequence_pattern: Arc<AtomicU64>,
     sequence_velocity: Arc<AtomicU8>,
@@ -69,6 +70,11 @@ pub struct Voice {
 }
 
 impl Voice {
+    pub(crate) fn pump_preview(&self) {
+        if let Some(chain) = &self._preview_chain {
+            chain.pump();
+        }
+    }
     /// Starts with the selected pattern, including the stopped state.
     #[allow(clippy::too_many_arguments)]
     pub fn start(
@@ -80,6 +86,12 @@ impl Voice {
         start_delay: std::time::Duration,
         phrase: Option<Arc<crate::timed_sequence::Phrase>>,
         fade_in: bool,
+        selection: Option<(
+            Arc<crate::smf_timeline::Timeline>,
+            Arc<AtomicU64>,
+            Arc<AtomicBool>,
+        )>,
+        preview_chain: Option<crate::chain::Chain>,
     ) -> Result<Self, String> {
         let mut fade = crate::audio_fade::Fade::new(output.sample_rate(), fade_in);
         let fade_out = Arc::new(AtomicBool::new(false));
@@ -107,10 +119,24 @@ impl Voice {
         let mut sequencer = Sequencer::new(output.sample_rate());
         sequencer.set_phrase(phrase);
         sequencer.delay_start(start_delay);
+        let selection_failure = selection.as_ref().map(|s| s.2.clone());
+        if let Some(failed) = &selection_failure {
+            failed.store(false, Ordering::Release);
+        }
+        let mut selected = selection.map(|(timeline, position, _)| {
+            crate::smf_timeline::LoopPlayer::new(
+                timeline,
+                position,
+                (start_delay.as_secs_f64() * f64::from(output.sample_rate())).ceil() as u64,
+            )
+        });
         let mut ump = EventBuf::new();
         // SAFETY: `_stream` is declared before `_processor`, so the callback is
         // gone before the processor is; only this one callback renders.
         let mut render = unsafe { processor.audio_ref() };
+        let mut preview_render = preview_chain
+            .as_ref()
+            .map(|chain| unsafe { chain.audio_ref() });
         let mut trace_callback = startup::enabled();
         let mut trace_signal = trace_callback;
         let rendered = Arc::new(AtomicBool::new(false));
@@ -154,18 +180,32 @@ impl Voice {
                         if let Some(notes) = preview_flag.poll(&mut seen_preview) {
                             sequencer.preview(notes);
                         }
-                        sequencer.render(pattern, velocity, chunk.len() / channels, &mut ump);
-                        let rendered = render.process(ump.as_slice(), chunk, channels);
+                        let events = if let Some(selected) = &mut selected {
+                            selected.render(chunk.len() / channels);
+                            selected.words.as_slice()
+                        } else {
+                            sequencer.render(pattern, velocity, chunk.len() / channels, &mut ump);
+                            ump.as_slice()
+                        };
+                        let rendered = if let Some(source) = &mut preview_render {
+                            source.process(events, chunk, channels)
+                                && render.process_input(chunk, channels)
+                        } else {
+                            render.process(events, chunk, channels)
+                        };
+                        if !rendered {
+                            if let Some(failed) = &selection_failure {
+                                failed.store(true, Ordering::Release);
+                            }
+                        }
                         fade.apply(chunk, channels, fading_out);
-                        if let Some(source) =
-                            delivered_cc1_source(ump.as_slice(), modulation, rendered)
-                        {
+                        if let Some(source) = delivered_cc1_source(events, modulation, rendered) {
                             cc1_source_flag.store(source, Ordering::Release);
                         }
                         let (velocity, modulation) = sequencer.current_values();
                         velocity_meter.store(velocity, Ordering::Relaxed);
                         modulation_meter.store(modulation, Ordering::Relaxed);
-                        capture.record(chunk, channels, ump.as_slice());
+                        capture.record(chunk, channels, events);
                         if trace_signal && chunk.iter().any(|sample| sample.abs() > 0.000001) {
                             startup::mark(Stage::FirstSignalRendered);
                             trace_signal = false;
@@ -192,6 +232,7 @@ impl Voice {
         Ok(Self {
             _stream: Some(stream),
             _processor: processor,
+            _preview_chain: preview_chain,
             sequence_pattern,
             sequence_velocity,
             sequence_modulation,
@@ -281,18 +322,21 @@ impl Drop for Voice {
         // cannot otherwise know which notes the previous callback left sounding.
         let events = shutdown_events();
         let mut silence = [0.0; 2];
-        unsafe { self._processor.audio_ref() }.process(&events, &mut silence, 2);
+        let mut render = unsafe { self._processor.audio_ref() };
+        for batch in events.chunks(1024) {
+            render.process(batch, &mut silence, 2);
+        }
     }
 }
 
-fn shutdown_events() -> [u32; 144] {
+fn shutdown_events() -> [u32; 2064] {
     // Native-only CLAP ports cannot carry MIDI CC 120. Explicit note offs
     // cover sequence notes on channel 0 after losing tracking.
     std::array::from_fn(|index| {
-        if index < 128 {
-            note_off(0, index as u8)
+        if index < 2048 {
+            note_off((index / 128) as u8, (index % 128) as u8)
         } else {
-            0x20B0_0000 | (((index - 128) as u32) << 16) | (120 << 8)
+            0x20B0_0000 | (((index - 2048) as u32) << 16) | (120 << 8)
         }
     })
 }
@@ -356,7 +400,7 @@ mod tests {
         for note in crate::seq::GUITAR_NOTES.into_iter().chain([60]) {
             assert!(events[..128].contains(&note_off(0, note)));
         }
-        assert_eq!(events[128], 0x20B0_7800);
-        assert_eq!(events[143], 0x20BF_7800);
+        assert_eq!(events[2048], 0x20B0_7800);
+        assert_eq!(events[2063], 0x20BF_7800);
     }
 }

@@ -40,6 +40,34 @@ fn key(key: Key) -> egui::Event {
 }
 
 #[test]
+fn favorite_saves_current_sound_and_ignores_search_and_overlay() {
+    let ctx = egui::Context::default();
+    let mut browser = browser();
+    frame(&mut browser, &ctx, vec![]);
+    frame(&mut browser, &ctx, vec![key(Key::F)]);
+    assert!(std::mem::take(&mut browser.favorite_requested));
+    assert!(browser.requests.desired.is_none());
+    let mut release = key(Key::F);
+    if let egui::Event::Key { pressed, .. } = &mut release {
+        *pressed = false;
+    }
+    frame(&mut browser, &ctx, vec![release.clone()]);
+    browser.solo_draft = Some(browser.query.clone());
+    frame(&mut browser, &ctx, vec![key(Key::F)]);
+    assert!(!browser.favorite_requested);
+    browser.solo_draft = None;
+    frame(&mut browser, &ctx, vec![release]);
+    frame(&mut browser, &ctx, vec![key(Key::Slash)]);
+    frame(
+        &mut browser,
+        &ctx,
+        vec![key(Key::F), egui::Event::Text("f".into())],
+    );
+    assert!(!browser.favorite_requested);
+    assert_eq!(browser.query, "f");
+}
+
+#[test]
 fn headless_open_normal_arrow_heavy_space_enter_cancel_and_search_focus() {
     let ctx = egui::Context::default();
     let mut browser = browser();

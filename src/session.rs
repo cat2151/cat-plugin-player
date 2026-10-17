@@ -36,6 +36,19 @@ impl App {
     }
 
     pub(crate) fn routing_label(&self) -> String {
+        if self.selecting_master() {
+            let mut labels = vec!["Preview track"];
+            if !self.effect_bypassed {
+                labels.extend(
+                    self.instances
+                        .iter()
+                        .filter(|i| i.kind == PluginKind::Effect)
+                        .map(|i| i.label.as_str()),
+                );
+            }
+            labels.push("Output");
+            return labels.join(" -> ");
+        }
         let mut labels: Vec<_> = self
             .instances
             .iter()
@@ -53,7 +66,11 @@ impl App {
     ) -> Result<ffi::Processor, String> {
         self.host
             .create_chain(
-                instrument,
+                if self.selecting_master() {
+                    -1
+                } else {
+                    instrument
+                },
                 effects,
                 self.effect_bypassed,
                 self.sample_rate(),
@@ -99,6 +116,18 @@ impl App {
             start_delay,
             self.mml_input.phrase.clone(),
             self.effect_swap_fade,
+            self.selection.as_ref().map(|s| {
+                (
+                    s.timeline.clone(),
+                    s.position.clone(),
+                    s.audio_failed.clone(),
+                )
+            }),
+            self.selection
+                .as_ref()
+                .and_then(|s| s.preview_chain.as_ref())
+                .map(|settings| crate::chain::Chain::open(self.sample_rate(), settings))
+                .transpose()?,
         )
         .map(Some)
     }
@@ -136,6 +165,9 @@ impl App {
     }
 
     pub(crate) fn save_session(&mut self) {
+        if self.selection.is_some() {
+            return;
+        }
         if !self.unsafe_state.is_empty()
             || self.preset_change_busy()
             || (self.selected_sequence == crate::SequencePattern::Custom
@@ -216,6 +248,20 @@ impl App {
         id: i32,
         key: &config::PluginKey,
     ) -> Result<(), String> {
+        if let Some(selection) = &self.selection {
+            if self.restoring {
+                if let Some(slot) = selection
+                    .settings
+                    .instrument
+                    .iter()
+                    .chain(&selection.settings.effects)
+                    .find(|s| s.plugin.format == key.format && s.plugin.id == key.id)
+                {
+                    return self.host.load_state(id, &slot.state);
+                }
+            }
+            return Ok(());
+        }
         let path = self.config_path.as_ref().map_err(Clone::clone)?;
         if let Some(state) = state_store::load(path, key)? {
             self.host.load_state(id, &state)?;
@@ -237,7 +283,12 @@ impl App {
             .ok_or("instance not found")?;
         let state = self.host.save_state(id)?;
         let path = self.config_path.as_ref().map_err(Clone::clone)?;
-        state_store::save(path, &instance.plugin, &state)
+        state_store::save_named(
+            path,
+            &instance.plugin,
+            &state,
+            instance.preset_name.as_deref(),
+        )
     }
 
     pub(crate) fn remove_plugin(&mut self, id: i32) -> bool {
@@ -294,6 +345,7 @@ impl App {
                 .voice = voice;
         }
         self.status = "Plugin state saved; removed".into();
+        self.selection_committed();
         self.save_session();
         true
     }
@@ -341,6 +393,7 @@ impl App {
                 .unwrap()
                 .voice = voice;
         }
+        self.selection_committed();
         self.save_session();
         true
     }
@@ -363,6 +416,7 @@ impl App {
             );
             return;
         }
+        self.selection_committed();
         self.save_session();
     }
 }

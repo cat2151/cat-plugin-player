@@ -26,16 +26,15 @@ impl Preparation {
 
     pub(crate) fn start(&mut self, candidate: Candidate, ctx: &egui::Context) {
         self.start_with(candidate, ctx.clone(), |candidate| {
-            cmrt_patches::prepare_catalog_clap_patch_state(
+            crate::state_request::catalog(
                 &candidate.plugin_id,
                 &candidate.bundle_path,
                 &candidate.path,
             )
-            .map_err(|error| error.to_string())
         });
     }
 
-    fn start_with(
+    pub(crate) fn start_with(
         &mut self,
         candidate: Candidate,
         ctx: egui::Context,

@@ -31,8 +31,12 @@ pub(crate) struct EffectBrowser {
     pub selected: Option<usize>,
     pub scroll_to_selected: bool,
     pub list_columns: usize,
+    /// Columns widen until the longest label in the results fits whole.
+    pub fit_columns: bool,
     /// Vim-style count typed before a movement key.
     pub count: Option<usize>,
+    /// Save the target slot on the root UI thread.
+    pub favorite_requested: bool,
     /// Effect slot the next selection replaces; `None` adds an effect.
     pub target: Option<i32>,
     /// Latest selection not yet sent to preparation.
@@ -58,6 +62,19 @@ fn key(candidate: &Candidate) -> EffectPresetKey {
 }
 
 impl EffectBrowser {
+    pub fn restore_panes(&mut self, panes: [String; 2], query: String) {
+        self.query = query;
+        self.desired = None;
+        self.selected = None;
+        self.last_applied = None;
+        self.restore = Some(EffectBrowserFilter {
+            category: panes[0].clone(),
+            kind: panes[1].clone(),
+            ..Default::default()
+        });
+        self.catalog_generation = None;
+    }
+
     pub fn restored(filter: EffectBrowserFilter) -> Self {
         Self {
             query: filter.query.clone(),
@@ -99,12 +116,23 @@ impl EffectBrowser {
         }
     }
 
-    /// Previously browsed slot, else the last effect, else adding one.
+    /// Targets the restored chain position; one past the chain end adds an
+    /// effect. Returns false when no position was restored.
+    pub fn resolve_restored_slot(&mut self, effect_ids: &[i32]) -> bool {
+        let Some(slot) = self.restore_slot.take() else {
+            return false;
+        };
+        self.target = effect_ids.get(slot).copied();
+        true
+    }
+
+    /// Restored slot, else previously browsed slot, else the last effect, else adding one.
     pub fn open_window(&mut self, effect_ids: &[i32]) {
         self.open = true;
         self.catalog_generation = None;
-        if let Some(slot) = self.restore_slot.take() {
-            self.target = effect_ids.get(slot).copied().or(self.target);
+        if self.resolve_restored_slot(effect_ids) && self.target.is_none() {
+            self.reveal_applied();
+            return;
         }
         if !self.target.is_some_and(|id| effect_ids.contains(&id)) {
             self.target = self
@@ -321,13 +349,17 @@ impl App {
                 .collect();
             self.effect_browser.refresh(generation, candidates);
         }
-        if !self.effect_browser.open || self.effect_browser.desired.is_none() || self.actions_busy()
+        if !self.effect_browser.open
+            || self.effect_browser.desired.is_none()
+            || self.actions_busy()
+            || self.resident_waiting()
         {
             return;
         }
         let candidate = self.effect_browser.desired.take().unwrap();
         let target = self.effect_browser.target;
-        if self.instrument_id().is_none() {
+        // A resident player has no chain of its own; the editor checks the slot.
+        if self.resident.is_none() && self.instrument_id().is_none() {
             self.status = "Browse effect unavailable: load an instrument first".into();
         } else if self.effect_plugin_taken(&candidate.plugin_id, target) {
             self.status = format!(

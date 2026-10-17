@@ -7,7 +7,7 @@ fn native_preparation_cross_host_gate() {
     let _library = crate::native_library::load().unwrap();
     let requested = std::env::var("PATCH_GATE_PLUGIN").unwrap();
     let root = PathBuf::from(std::env::var_os("PATCH_GATE_WORK_DIR").unwrap());
-    let (snapshot, _) = clap_mml_render_tui::patch_catalog_cache::load()
+    let (snapshot, _) = cmrt_tui_core::patch_catalog_cache::load()
         .unwrap()
         .into_parts();
     let refs: Vec<_> = snapshot

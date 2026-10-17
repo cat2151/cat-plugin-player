@@ -12,6 +12,10 @@ const PINK: Color32 = Color32::from_rgb(255, 135, 190);
 
 impl App {
     pub(crate) fn browser_ui(&mut self, ctx: &egui::Context) {
+        if self.selecting_master() {
+            self.patch_browser.open = false;
+            return;
+        }
         self.update_browser_snapshot(ctx);
         let browser = &mut self.patch_browser;
         if browser.open && browser.reveal_pending && browser.snapshot.is_some() {
@@ -19,11 +23,15 @@ impl App {
             browser.reveal_playing();
         }
         if self.patch_browser.open {
+            let focus = self.take_browser_focus(crate::cli::Browser::Patch);
             let mut builder = egui::ViewportBuilder::default()
                 .with_title("Browse patches")
                 .with_inner_size([1100.0, 750.0])
                 .with_min_inner_size([360.0, 420.0])
                 .with_maximized(true);
+            if focus {
+                builder = builder.with_active(true);
+            }
             if self.patch_browser.window_position.is_none() {
                 self.patch_browser.window_position =
                     ctx.input(|input| input.viewport().outer_rect.map(|rect| rect.min));
@@ -31,7 +39,29 @@ impl App {
             if let Some(position) = self.patch_browser.window_position {
                 builder = builder.with_position(position);
             }
+            let selecting = self.selection.is_some();
+            // Esc in the heavy-load confirmation belongs to the dialog, not the browser.
+            let exits = (selecting || self.resident.is_some())
+                && self.patch_browser.requests.confirmation.is_none();
+            let selection_error = selecting.then(|| self.config_error.clone()).flatten();
+            let browser_only = self
+                .selection
+                .as_ref()
+                .is_some_and(|s| s.browser_only.is_some());
+            let mut action = None;
+            let mut exit_selection = false;
             ctx.show_viewport_immediate(browser_viewport(), builder, |ctx, _class| {
+                self.catalog_startup.observe_activity(ctx);
+                if focus {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+                }
+                crate::selection::show_error(ctx, selection_error.as_deref());
+                action = crate::selection_ui::toolbar(ctx, browser_only, false);
+                if exits && crate::selection::exit_key(ctx) {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+                    exit_selection = true;
+                    return;
+                }
                 self.patch_browser
                     .show(ctx, self.patch_catalog.notice(), &self.status);
                 // The live Host dispatcher remains in the root main-thread update.
@@ -42,6 +72,16 @@ impl App {
                 );
                 ctx.request_repaint_after(std::time::Duration::from_millis(50));
             });
+            if exit_selection {
+                self.browser_exit_requested();
+            }
+            self.selection_browser_closed(crate::cli::Browser::Patch);
+            self.selection_action(action, ctx);
+            if std::mem::take(&mut self.patch_browser.favorite_requested) {
+                if let Some(id) = self.instrument_id() {
+                    self.add_favorite(id);
+                }
+            }
         }
     }
 }
@@ -77,6 +117,7 @@ impl Browser {
         }
         if confirming {
             let ticket = browser.requests.confirmation.as_ref().unwrap().clone();
+            crate::japanese_font::add(ctx);
             let response =
                 egui::Modal::new(egui::Id::new("heavy_patch_confirmation")).show(ctx, |ui| {
                     ui.set_max_width((ctx.screen_rect().width() - 48.0).max(200.0));
@@ -86,14 +127,11 @@ impl Browser {
                         ticket.candidate.plugin_name, ticket.candidate.display
                     ));
                     ui.colored_label(PINK, size(ticket.candidate.measurement.sfz_sample_bytes));
-                    ui.label(
-                        "Press Enter to prepare and apply. Esc cancels without changing sound.",
-                    );
+                    ui.label("この音色はロードに10秒以上あるいは1分以上かかる可能性があります");
+                    ui.label("ENTER : ロードして演奏する");
+                    ui.label("ESC : 演奏しない");
                     if ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, Key::Enter)) {
                         browser.requests.enter();
-                    }
-                    if ui.button("Cancel (Esc)").clicked() {
-                        browser.requests.confirmation = None;
                     }
                 });
             if response.should_close()
@@ -154,6 +192,11 @@ impl Browser {
     }
 
     fn keys(&mut self, ctx: &egui::Context) {
+        if crate::playback_ui::take_favorite_shortcut(ctx, true) {
+            self.count = None;
+            self.favorite_requested = true;
+            return;
+        }
         if self.snapshot.is_none() {
             return;
         }

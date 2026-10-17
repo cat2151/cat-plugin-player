@@ -1,6 +1,6 @@
 use super::*;
 use crate::patch_catalog::{candidates, SURGE_ID};
-use clap_mml_render_tui::patch_catalog_cache::load_from;
+use cmrt_tui_core::patch_catalog_cache::load_from;
 
 fn catalog(format_version: u32, display: &str) -> Vec<u8> {
     serde_json::json!({

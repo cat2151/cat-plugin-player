@@ -4,7 +4,12 @@ use crate::{audio, config, ffi, on_wake, startup, App, Stage};
 use std::time::{Duration, Instant};
 
 impl App {
+    #[cfg(test)]
     pub(crate) fn prepare() -> Self {
+        Self::prepare_mode(false)
+    }
+
+    pub(crate) fn prepare_mode(selecting: bool) -> Self {
         let config_path = config::path();
         let (
             restore,
@@ -26,7 +31,11 @@ impl App {
             config_error,
         ) = match config_path.as_ref().map_err(Clone::clone).and_then(|path| {
             let settings = config::Config::load(path)?;
-            let status = crate::status::Status::load(path)?;
+            let status = if selecting {
+                crate::status::Status::default()
+            } else {
+                crate::status::Status::load(path)?
+            };
             Ok((settings, status))
         }) {
             Ok((settings, status)) => (
@@ -69,7 +78,7 @@ impl App {
             ),
         };
         startup::mark(Stage::HistoryRead);
-        let host = ffi::Host::new(on_wake, std::ptr::null_mut())
+        let host = unsafe { ffi::Host::new(on_wake, std::ptr::null_mut()) }
             .expect("uh_create() failed: could not set up the uapmd plugin host");
         startup::mark(Stage::HostReady);
         let (output, status) = match audio::Output::open_default() {
@@ -88,8 +97,10 @@ impl App {
             .err()
             .map(|e| format!("Could not restore MML: {e}"))
             .or(config_error);
-        Self {
+        let mut app = Self {
             instances: Vec::new(),
+            selection: None,
+            resident: None,
             window_config,
             host,
             output,
@@ -109,6 +120,7 @@ impl App {
             config_error,
             config_path,
             scanning: false,
+            catalog_startup: Default::default(),
             confirm_rescan: false,
             first_instrument: Default::default(),
             deferred_scan: true,
@@ -138,10 +150,34 @@ impl App {
             shutdown: Default::default(),
             #[cfg(test)]
             patch_failures: Default::default(),
-        }
+        };
+        app.shutdown.selection_requested = selecting;
+        app
     }
 
     pub(crate) fn restore_before_gui(&mut self) {
+        if !self.deferred_scan {
+            // A newly imported SMF may name a valid plugin absent from the
+            // last complete scan. Add that target without losing the cache.
+            if let Some(key) = self.restore.as_ref() {
+                if key.find(&self.plugins).is_none() {
+                    if let Some(mut plugin) = self.host.restore_plugin(key) {
+                        plugin.kind = crate::plugin_list::PluginKind::Instrument;
+                        self.plugins.push(plugin);
+                        self.patch_catalog.reconcile(&self.plugins);
+                    } else {
+                        // A relocated saved target still needs scan-based
+                        // restoration; keep its key until the scan completes.
+                        self.deferred_scan = true;
+                        self.catalog_startup.cancel_refresh();
+                        return;
+                    }
+                }
+            }
+            self.restore_session();
+            self.wait_for_startup_audio();
+            return;
+        }
         let Some(plugin) = self
             .restore
             .as_ref()
@@ -156,7 +192,10 @@ impl App {
         plugin.kind = crate::plugin_list::PluginKind::Instrument;
         self.plugins.push(plugin);
         self.load_plugin(0);
+        self.wait_for_startup_audio();
+    }
 
+    fn wait_for_startup_audio(&mut self) {
         // Async plugin creation may need both shim tasks and native messages.
         // Yield to the GUI after a bounded wait; it continues pumping a pending
         // creation. A synchronous plugin call itself cannot be interrupted here.

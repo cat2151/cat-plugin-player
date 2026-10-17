@@ -19,12 +19,13 @@ userは実行元もcargo install先から既定target/releaseへ変更した。
 | ローカルrepo | 利用内容 | catからの参照方式 |
 | --- | --- | --- |
 | `../uapmd` | plugin hosting、音声処理、state適用 | 既存build.rs/CMake。既存UAPMD_DIR指定も維持 |
-| `../clap-mml-render-tui` | catalog reader、変換APIの再export | `app` と `patches` のCargo path依存 |
+| `../clap-mml-render-tui` | catalog reader、変換APIの再export | `tui-core`・`patches` などライブラリcrateのCargo path依存 |
 | `../clap-mml-play-server` | 変換APIの実装、共用config型 | cat rootのCargo patchでTUI内のGit依存もローカルへ統一 |
 
-- TUIの `app` はpackage `clap-mml-render-tui`、`patches` は `cmrt-patches`。
+- TUIのアプリ本体 `app`（package `clap-mml-render-tui`）には依存しない。画面ごとのcrateを
+  まとめて引き込み、catのビルド時間を倍にするため。catalog readerは `tui-core` から使う。
   play-serverは `core-lib` が `cmrt-core`、`server-config` が `cmrt-server-config`。
-  cat rootのCargo.tomlでTUIの2packageをpath参照し、play-serverのGit URLに対する
+  cat rootのCargo.tomlでTUIのcrateをpath参照し、play-serverのGit URLに対する
   `[patch]` で後者2packageを兄弟checkoutへ向ける。
 - catの常時参照設定は追跡可能なCargo.tomlへ記載する。個人の絶対パスを埋め込まない。
   cat用のon/off script、ignored configによる必須切替、Gitへの自動fallbackは追加しない。

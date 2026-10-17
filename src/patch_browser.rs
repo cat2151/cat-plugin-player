@@ -23,6 +23,7 @@ pub(crate) struct Browser {
     pub role: usize,
     pub preset: usize,
     pub query: String,
+    pub initial_filter_fallback: Option<(String, String)>,
     pub solo_draft: Option<String>,
     pub condition_menu: bool,
     pub results: Vec<usize>,
@@ -33,15 +34,19 @@ pub(crate) struct Browser {
     pub restore_preset: Option<String>,
     /// Saved playing patch, resolved once the first snapshot lists candidates again.
     pub restore_playing: Option<PatchIdentity>,
+    /// Named cursor waiting for the catalog; independent of the playing patch.
+    pub restore_selected: Option<PatchIdentity>,
     pub selected: Option<usize>,
     pub error: Option<String>,
     pub build_error: Option<String>,
     pub scroll_to_selected: bool,
-    /// Set on open; the cursor moves to the playing patch once a snapshot exists.
+    /// Set on open; reveal the saved named cursor, or the playing patch, after loading.
     pub reveal_pending: bool,
     pub list_columns: usize,
     /// Vim-style count typed before a movement key.
     pub count: Option<usize>,
+    /// Save the currently loaded instrument on the root UI thread.
+    pub favorite_requested: bool,
 }
 
 impl Browser {
@@ -53,6 +58,7 @@ impl Browser {
                 .unwrap_or_default(),
             restore_preset: Some(filter.preset),
             restore_playing: filter.playing,
+            restore_selected: filter.selected,
             query: filter.query,
             ..Default::default()
         }
@@ -67,6 +73,7 @@ impl Browser {
             role: FilterGroup::ALL[self.role].label().into(),
             preset: preset.unwrap_or_default(),
             query: self.query.clone(),
+            selected: self.saved_cursor(),
             playing: self
                 .requests
                 .applied
@@ -78,7 +85,10 @@ impl Browser {
 
     /// A patch applied since startup wins over the saved one.
     pub fn resolve_restored_playing(&mut self) {
-        let (Some(saved), Some(snapshot)) = (self.restore_playing.take(), &self.snapshot) else {
+        let Some(snapshot) = &self.snapshot else {
+            return;
+        };
+        let Some(saved) = self.restore_playing.take() else {
             return;
         };
         if self.requests.applied.is_none() {
@@ -103,11 +113,12 @@ impl Browser {
     }
 
     pub fn open_window(&mut self) {
+        self.restore_selected = self.saved_cursor();
         self.open = true;
         self.reveal_pending = true;
     }
 
-    /// The cursor stays where it was when closed unless the playing patch is listed.
+    /// Keep the named cursor across closing without queuing another sound.
     pub fn close(&mut self) {
         self.open = false;
         self.window_position = None;
@@ -117,8 +128,11 @@ impl Browser {
         self.requests.invalidate();
     }
 
-    /// Cursor only: the playing patch is already live, so nothing is requested.
+    /// Restore only the cursor, preferring its saved name over the playing patch.
     pub fn reveal_playing(&mut self) {
+        if self.reveal_saved_cursor() {
+            return;
+        }
         let (Some(snapshot), Some(playing)) = (&self.snapshot, &self.requests.applied) else {
             self.scroll_to_selected = true;
             return;
@@ -144,6 +158,7 @@ impl Browser {
             .as_ref()
             .and_then(|snapshot| snapshot.candidates.get(index))
         {
+            self.restore_selected = None;
             self.selected = Some(index);
             self.requests.select(candidate.clone(), self.generation);
             self.scroll_to_selected = true;
@@ -154,6 +169,12 @@ impl Browser {
         let Some(snapshot) = &self.snapshot else {
             return;
         };
+        if let Some((initial, fallback)) = self.initial_filter_fallback.take() {
+            if self.query == initial && snapshot.filter(0, 0, &initial).is_ok_and(|r| r.is_empty())
+            {
+                self.query = fallback;
+            }
+        }
         self.listing = snapshot.listing(&self.query);
         // A restored or Solo / Mute narrowed role or preset may be hidden; fall back to a listed one.
         if !self.listing.role(self.role) {
@@ -179,7 +200,18 @@ impl Browser {
                 {
                     self.requests.invalidate();
                     self.selected = None;
-                    if let Some(&first) = self.results.first() {
+                    // The cursor may be absent after a rescan, reopening, or an
+                    // invalid/empty query. Prefer the sound already in use before
+                    // requesting the first result; bundle relocation is harmless.
+                    let playing = self.requests.applied.as_ref().map(identity);
+                    let retained = playing.and_then(|playing| {
+                        self.results.iter().copied().find(|&index| {
+                            identity(&self.snapshot.as_ref().unwrap().candidates[index]) == playing
+                        })
+                    });
+                    if let Some(index) = retained {
+                        self.selected = Some(index);
+                    } else if let Some(&first) = self.results.first() {
                         self.select(first);
                     }
                 }
@@ -211,6 +243,7 @@ impl App {
         self.patch_browser.requests.invalidate();
         self.patch_browser.requests.applied = None;
         self.patch_browser.restore_playing = None;
+        self.patch_browser.restore_selected = None;
         self.patch_browser.selected = None;
     }
     pub(crate) fn poll_browser_patch(&mut self, ctx: &eframe::egui::Context) {
@@ -227,7 +260,11 @@ impl App {
                         self.patch_browser.requests.invalidate();
                     }
                     if self.patch_browser.requests.ready().is_some() {
-                        self.apply_patch(prepared);
+                        if self.resident.is_some() {
+                            self.offer_patch(prepared);
+                        } else {
+                            self.apply_patch(prepared);
+                        }
                     }
                 }
                 Err(error) => {
@@ -251,7 +288,7 @@ impl App {
                 }
             }
         }
-        if !self.patch_browser.open || self.actions_busy() {
+        if !self.patch_browser.open || self.actions_busy() || self.resident_waiting() {
             return;
         }
         if let Some(mut ticket) = self.patch_browser.requests.next() {
@@ -270,7 +307,11 @@ impl App {
                 "Preparing browse patch: {} — {}...",
                 ticket.candidate.plugin_name, ticket.candidate.display
             );
+            self.remember_preparation_target();
             self.patch_browser.preparation.start(ticket.candidate, ctx);
         }
     }
 }
+
+#[path = "patch_browser_cursor.rs"]
+mod cursor;

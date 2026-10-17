@@ -18,6 +18,7 @@ pub(crate) struct Shutdown {
     window: isize,
     overlay: Option<Overlay>,
     saved: bool,
+    pub(crate) selection_requested: bool,
 }
 
 struct Overlay(*mut c_void);
@@ -65,6 +66,10 @@ impl App {
     }
 
     pub(crate) fn save_on_shutdown(&mut self) {
+        if self.selection.is_some() || self.shutdown.selection_requested {
+            self.pause_audio();
+            return;
+        }
         if self.shutdown.saved {
             return;
         }

@@ -134,8 +134,8 @@ impl Catalog {
 }
 
 /// cmrt's own cache when it exists; otherwise the Surge XT catalog (ADR 0025).
-pub(crate) fn load() -> LoadResult {
-    use clap_mml_render_tui::patch_catalog_cache;
+fn loaded() -> Result<cmrt_tui_core::patch_catalog_cache::LoadedPatchCatalogCache, String> {
+    use cmrt_tui_core::patch_catalog_cache;
     let cmrt_cache_exists = !cfg!(feature = "recording-mode")
         && patch_catalog_cache::cache_file_path().is_some_and(|path| path.exists());
     let loaded = if cmrt_cache_exists {
@@ -143,11 +143,33 @@ pub(crate) fn load() -> LoadResult {
     } else {
         patch_catalog_cache::load_from(&crate::surge_patch_catalog::path()?)
     };
-    candidates(loaded.map_err(|error| format!("{error:#}"))?)
+    loaded.map_err(|error| format!("{error:#}"))
+}
+
+pub(crate) fn load() -> LoadResult {
+    candidates(loaded()?)
+}
+
+/// The directories each plugin's candidate paths are built from, by plugin ID.
+pub(crate) fn roots() -> Result<Vec<(String, Vec<String>)>, String> {
+    let (snapshot, _) = loaded()?.into_parts();
+    Ok(snapshot
+        .patch_plugins()
+        .plugins()
+        .iter()
+        .filter_map(|plugin| {
+            let roots = match &plugin.base {
+                cmrt_core::PatchBase::Shared(base) => vec![base.clone()],
+                cmrt_core::PatchBase::PerRoot(roots) => roots.clone(),
+                cmrt_core::PatchBase::None => plugin.dirs.clone(),
+            };
+            Some((plugin.plugin_id.clone()?, roots))
+        })
+        .collect())
 }
 
 pub(crate) fn candidates(
-    loaded: clap_mml_render_tui::patch_catalog_cache::LoadedPatchCatalogCache,
+    loaded: cmrt_tui_core::patch_catalog_cache::LoadedPatchCatalogCache,
 ) -> LoadResult {
     let (snapshot, _) = loaded.into_parts();
     let mut candidates = Vec::new();

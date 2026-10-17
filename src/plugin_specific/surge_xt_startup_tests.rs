@@ -36,20 +36,22 @@ fn native_first_note_settling_measurement() {
             .find(|f| f.plugin.format == format && f.plugin.id == plugin_id && !f.effect)
             .expect("saved Surge instrument favorite required");
         let state = library.state(&path, &favorite.id).unwrap();
-        let host = ffi::Host::new(wake, std::ptr::null_mut()).unwrap();
+        let host = unsafe { ffi::Host::new(wake, std::ptr::null_mut()) }.unwrap();
         let info = host.restore_plugin(&favorite.plugin).unwrap();
         for delay_ms in [0, 25, 50, 100] {
             let mut sounded = 0;
             let mut onset_ms = Vec::new();
             for _ in 0..3 {
                 let mut result: Option<Result<i32, String>> = None;
-                host.create_instance(
-                    info.index,
-                    48_000,
-                    256,
-                    created,
-                    &mut result as *mut _ as *mut c_void,
-                );
+                unsafe {
+                    host.create_instance(
+                        info.index,
+                        48_000,
+                        256,
+                        created,
+                        &mut result as *mut _ as *mut c_void,
+                    )
+                };
                 let deadline = Instant::now() + Duration::from_secs(30);
                 while result.is_none() {
                     assert!(Instant::now() < deadline, "creation timed out");

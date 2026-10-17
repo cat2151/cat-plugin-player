@@ -189,6 +189,7 @@ fn native_vaporizer_round_trip_deduplicates_and_tuning_edits_survive() {
                 entry.effect,
                 &saved.state(&config, &entry.id).unwrap(),
                 crate::favorites_store::FavoriteCapture {
+                    preset_name: None,
                     sequence_pattern: entry.sequence_pattern,
                     sweep_cc1: true,
                     selected_sequence: None,
@@ -202,7 +203,7 @@ fn native_vaporizer_round_trip_deduplicates_and_tuning_edits_survive() {
         1,
         "existing drift and CC1 snapshots should merge"
     );
-    let host = ffi::Host::new(wake, std::ptr::null_mut()).unwrap();
+    let host = unsafe { ffi::Host::new(wake, std::ptr::null_mut()) }.unwrap();
     let info = host
         .restore_plugin(
             &saved
@@ -214,13 +215,15 @@ fn native_vaporizer_round_trip_deduplicates_and_tuning_edits_survive() {
         )
         .unwrap();
     let mut result: Option<Result<i32, String>> = None;
-    host.create_instance(
-        info.index,
-        48000,
-        1024,
-        created,
-        &mut result as *mut _ as *mut c_void,
-    );
+    unsafe {
+        host.create_instance(
+            info.index,
+            48000,
+            1024,
+            created,
+            &mut result as *mut _ as *mut c_void,
+        )
+    };
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
     while result.is_none() {
         assert!(std::time::Instant::now() < deadline);
@@ -265,6 +268,7 @@ fn native_vaporizer_round_trip_deduplicates_and_tuning_edits_survive() {
                 false,
                 &played,
                 crate::favorites_store::FavoriteCapture {
+                    preset_name: None,
                     sequence_pattern: pattern,
                     sweep_cc1: true,
                     selected_sequence: None,

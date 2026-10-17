@@ -1,0 +1,87 @@
+//! Bounded MIDI note batches for an app-owned track scheduler.
+use crate::host::ProcessorRef;
+
+pub struct Render {
+    processor: ProcessorRef,
+    held: [bool; 128],
+    remaining: [u64; 128],
+}
+
+impl Render {
+    pub fn new(processor: ProcessorRef) -> Self {
+        Self {
+            processor,
+            held: [false; 128],
+            remaining: [0; 128],
+        }
+    }
+
+    pub fn process(
+        &mut self,
+        velocities: &[u8; 128],
+        durations: &[u64; 128],
+        changed: i32,
+        out: &mut [f32],
+        channels: usize,
+    ) -> bool {
+        if channels == 0 || out.len() / channels > 1024 {
+            return false;
+        }
+        let frames = out.len() / channels;
+        let mut events = [(0usize, 0u32); 384];
+        let mut count = 0;
+        let mut push = |time, word| {
+            events[count] = (time, word);
+            count += 1;
+        };
+        for pitch in 0..128 {
+            if changed != 0 && !(changed == 2 && velocities[pitch] == 0) {
+                if self.held[pitch] {
+                    push(0, 0x2080_0000 | (pitch as u32) << 8);
+                }
+                self.held[pitch] = changed != 3 && velocities[pitch] != 0;
+                self.remaining[pitch] = durations[pitch];
+                if self.held[pitch] {
+                    push(
+                        0,
+                        0x2090_0000 | (pitch as u32) << 8 | u32::from(velocities[pitch]),
+                    );
+                }
+            }
+            if self.held[pitch] {
+                if self.remaining[pitch] < frames as u64 {
+                    push(
+                        self.remaining[pitch] as usize,
+                        0x2080_0000 | (pitch as u32) << 8,
+                    );
+                    self.held[pitch] = false;
+                } else if self.remaining[pitch] != u64::MAX {
+                    self.remaining[pitch] -= frames as u64;
+                }
+            }
+        }
+        // Stable insertion sort preserves off/on ordering at the same frame.
+        for i in 1..count {
+            let e = events[i];
+            let mut j = i;
+            while j > 0 && events[j - 1].0 > e.0 {
+                events[j] = events[j - 1];
+                j -= 1;
+            }
+            events[j] = e;
+        }
+        let mut words = [0u32; 768];
+        let mut len = 0;
+        let mut previous = 0;
+        for &(time, event) in &events[..count] {
+            if time != previous {
+                words[len] = 0x0020_0000 | (time - previous) as u32;
+                len += 1;
+            }
+            words[len] = event;
+            len += 1;
+            previous = time;
+        }
+        self.processor.process(&words[..len], out, channels)
+    }
+}

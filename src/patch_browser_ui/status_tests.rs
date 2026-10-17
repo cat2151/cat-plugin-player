@@ -105,7 +105,15 @@ fn ordinary_success_reclaims_footer_and_pending_identity_pink_and_errors_remain(
     );
     assert!(texts
         .iter()
+        .any(|text| text == "Loading, please wait: Bass"));
+    assert!(!texts
+        .iter()
         .any(|text| text.starts_with("Not yet applied:")));
+    browser.requests.ready().unwrap();
+    let (texts, _) = draw(&mut browser, &ctx, "Loading Browse patch: Alpha...");
+    assert!(texts
+        .iter()
+        .any(|text| text == "Loading, please wait: Bass"));
     browser.select(1);
     let (texts, _) = draw(&mut browser, &ctx, "Browse patch: Alpha — Bass");
     assert!(texts
@@ -115,7 +123,11 @@ fn ordinary_success_reclaims_footer_and_pending_identity_pink_and_errors_remain(
     assert!(texts
         .iter()
         .any(|text| text == "Space: confirm sample load"));
+    assert!(!texts
+        .iter()
+        .any(|text| text.starts_with("Loading, please wait:")));
     assert!(browser.requests.desired.is_none());
+    browser.requests.finish(false);
     let (texts, _) = draw(&mut browser, &ctx, "Browse patch failed: test state error");
     assert!(texts.iter().any(|text| text.contains("test state error")));
     browser.select(0);

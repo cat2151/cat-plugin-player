@@ -75,6 +75,26 @@ fn prepare(candidate: &Candidate, bundle: &str, sample_rate: f64) -> Result<Vec<
     )
 }
 
+pub(crate) fn restore(
+    bundle: &str,
+    plugin_id: &str,
+    preset: &cmrt_core::audio_effect::PresetLocation,
+) -> Result<Vec<u8>, String> {
+    if plugin_id == crate::surge_fx_states::PLUGIN_ID {
+        let bytes = std::fs::read(&preset.path).map_err(|e| e.to_string())?;
+        return crate::surge_fx_states::load()?
+            .state(&bytes)
+            .ok_or_else(|| "No prepared Surge XT Effects state for this preset".into());
+    }
+    crate::surge_fx_states::prepare_state(
+        bundle,
+        plugin_id,
+        preset,
+        48_000.0,
+        crate::audio::MAX_BLOCK_FRAMES as usize,
+    )
+}
+
 impl App {
     /// The one-instance-per-identity routing rule. The target slot may use
     /// another preset of its own plugin.
@@ -106,6 +126,7 @@ impl App {
         // The instrument patch keeps playing; only pending browser requests are stale.
         self.patch_browser.requests.invalidate();
         self.status = format!("Preparing effect: {}...", candidate.preset.display);
+        self.remember_preparation_target();
         self.effect_preparation.start(
             candidate,
             target,
@@ -120,6 +141,7 @@ impl App {
             match result {
                 // A newer browser selection replaces this one before it is heard.
                 Ok(_) if self.effect_browser.desired.is_some() => {}
+                Ok(prepared) if self.resident.is_some() => self.offer_effect(prepared),
                 Ok(prepared) => self.apply_effect(prepared),
                 Err(error) => self.status = format!("Browse effect failed: {error}"),
             }

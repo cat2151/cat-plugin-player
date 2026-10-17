@@ -69,6 +69,9 @@ UH_API void uh_pump_startup(UhHost* host);
  * XT / XT Effects CLAP bundles without reading or writing the plugin list cache.
  * Returns 0 if started, -1 if a scan is already running. */
 UH_API int32_t uh_scan_async(UhHost* host, int32_t rescan, UhScanDoneFn done, void* user);
+/* Mode 3 rescans in the background, keeping the live catalog until acceptance.
+ * Accept only between main-thread transactions, after the scan callback. */
+UH_API int32_t uh_scan_accept(UhHost* host);
 
 /* The plugin list is a snapshot taken when the last scan finished. */
 UH_API int32_t uh_plugin_count(UhHost* host);
@@ -112,13 +115,17 @@ UH_API UhProcessor* uh_processor_create(UhHost* host, int32_t instance_id,
                                         uint32_t sample_rate, uint32_t max_frames);
 UH_API void uh_processor_destroy(UhProcessor* processor);
 
-/* One instrument followed by ordered effects. Main buses must be mono/stereo;
- * auxiliary inputs receive silence. IDs must be distinct. The chain owns its
- * processors, not instances. Bypass keeps the effect instances and skips DSP.
- * All instances must outlive the chain. Returns NULL for an unsupported layout. */
+/* One instrument followed by ordered effects in a uapmd linear AudioPluginGraph.
+ * Main buses must be mono/stereo; auxiliary inputs receive silence. IDs must be
+ * distinct. The chain owns its processors, not instances. All instances must
+ * outlive the chain. Returns NULL for an unsupported layout. */
 UH_API UhProcessor* uh_chain_create(UhHost* host, int32_t instrument_id,
                                     const int32_t* effect_ids, int32_t effect_count,
-                                    int32_t bypass, uint32_t sample_rate, uint32_t max_frames);
+                                    uint32_t sample_rate, uint32_t max_frames);
+/* Main thread, also while the chain renders. A bypassed effect keeps its instance
+ * and passes its input through. `effect_index` counts effects only.
+ * Returns 0, or -1 for no such effect. */
+UH_API int32_t uh_chain_set_bypassed(UhProcessor* chain, int32_t effect_index, int32_t bypassed);
 
 /* Renders `frames` frames into out_interleaved (frames * out_channels floats).
  * ump_words: UMP (MIDI 1.0 or 2.0 channel voice messages) to deliver in this block;
@@ -128,6 +135,11 @@ UH_API UhProcessor* uh_chain_create(UhHost* host, int32_t instrument_id,
 UH_API int32_t uh_processor_process(UhProcessor* processor,
                                     const uint32_t* ump_words, int32_t ump_word_count,
                                     float* out_interleaved, int32_t out_channels, int32_t frames);
+/* instrument_id == -1 creates an effects-only chain. Feed it interleaved audio
+ * in place; an empty chain passes through, and channels past the first two
+ * are left as given. Failure produces silence. */
+UH_API int32_t uh_processor_process_input(UhProcessor* processor, float* input_output,
+                                          int32_t channels, int32_t frames);
 
 /* Main-thread native placement. The main HWND must belong to this process and
  * outlive its configured use. Null leaves editors at their OS position.

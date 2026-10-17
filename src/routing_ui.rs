@@ -46,6 +46,11 @@ impl App {
                             }
                         }
                         for instance in &self.instances {
+                            if self.selecting_master()
+                                && instance.kind != crate::plugin_list::PluginKind::Effect
+                            {
+                                continue;
+                            }
                             let group = ui.group(|ui| {
                                 ui.horizontal(|ui| {
                                     if instance.kind == crate::plugin_list::PluginKind::Effect {

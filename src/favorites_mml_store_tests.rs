@@ -13,6 +13,7 @@ fn different_mml_snapshots_survive_stop_dedup_and_effects_omit_playback() {
     };
     let mut library = Library::default();
     let capture = |text: &str, pattern| FavoriteCapture {
+        preset_name: None,
         sequence_pattern: pattern,
         selected_sequence: Some(SequencePattern::Custom),
         mml: Some(text.into()),

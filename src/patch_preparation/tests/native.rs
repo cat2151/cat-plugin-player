@@ -10,6 +10,7 @@ mod browser;
 mod editor;
 mod favorite_mml;
 mod preparation_gate;
+mod preset_names;
 mod real_surge;
 
 fn key(mode: &str) -> PluginKey {

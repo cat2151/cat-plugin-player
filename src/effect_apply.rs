@@ -75,13 +75,15 @@ impl App {
                 old_state,
             }),
         });
-        self.host.create_instance(
-            plugin.index,
-            self.sample_rate(),
-            audio::MAX_BLOCK_FRAMES,
-            on_instance,
-            std::ptr::null_mut(),
-        );
+        unsafe {
+            self.host.create_instance(
+                plugin.index,
+                self.sample_rate(),
+                audio::MAX_BLOCK_FRAMES,
+                on_instance,
+                std::ptr::null_mut(),
+            )
+        };
     }
 
     /// ADR 0027: fade out now, and fade in the voices started until the swap ends.
@@ -155,6 +157,7 @@ impl App {
             kind: PluginKind::Effect,
             voice: None,
             sweep_cc1: false,
+            preset_name: Some(prepared.candidate.preset.display.clone()),
         };
         if let Some(target) = prepared.target {
             let slot = self
@@ -190,10 +193,16 @@ impl App {
                         state_store::save(path, &previous, &state)?;
                     }
                 }
-                state_store::save(path, &key, &prepared.state)
+                state_store::save_named(
+                    path,
+                    &key,
+                    &prepared.state,
+                    Some(&prepared.candidate.preset.display),
+                )
             });
         let resumed = self.resume_audio();
         self.effect_swap_fade = false;
+        self.selection_committed();
         self.save_session();
         if let Some(error) = saved.err().or_else(|| self.config_error.clone()) {
             self.status

@@ -24,6 +24,7 @@ impl App {
         if !self.effect_browser.open {
             return;
         }
+        let focus = self.take_browser_focus(crate::cli::Browser::Effect);
         let target = self.effect_browser.target;
         let slots: Vec<_> = self
             .instances
@@ -51,11 +52,19 @@ impl App {
                 .applied_in_target()
                 .map(|applied| format!("Browse effect: {}", applied.preset.display)),
         };
+        let master = self.selecting_master();
         let mut builder = egui::ViewportBuilder::default()
-            .with_title("Browse effects")
+            .with_title(if master {
+                "Browse master effects"
+            } else {
+                "Browse effects"
+            })
             .with_inner_size([1100.0, 750.0])
             .with_min_inner_size([360.0, 420.0])
             .with_maximized(true);
+        if focus {
+            builder = builder.with_active(true);
+        }
         if self.effect_browser.window_position.is_none() {
             self.effect_browser.window_position =
                 ctx.input(|input| input.viewport().outer_rect.map(|rect| rect.min));
@@ -64,7 +73,27 @@ impl App {
             builder = builder.with_position(position);
         }
         let browser = &mut self.effect_browser;
+        let selecting = self.selection.is_some();
+        let exits = selecting || self.resident.is_some();
+        let selection_error = selecting.then(|| self.config_error.clone()).flatten();
+        let browser_only = self
+            .selection
+            .as_ref()
+            .is_some_and(|s| s.browser_only.is_some());
+        let mut action = None;
+        let mut exit_selection = false;
         ctx.show_viewport_immediate(viewport(), builder, |ctx, _class| {
+            self.catalog_startup.observe_activity(ctx);
+            if focus {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+            }
+            crate::selection::show_error(ctx, selection_error.as_deref());
+            action = crate::selection_ui::toolbar(ctx, browser_only, master);
+            if exits && crate::selection::exit_key(ctx) {
+                ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+                exit_selection = true;
+                return;
+            }
             browser.show(ctx, &view);
             // The live Host dispatcher remains in the root main-thread update.
             ctx.request_repaint_after_for(
@@ -73,6 +102,20 @@ impl App {
             );
             ctx.request_repaint_after(std::time::Duration::from_millis(50));
         });
+        if exit_selection {
+            self.browser_exit_requested();
+        }
+        if std::mem::take(&mut self.effect_browser.favorite_requested) {
+            if let Some(id) = self
+                .effect_browser
+                .target
+                .filter(|id| self.effect_ids().contains(id))
+            {
+                self.add_favorite(id);
+            }
+        }
+        self.selection_browser_closed(crate::cli::Browser::Effect);
+        self.selection_action(action, ctx);
     }
 }
 
@@ -211,8 +254,14 @@ impl EffectBrowser {
             ctx.memory_mut(|memory| memory.request_focus(egui::Id::new("effect_browser_search")));
             return;
         }
+        if crate::playback_ui::take_favorite_shortcut(ctx, true) {
+            self.favorite_requested = true;
+        }
         if ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, Key::R)) {
             self.select_random();
+        }
+        if ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, Key::W)) {
+            self.fit_columns = !self.fit_columns;
         }
         if let Some((step, times)) = ctx.input_mut(navigation::consume_step) {
             if !self.results.is_empty() {
@@ -277,6 +326,7 @@ fn viewport() -> egui::ViewportId {
     egui::ViewportId::from_hash_of("effect_browser_window")
 }
 
+mod label;
 mod rows;
 #[cfg(test)]
 mod tests;

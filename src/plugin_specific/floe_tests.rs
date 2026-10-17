@@ -103,6 +103,7 @@ fn sweep_deduplicates_without_changing_state_name_or_pattern_identity() {
         .unwrap();
     library.rename(&config, &first.id, "My harp").unwrap();
     let capture = FavoriteCapture {
+        preset_name: None,
         sequence_pattern: SequencePattern::Steps,
         sweep_cc1: true,
         selected_sequence: None,
@@ -121,6 +122,7 @@ fn sweep_deduplicates_without_changing_state_name_or_pattern_identity() {
             false,
             &played,
             FavoriteCapture {
+                preset_name: None,
                 sequence_pattern: SequencePattern::GuitarArpeggio,
                 ..capture.clone()
             },
@@ -178,6 +180,7 @@ fn saved_floe_sweep_snapshots_keep_two_patterns() {
                 false,
                 &state,
                 FavoriteCapture {
+                    preset_name: None,
                     sequence_pattern: entry.sequence_pattern,
                     sweep_cc1: true,
                     selected_sequence: None,

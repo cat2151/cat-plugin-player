@@ -167,6 +167,9 @@ impl App {
             plugin_list::visible_indices(&self.plugins, self.restored.as_ref(), self.prefer_clap)
         {
             let plugin = &self.plugins[i];
+            if self.selecting_master() && plugin.kind != PluginKind::Effect {
+                continue;
+            }
             if !plugin.name.to_lowercase().contains(filter) {
                 continue;
             }

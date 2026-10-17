@@ -54,7 +54,7 @@ pub(crate) fn refresh(
 fn replace_if_valid(bytes: &[u8], destination: &Path) -> Result<(), String> {
     let candidate = destination.with_extension("download.tmp");
     crate::state_store::atomic_write(&candidate, bytes)?;
-    let checked = clap_mml_render_tui::patch_catalog_cache::load_from(&candidate)
+    let checked = cmrt_tui_core::patch_catalog_cache::load_from(&candidate)
         .map(drop)
         .map_err(|error| format!("{error:#}"));
     let _ = std::fs::remove_file(&candidate);

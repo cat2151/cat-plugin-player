@@ -5,6 +5,22 @@ use eframe::egui;
 const SEQUENCE_MIN_WIDTH: f32 = 520.0;
 const BROWSE_WIDTH: f32 = 150.0;
 
+#[cfg(test)]
+mod tests;
+
+pub(crate) fn take_favorite_shortcut(ctx: &egui::Context, enabled: bool) -> bool {
+    enabled
+        && !crate::patch_browser_ui::editing_text(ctx)
+        && ctx.input_mut(|input| {
+            let pressed = input.events.iter().any(|event| {
+                matches!(event, egui::Event::Key {
+                    key: egui::Key::F, pressed: true, repeat: false, modifiers, ..
+                } if *modifiers == egui::Modifiers::NONE)
+            });
+            pressed && input.consume_key(egui::Modifiers::NONE, egui::Key::F)
+        })
+}
+
 impl App {
     /// A browser window takes the keys the main window would otherwise handle.
     pub(crate) fn browser_open(&self) -> bool {
@@ -20,6 +36,23 @@ impl App {
             && !self.browser_open()
             && !editing_text
             && ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, key))
+    }
+
+    pub(crate) fn library_shortcuts(&mut self, ctx: &egui::Context, editing_before: bool) {
+        let enabled = !editing_before
+            && !self.mml_input.open
+            && !self.browser_open()
+            && self.favorites.rename.is_none()
+            && !self.confirm_rescan
+            && !self.first_instrument.dialog_open();
+        if take_favorite_shortcut(ctx, enabled) {
+            if let Some(id) = self.instrument_id() {
+                self.add_favorite(id);
+            }
+        }
+        if enabled && self.main_shortcut(ctx, egui::Key::Slash) {
+            ctx.memory_mut(|memory| memory.request_focus(egui::Id::new("library_filter")));
+        }
     }
 
     pub(crate) fn playback_controls(&mut self, ui: &mut egui::Ui) {

@@ -144,16 +144,18 @@ fn native_surge_xt_repeated_favorites_do_not_grow() {
             .as_nanos()
     ));
     let config = dir.join("config.toml");
-    let host = ffi::Host::new(wake, std::ptr::null_mut()).unwrap();
+    let host = unsafe { ffi::Host::new(wake, std::ptr::null_mut()) }.unwrap();
     let info = host.restore_plugin(&favorite.plugin).unwrap();
     let mut result: Option<Result<i32, String>> = None;
-    host.create_instance(
-        info.index,
-        48000,
-        256,
-        created,
-        &mut result as *mut _ as *mut c_void,
-    );
+    unsafe {
+        host.create_instance(
+            info.index,
+            48000,
+            256,
+            created,
+            &mut result as *mut _ as *mut c_void,
+        )
+    };
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
     while result.is_none() {
         assert!(std::time::Instant::now() < deadline);

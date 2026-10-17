@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 pub struct Favorite {
     pub id: String,
     pub name: String,
+    #[serde(default)]
+    pub preset_name: Option<String>,
     pub plugin: PluginKey,
     pub effect: bool,
     #[serde(default)]
@@ -29,6 +31,19 @@ fn default_favorite() -> bool {
 }
 
 impl Favorite {
+    pub fn matches_filter(&self, filter: &str) -> bool {
+        format!(
+            "{} {} {} {} {}",
+            self.name,
+            self.plugin.name,
+            self.plugin.format,
+            if self.effect { "Effect" } else { "Instrument" },
+            self.preset_name.as_deref().unwrap_or("")
+        )
+        .to_lowercase()
+        .contains(&filter.to_lowercase())
+    }
+
     pub fn playback_pattern(&self, current: SequencePattern) -> SequencePattern {
         if self.effect
             || current == SequencePattern::Off
@@ -46,6 +61,8 @@ impl Favorite {
 struct FavoriteMetadata {
     id: String,
     name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    preset_name: Option<String>,
     plugin: PluginKey,
     effect: bool,
     history: bool,
@@ -64,6 +81,7 @@ impl From<Favorite> for FavoriteMetadata {
         Self {
             id: favorite.id,
             name: favorite.name,
+            preset_name: favorite.preset_name,
             plugin: favorite.plugin,
             effect: favorite.effect,
             history: favorite.history,
@@ -87,6 +105,7 @@ pub struct Library {
 
 #[derive(Clone)]
 pub(crate) struct FavoriteCapture {
+    pub preset_name: Option<String>,
     pub sequence_pattern: SequencePattern,
     pub sweep_cc1: bool,
     pub selected_sequence: Option<SequencePattern>,
@@ -96,6 +115,7 @@ pub(crate) struct FavoriteCapture {
 impl From<SequencePattern> for FavoriteCapture {
     fn from(sequence_pattern: SequencePattern) -> Self {
         Self {
+            preset_name: None,
             sequence_pattern,
             sweep_cc1: false,
             selected_sequence: None,
@@ -150,12 +170,13 @@ impl Library {
         capture: impl Into<FavoriteCapture>,
     ) -> Result<Favorite, String> {
         let capture = capture.into();
-        let name = plugin.name.clone();
+        let name = naming::default_name(&capture, &plugin, effect);
         self.add_snapshot(
             config,
             Favorite {
                 id: String::new(),
                 name,
+                preset_name: capture.preset_name,
                 plugin,
                 effect,
                 history: false,
@@ -188,12 +209,13 @@ impl Library {
         capture: impl Into<FavoriteCapture>,
     ) -> Result<Favorite, String> {
         let capture = capture.into();
-        let name = plugin.name.clone();
+        let name = naming::default_name(&capture, &plugin, effect);
         self.add_snapshot(
             config,
             Favorite {
                 id: String::new(),
                 name,
+                preset_name: capture.preset_name,
                 plugin,
                 effect,
                 history: true,
@@ -273,6 +295,9 @@ impl Library {
                     index
                 };
                 let entry = &mut self.entries[index];
+                if entry.preset_name.is_none() {
+                    entry.preset_name = favorite.preset_name.clone();
+                }
                 if automatic {
                     entry.history = true;
                     entry.registered_at = crate::history::now();
@@ -367,3 +392,10 @@ mod order;
 #[cfg(test)]
 #[path = "favorites_mml_store_tests.rs"]
 mod mml_tests;
+
+#[cfg(test)]
+#[path = "favorites_preset_tests.rs"]
+mod preset_tests;
+
+#[path = "favorites_naming.rs"]
+mod naming;

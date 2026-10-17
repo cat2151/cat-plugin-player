@@ -43,6 +43,16 @@ fn take_transport_shortcut(ctx: &egui::Context, enabled: bool) -> bool {
 
 impl App {
     pub(crate) fn sequence_controls(&mut self, ui: &mut egui::Ui) {
+        if let Some(selection) = &self.selection {
+            let seconds = selection
+                .position
+                .load(std::sync::atomic::Ordering::Acquire) as f64
+                / f64::from(self.sample_rate());
+            ui.label(format!(
+                "SMF loop · {seconds:.2}s · Esc / q / close: save and return"
+            ));
+            return;
+        }
         let current = self.sequence_pattern;
         let original = current.selection(self.selected_sequence);
         let mut selected = original;

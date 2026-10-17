@@ -8,7 +8,9 @@ mod boot;
 mod browser_load;
 mod cli;
 mod config;
+#[path = "../shared/correlation.rs"]
 mod correlation;
+#[path = "../shared/correlation_ui.rs"]
 mod correlation_ui;
 mod effect_apply;
 mod effect_catalog;
@@ -18,25 +20,56 @@ mod favorite_playback;
 mod favorites;
 mod favorites_store;
 mod favorites_ui;
+#[path = "../shared/ffi.rs"]
 mod ffi;
 mod first_instrument_install;
 mod history;
+mod host_ui;
+mod japanese_font;
+use ffi as host;
+#[path = "../shared/chain.rs"]
+mod chain;
+#[path = "../shared/chain_settings.rs"]
+mod chain_settings;
+mod launch;
+#[path = "../shared/lissajous.rs"]
 mod lissajous;
+#[path = "../shared/lissajous_ui.rs"]
 mod lissajous_ui;
+#[path = "../shared/master_effects.rs"]
+mod master_effects;
 mod mml_input;
 mod mml_preview;
 mod native_library;
 mod patch_apply;
 mod patch_catalog;
 mod patch_preparation;
+#[path = "../shared/patch_reference.rs"]
+mod patch_reference;
+// The editor converts SMF references; the player only builds the table.
+#[allow(dead_code)]
+#[path = "../shared/patch_roots.rs"]
+mod patch_roots;
+mod patch_roots_request;
+mod plugin_cache;
 mod plugin_icons;
 mod plugin_list;
+mod plugin_scan;
 mod plugin_specific;
 mod plugins_ui;
 mod preview;
 #[cfg(feature = "recording-mode")]
 mod recording;
 mod repaint_heartbeat;
+mod resident;
+mod resident_cursor;
+#[cfg(windows)]
+#[allow(dead_code)]
+#[path = "../shared/resident_ipc.rs"]
+mod resident_ipc;
+#[path = "../shared/resident_log.rs"]
+mod resident_log;
+mod resident_panes;
 mod routing_ui;
 mod scope;
 mod scope_boundary;
@@ -45,9 +78,22 @@ mod scope_drift;
 mod scope_stream;
 mod scope_trigger;
 mod scope_ui;
+mod selection;
+mod selection_exchange;
+mod state_request;
+use chain as selection_host;
+mod selection_ui;
 mod seq;
 mod sequence_modulation;
+#[path = "../shared/smf.rs"]
+mod smf;
+#[path = "../shared/smf_extract.rs"]
+mod smf_extract;
+#[path = "../shared/smf_timeline.rs"]
+mod smf_timeline;
+#[path = "../shared/spectrum.rs"]
 mod spectrum;
+#[path = "../shared/spectrum_ui.rs"]
 mod spectrum_ui;
 mod surge_fx_states;
 mod surge_patch_catalog;
@@ -57,10 +103,13 @@ mod effect_browser;
 mod effect_browser_ui;
 mod patch_browser;
 mod patch_browser_catalog;
+mod patch_browser_initial_filter;
 mod patch_browser_requests;
 mod patch_browser_snapshot;
 mod patch_browser_ui;
 mod patch_filter_store;
+#[path = "../shared/patch_identity.rs"]
+mod patch_identity;
 mod playback_ui;
 mod sequence_pattern;
 mod sequence_ui;
@@ -76,12 +125,10 @@ mod status;
 mod status_migration;
 mod window_config;
 
-use clap::Parser;
 use eframe::egui;
 use startup::Stage;
 use std::ffi::{c_char, c_void};
 use std::sync::Mutex;
-use std::time::Instant;
 
 /// Used when there is no audio device to take the rate from.
 const FALLBACK_SAMPLE_RATE: u32 = 48_000;
@@ -130,12 +177,16 @@ struct Instance {
     voice: Option<audio::Voice>,
     /// Whether the most recently delivered automatic CC1 came from sweep.
     sweep_cc1: bool,
+    /// Last preset applied by a browser; plugin GUI edits are not observable.
+    preset_name: Option<String>,
 }
 
 struct App {
     // Declared before `host` so that it drops first: the audio streams and
     // processors in here must be gone before the host is destroyed.
     instances: Vec<Instance>,
+    selection: Option<selection::Selection>,
+    resident: Option<resident::Resident>,
     window_config: window_config::WindowConfig,
     host: ffi::Host,
     /// None if no usable audio device was found; plugins still load, silently.
@@ -156,6 +207,7 @@ struct App {
     config_error: Option<String>,
     config_path: Result<std::path::PathBuf, String>,
     scanning: bool,
+    catalog_startup: plugin_scan::Startup,
     confirm_rescan: bool,
     first_instrument: first_instrument_install::FirstInstrument,
     deferred_scan: bool,
@@ -191,15 +243,16 @@ impl App {
     }
 
     fn start_scan(&mut self, rescan: bool) {
-        if self.preset_change_busy() {
+        if self.preset_change_busy() || self.catalog_startup.running {
             return;
         }
         startup::mark(Stage::ScanRequested);
         self.patch_browser.requests.invalidate();
-        if self
-            .host
-            .scan_async(rescan, on_scan_done, std::ptr::null_mut())
-        {
+        if unsafe {
+            self.host
+                .scan_async(rescan, on_scan_done, std::ptr::null_mut())
+        } {
+            self.catalog_startup.cancel_refresh();
             self.scanning = true;
             self.status = if rescan {
                 "Rescanning plugins...".into()
@@ -225,6 +278,9 @@ impl App {
         for event in events {
             match event {
                 Event::ScanDone(error) => {
+                    if self.finish_background_scan(error.as_deref()) {
+                        continue;
+                    }
                     self.scanning = false;
                     self.plugins = self.host.plugins();
                     self.patch_catalog.reconcile(&self.plugins);
@@ -235,6 +291,7 @@ impl App {
                         None => String::new(),
                     };
                     if scan_succeeded {
+                        self.save_plugin_cache();
                         if let Some(index) = self.first_instrument.on_scan(&self.plugins) {
                             // Restoring too would leave `restoring` set behind this pending load.
                             self.restore = None;
@@ -256,6 +313,24 @@ impl App {
             }
         }
     }
+
+    /// Waits for the first audio callback; a resident player has no audio to wait for.
+    fn poll_patch_catalog(&mut self, ctx: &egui::Context) {
+        let ready = self.resident.is_some()
+            || self.instances.iter().any(|instance| {
+                instance
+                    .voice
+                    .as_ref()
+                    .is_some_and(audio::Voice::has_rendered)
+            });
+        if let Some(message) = self.patch_catalog.update(ready, ctx) {
+            self.patch_catalog.reconcile(&self.plugins);
+            if !message.is_empty() {
+                eprintln!("{message}");
+                self.status = message;
+            }
+        }
+    }
 }
 
 impl eframe::App for App {
@@ -265,7 +340,19 @@ impl eframe::App for App {
     }
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        if ctx.input(|input| input.viewport().close_requested()) {
+        if self.poll_resident() {
+            ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Close);
+        }
+        if self.resident.is_some() || self.selection.as_ref().is_some_and(|s| !s.main_visible) {
+            // eframe shows the root after its first paint, overriding the builder.
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+        }
+        if let Some(unsaved) = self.selection.as_mut().filter(|s| !s.saved) {
+            if selection::exit_key(ctx) {
+                ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+                unsaved.exit_requested = true;
+            }
+        } else if ctx.input(|input| input.viewport().close_requested()) {
             self.begin_shutdown();
             self.save_on_shutdown();
             return;
@@ -273,7 +360,20 @@ impl eframe::App for App {
         let previous_status = self.status.clone();
         // Run what uapmd and the plugins queued for the main thread.
         self.host.pump();
+        for voice in self.instances.iter().filter_map(|i| i.voice.as_ref()) {
+            voice.pump_preview();
+        }
         self.handle_events();
+        if self
+            .selection
+            .as_ref()
+            .is_some_and(|s| s.audio_failed.load(std::sync::atomic::Ordering::Acquire))
+        {
+            self.config_error = Some(
+                "SMF audio processing failed; input kept. Choose valid settings before saving."
+                    .into(),
+            );
+        }
         self.initialize_favorites();
         self.capture_plugin_icons(ctx);
         self.poll_effect_preparation();
@@ -284,23 +384,8 @@ impl eframe::App for App {
             eprintln!("{notice}");
             self.status = notice;
         }
-        let rendered = self.instances.iter().any(|instance| {
-            instance
-                .voice
-                .as_ref()
-                .is_some_and(audio::Voice::has_rendered)
-        });
-        if let Some(message) = self.patch_catalog.update(rendered, ctx) {
-            self.patch_catalog.reconcile(&self.plugins);
-            if !message.is_empty() {
-                eprintln!("{message}");
-                self.status = message;
-            }
-        }
-        if self.deferred_scan && self.pending.is_none() {
-            self.deferred_scan = false;
-            self.start_scan(false);
-        }
+        self.poll_patch_catalog(ctx);
+        self.poll_catalog_startup(ctx);
         startup::flush_if_ready();
 
         self.poll_browser_load();
@@ -308,7 +393,13 @@ impl eframe::App for App {
         self.poll_browser_patch(ctx);
         self.poll_effect_browser(ctx);
         self.effect_browser_ui(ctx);
-        self.mml_editor(ctx);
+        self.log_resident_state();
+        if self.selection_exit(ctx) {
+            return;
+        }
+        if self.selection.is_none() {
+            self.mml_editor(ctx);
+        }
         // Keep sound selection in its own pane beside the sequence controls.
         egui::TopBottomPanel::top("sequence_controls").show(ctx, |ui| {
             self.playback_controls(ui);
@@ -331,37 +422,7 @@ impl eframe::App for App {
 }
 
 fn main() -> eframe::Result {
-    cli::Cli::parse();
-    startup::init(Instant::now());
-    let _native_library = native_library::load().map_err(eframe::Error::AppCreation)?;
-    let mut app = App::prepare();
-    app.restore_before_gui();
-    startup::mark(Stage::GuiRequested);
-    let mut viewport =
-        egui::ViewportBuilder::default().with_inner_size(app.window_config.main.inner_size());
-    if let Some(position) = app.window_config.main.position() {
-        viewport = viewport.with_position(position);
-    }
-    let options = eframe::NativeOptions {
-        viewport,
-        ..Default::default()
-    };
-    let result = eframe::run_native(
-        "cat plugin player",
-        options,
-        Box::new(move |cc| {
-            startup::mark(Stage::AppCreation);
-            app.shutdown.set_window(cc);
-            app.host
-                .configure_editor_placement(cc, app.window_config.plugin.placement);
-            *GUI_CONTEXT.lock().unwrap() = Some(cc.egui_ctx.clone());
-            app.repaint_heartbeat = Some(repaint_heartbeat::RepaintHeartbeat::start(cc));
-            Ok(Box::new(app))
-        }),
-    );
-    *GUI_CONTEXT.lock().unwrap() = None;
-    startup::flush();
-    result
+    launch::run()
 }
 
 #[cfg(test)]
@@ -369,3 +430,20 @@ mod modulation_tests;
 
 #[cfg(test)]
 mod clap_state_tests;
+
+#[cfg(test)]
+use chain as shared_chain;
+#[cfg(test)]
+mod shared_host_tests;
+#[cfg(test)]
+#[path = "../shared/note_render.rs"]
+mod shared_note_render;
+
+#[cfg(test)]
+mod selection_tests;
+
+#[cfg(test)]
+mod selection_timing_tests;
+
+#[cfg(test)]
+mod master_selection_tests;

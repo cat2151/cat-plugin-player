@@ -3,30 +3,9 @@ use crate::{config::PluginKey, ffi::PluginInfo};
 use eframe::egui::Color32;
 use std::collections::{BTreeMap, BTreeSet};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum PluginKind {
-    Instrument,
-    Effect,
-    Unknown,
-}
+pub use crate::ffi::PluginKind;
 
 impl PluginKind {
-    pub fn from_metadata(value: &str) -> Self {
-        match value {
-            "instrument" => Self::Instrument,
-            "effect" => Self::Effect,
-            _ => Self::Unknown,
-        }
-    }
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Instrument => "Instrument",
-            Self::Effect => "Effect",
-            Self::Unknown => "Unknown",
-        }
-    }
-
     pub fn color(self, dark: bool) -> Color32 {
         match (self, dark) {
             (Self::Instrument, true) => Color32::from_rgb(115, 205, 255),

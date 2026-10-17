@@ -44,6 +44,7 @@ pub(super) fn library_row<R>(
 
 impl App {
     pub(crate) fn library_panel(&mut self, ctx: &egui::Context) {
+        let editing_before = crate::patch_browser_ui::editing_text(ctx);
         let mut load_plugin = None;
         let mut load_favorite = None;
         let mut remove_effect = None;
@@ -133,6 +134,7 @@ impl App {
                 ui.label("Filter:");
                 ui.add(
                     egui::TextEdit::singleline(&mut self.filter)
+                        .id(egui::Id::new("library_filter"))
                         .desired_width(ui.available_width()),
                 );
             });
@@ -154,6 +156,7 @@ impl App {
                 }
                 let history = self.favorites.show_history;
                 let mut entries: Vec<_> = self.favorites.library.entries.iter()
+                    .filter(|entry| !self.selecting_master() || entry.effect)
                     .filter(|entry| if history { entry.history } else { entry.favorite }).collect();
                 if history {
                     entries.sort_by_key(|entry| std::cmp::Reverse(entry.registered_at));
@@ -168,7 +171,9 @@ impl App {
                     for (position, favorite) in entries.iter().enumerate() {
                         let description = format!("{} | {} | {}", favorite.plugin.name,
                             favorite.plugin.format, if favorite.effect { "Effect" } else { "Instrument" });
-                        if !format!("{} {description}", favorite.name).to_lowercase().contains(&filter) { continue; }
+                        let description = favorite.preset_name.as_ref().map_or(description.clone(),
+                            |name| format!("{description} | Preset: {name}"));
+                        if !favorite.matches_filter(&filter) { continue; }
                         matches += 1;
                         let selected = self.favorites.active.iter().any(|(instance, id)| id == &favorite.id
                             && self.instances.iter().any(|i| i.id == *instance));
@@ -265,6 +270,7 @@ impl App {
                 });
             }
         });
+        self.library_shortcuts(ctx, editing_before);
         if let Some(i) = load_plugin {
             self.load_plugin(i);
         }

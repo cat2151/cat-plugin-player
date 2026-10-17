@@ -10,7 +10,8 @@ static const clap_plugin_descriptor_t descriptors[]{
     {CLAP_VERSION, "cat.test.state.normal", "State normal", "cat test", "", "", "", "1", "", features},
     {CLAP_VERSION, "cat.test.state.context", "State context", "cat test", "", "", "", "1", "", features},
     {CLAP_VERSION, "cat.test.state.none", "State absent", "cat test", "", "", "", "1", "", features},
-    {CLAP_VERSION, "cat.test.state.effect", "State effect", "cat test", "", "", "", "1", "", effect_features}};
+    {CLAP_VERSION, "cat.test.state.effect", "State effect", "cat test", "", "", "", "1", "", effect_features},
+    {CLAP_VERSION, "cat.test.state.effect2", "State effect two", "cat test", "", "", "", "1", "", effect_features}};
 struct Fixture {
     clap_plugin_t plugin{};
     uint8_t value{1};
@@ -59,10 +60,10 @@ static const void* extension(const clap_plugin_t* p, const char* id) {
     return nullptr;
 }
 static const clap_plugin_t* create(const clap_plugin_factory_t*, const clap_host_t*, const char* id) {
-    for (uint32_t i = 0; i < 4; ++i) {
+    for (uint32_t i = 0; i < 5; ++i) {
         if (std::strcmp(id, descriptors[i].id)) continue;
         auto* f = new Fixture;
-        f->context = i == 1; f->absent = i == 2; f->effect = i == 3;
+        f->context = i == 1; f->absent = i == 2; f->effect = i >= 3;
         f->plugin = {&descriptors[i], f,
             [](const clap_plugin_t*) { return true; },
             [](const clap_plugin_t* p) { delete &data(p); },
@@ -81,8 +82,8 @@ static const clap_plugin_t* create(const clap_plugin_factory_t*, const clap_host
     return nullptr;
 }
 static const clap_plugin_factory_t factory{
-    [](const clap_plugin_factory_t*) -> uint32_t { return 4; },
-    [](const clap_plugin_factory_t*, uint32_t i) { return i < 4 ? &descriptors[i] : nullptr; }, create};
+    [](const clap_plugin_factory_t*) -> uint32_t { return 5; },
+    [](const clap_plugin_factory_t*, uint32_t i) { return i < 5 ? &descriptors[i] : nullptr; }, create};
 extern "C" CLAP_EXPORT const clap_plugin_entry_t clap_entry{
     CLAP_VERSION, [](const char*) { return true; }, [] {},
     [](const char* id) -> const void* { return !std::strcmp(id, CLAP_PLUGIN_FACTORY_ID) ? &factory : nullptr; }};

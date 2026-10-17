@@ -23,8 +23,49 @@ pub fn load(config: &Path, key: &PluginKey) -> Result<Option<Vec<u8>>, String> {
 }
 
 pub fn save(config: &Path, key: &PluginKey, state: &[u8]) -> Result<(), String> {
+    save_named(config, key, state, None)
+}
+
+#[derive(serde::Deserialize, serde::Serialize)]
+struct PresetName {
+    name: Option<String>,
+    state_hash: String,
+}
+
+pub(crate) fn save_named(
+    config: &Path,
+    key: &PluginKey,
+    state: &[u8],
+    name: Option<&str>,
+) -> Result<(), String> {
     let destination = path(config, key)?;
-    atomic_write(&destination, state)
+    atomic_write(&destination, state)?;
+    let metadata_path = destination.with_extension("preset.json");
+    if name.is_none() {
+        return match std::fs::remove_file(metadata_path) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e.to_string()),
+        };
+    }
+    // Bind the label to these exact bytes. A failed second write must never
+    // associate metadata from the previous state with a different snapshot.
+    let metadata = PresetName {
+        name: name.map(str::to_owned),
+        state_hash: format!("{:x}", Sha256::digest(state)),
+    };
+    let data = serde_json::to_vec(&metadata).map_err(|e| e.to_string())?;
+    atomic_write(&metadata_path, &data)
+}
+
+pub(crate) fn load_preset_name(config: &Path, key: &PluginKey) -> Option<String> {
+    let destination = path(config, key).ok()?;
+    let data = std::fs::read(destination.with_extension("preset.json")).ok()?;
+    let metadata: PresetName = serde_json::from_slice(&data).ok()?;
+    let state = std::fs::read(destination).ok()?;
+    (metadata.state_hash == format!("{:x}", Sha256::digest(&state)))
+        .then_some(metadata.name)
+        .flatten()
 }
 
 pub(crate) fn atomic_write(destination: &Path, data: &[u8]) -> Result<(), String> {
@@ -124,6 +165,33 @@ mod tests {
             std::fs::read_dir(directory.join("states")).unwrap().count(),
             2
         );
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn preset_names_require_matching_state_and_unknown_saves_clear_them() {
+        let directory =
+            std::env::temp_dir().join(format!("cat-preset-name-{}", std::process::id()));
+        let config = directory.join("config.toml");
+        let key = PluginKey {
+            format: "CLAP".into(),
+            id: "synth".into(),
+            name: "Synth".into(),
+            vendor: String::new(),
+            bundle_path: String::new(),
+        };
+        assert_eq!(load_preset_name(&config, &key), None);
+        save_named(&config, &key, &[1], Some("日本語 Pad")).unwrap();
+        assert_eq!(
+            load_preset_name(&config, &key).as_deref(),
+            Some("日本語 Pad")
+        );
+        // Simulate a state replacement without updating its metadata.
+        atomic_write(&path(&config, &key).unwrap(), &[2]).unwrap();
+        assert_eq!(load_preset_name(&config, &key), None);
+        save_named(&config, &key, &[1], Some("Other")).unwrap();
+        save(&config, &key, &[1]).unwrap();
+        assert_eq!(load_preset_name(&config, &key), None);
         std::fs::remove_dir_all(directory).unwrap();
     }
 }

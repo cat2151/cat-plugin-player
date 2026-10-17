@@ -65,6 +65,9 @@ impl Favorite {
 
 impl crate::App {
     pub(crate) fn apply_playback(&mut self, playback: Playback) {
+        if self.selection.is_some() {
+            return;
+        }
         self.mml_input = playback.input;
         self.selected_sequence = playback.selected;
         self.sequence_pattern = playback.transport;

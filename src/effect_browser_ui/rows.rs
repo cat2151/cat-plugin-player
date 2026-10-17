@@ -2,6 +2,10 @@
 use super::*;
 use crate::{effect_catalog::Candidate, patch_browser_ui::row_colors};
 
+/// Horizontal space between a cell edge and its label.
+const LABEL_INSET: f32 = 6.0;
+const PLAYING: &str = "▶ ";
+
 impl EffectBrowser {
     pub(super) fn rows(&mut self, ui: &mut egui::Ui, view: &View) {
         ui.label(format!("Effects ({} results)", self.results.len()));
@@ -9,10 +13,18 @@ impl EffectBrowser {
             ui.label("No results. Edit search or choose another Category / Kind.");
         }
         let row_height = ui.text_style_height(&egui::TextStyle::Body) + 6.0;
+        let rows: Vec<_> = self.results.iter().map(|&i| &self.candidates[i]).collect();
+        let tints = tints(&rows);
+        let mixed = tints.iter().any(|(plugin, _)| plugin.is_some());
+        let cell = if self.fit_columns {
+            widest(ui, &rows, mixed) + 2.0 * LABEL_INSET
+        } else {
+            240.0
+        };
         // Reserve scrollbar space so a column never disappears when scrolling starts.
         let gap = ui.spacing().item_spacing.x;
         let width = (ui.available_width() - ui.spacing().scroll.bar_width - gap).max(1.0);
-        let columns = ((width + gap) / (240.0 + gap)).floor().max(1.0) as usize;
+        let columns = ((width + gap) / (cell + gap)).floor().max(1.0) as usize;
         let resized = self.list_columns != columns;
         self.list_columns = columns;
         let cell_width = (width - gap * (columns - 1) as f32) / columns as f32;
@@ -41,9 +53,6 @@ impl EffectBrowser {
             }
             self.scroll_to_selected = false;
         }
-        let rows: Vec<_> = self.results.iter().map(|&i| &self.candidates[i]).collect();
-        let tints = tints(&rows);
-        let mixed = tints.iter().any(|(plugin, _)| plugin.is_some());
         let applied = self.applied_in_target();
         let mut select = None;
         egui::ScrollArea::vertical()
@@ -117,9 +126,8 @@ fn paint_row(
     playing: bool,
 ) {
     // Fixed-height virtual rows must not expand when a name wraps.
-    let painter = ui
-        .painter()
-        .with_clip_rect(response.rect.shrink2(egui::vec2(6.0, 1.0)));
+    let inner = response.rect.shrink2(egui::vec2(LABEL_INSET, 1.0));
+    let painter = ui.painter().with_clip_rect(inner);
     let dark = ui.visuals().dark_mode;
     let plain = ui.visuals().text_color();
     let weak = ui.visuals().weak_text_color();
@@ -131,30 +139,48 @@ fn paint_row(
         }
     };
     let font = egui::TextStyle::Body.resolve(ui.style());
+    let marker = if playing { PLAYING } else { "" };
+    let (prefix, name) = ui.fonts(|fonts| {
+        let char_width = |c| fonts.glyph_width(&font, c);
+        let room = inner.width() - marker.chars().map(char_width).sum::<f32>();
+        let plugin = mixed.then_some(candidate.plugin_name.as_str());
+        label::fit(plugin, &candidate.name, room, char_width)
+    });
     let mut job = egui::text::LayoutJob::default();
-    if playing {
-        job.append(
-            "▶ ",
-            0.0,
-            egui::TextFormat::simple(font.clone(), paint(None)),
-        );
+    for (text, color) in [
+        (marker, paint(None)),
+        (prefix.as_str(), paint(plugin)),
+        (name.as_str(), paint(kind)),
+    ] {
+        job.append(text, 0.0, egui::TextFormat::simple(font.clone(), color));
     }
-    if mixed {
-        let prefix = format!("{} — ", candidate.plugin_name);
-        job.append(
-            &prefix,
-            0.0,
-            egui::TextFormat::simple(font.clone(), paint(plugin)),
-        );
-    }
-    job.append(
-        &candidate.name,
-        0.0,
-        egui::TextFormat::simple(font, paint(kind)),
-    );
     let galley = ui.fonts(|fonts| fonts.layout_job(job));
     let top = response.rect.center().y - galley.size().y / 2.0;
-    painter.galley(egui::pos2(response.rect.left() + 6.0, top), galley, plain);
+    painter.galley(egui::pos2(inner.left(), top), galley, plain);
+}
+
+/// Width of the longest whole label in `rows`, the playing marker included.
+fn widest(ui: &egui::Ui, rows: &[&Candidate], mixed: bool) -> f32 {
+    let font = egui::TextStyle::Body.resolve(ui.style());
+    ui.fonts(|fonts| {
+        let width = |text: &str| {
+            text.chars()
+                .map(|c| fonts.glyph_width(&font, c))
+                .sum::<f32>()
+        };
+        let plugin = |candidate: &Candidate| {
+            if mixed {
+                width(&candidate.plugin_name) + width(label::PLUGIN_SEPARATOR)
+            } else {
+                0.0
+            }
+        };
+        width(PLAYING)
+            + rows
+                .iter()
+                .map(|candidate| plugin(candidate) + width(&candidate.name))
+                .fold(0.0, f32::max)
+    })
 }
 
 fn details(candidate: &Candidate) -> String {

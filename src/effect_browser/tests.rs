@@ -168,6 +168,22 @@ fn conditions_cursor_and_target_position_survive_status_json_round_trip() {
 }
 
 #[test]
+fn restored_slot_past_the_chain_end_adds_an_effect() {
+    let mut adding = EffectBrowser::restored(crate::status::EffectBrowserFilter {
+        slot: Some(2),
+        ..Default::default()
+    });
+    adding.open_window(&[20, 21]);
+    assert_eq!(adding.target, None);
+    let mut replacing = EffectBrowser::restored(crate::status::EffectBrowserFilter {
+        slot: Some(0),
+        ..Default::default()
+    });
+    replacing.open_window(&[20, 21]);
+    assert_eq!(replacing.target, Some(20));
+}
+
+#[test]
 fn saved_query_survives_round_trip() {
     let mut browser = browser();
     browser.query = "hall".into();

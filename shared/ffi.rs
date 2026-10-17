@@ -5,9 +5,14 @@
 
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::ptr;
+#[path = "identity.rs"]
+mod identity;
+pub use identity::{PluginKey, PluginKind};
 
 #[path = "plugin_state.rs"]
 mod plugin_state;
+#[path = "settling.rs"]
+mod settling;
 
 #[repr(C)]
 pub struct UhHost {
@@ -33,7 +38,7 @@ pub const UH_PLUGIN_KIND: i32 = 5;
 
 pub const UH_OK: i32 = 0;
 
-extern "C" {
+unsafe extern "C" {
     fn uh_create(wake: Option<UhWakeFn>, wake_user: *mut c_void) -> *mut UhHost;
     fn uh_destroy(host: *mut UhHost);
     fn uh_pump(host: *mut UhHost);
@@ -53,6 +58,7 @@ extern "C" {
         user: *mut c_void,
     ) -> i32;
     fn uh_plugin_count(host: *mut UhHost) -> i32;
+    fn uh_scan_accept(host: *mut UhHost) -> i32;
     fn uh_plugin_info(
         host: *mut UhHost,
         index: i32,
@@ -75,16 +81,22 @@ extern "C" {
         instrument_id: i32,
         effect_ids: *const i32,
         effect_count: i32,
-        bypass: i32,
         sample_rate: u32,
         max_frames: u32,
     ) -> *mut UhProcessor;
+    fn uh_chain_set_bypassed(chain: *mut UhProcessor, effect_index: i32, bypassed: i32) -> i32;
     fn uh_processor_process(
         processor: *mut UhProcessor,
         ump_words: *const u32,
         ump_word_count: i32,
         out_interleaved: *mut f32,
         out_channels: i32,
+        frames: i32,
+    ) -> i32;
+    fn uh_processor_process_input(
+        processor: *mut UhProcessor,
+        input_output: *mut f32,
+        channels: i32,
         frames: i32,
     ) -> i32;
     fn uh_ui_set_main_window(host: *mut UhHost, hwnd: *mut c_void);
@@ -109,7 +121,11 @@ pub unsafe fn error_string(error: *const c_char) -> Option<String> {
     if error.is_null() {
         None
     } else {
-        Some(CStr::from_ptr(error).to_string_lossy().into_owned())
+        Some(
+            unsafe { CStr::from_ptr(error) }
+                .to_string_lossy()
+                .into_owned(),
+        )
     }
 }
 
@@ -121,7 +137,7 @@ pub struct PluginInfo {
     pub format: String,
     pub id: String,
     pub bundle_path: String,
-    pub kind: crate::plugin_list::PluginKind,
+    pub kind: PluginKind,
 }
 
 pub struct Host {
@@ -131,7 +147,9 @@ pub struct Host {
 impl Host {
     /// `wake` may be called from any thread, for as long as the host exists;
     /// whatever `wake_user` points to must stay valid that long.
-    pub fn new(wake: UhWakeFn, wake_user: *mut c_void) -> Option<Self> {
+    /// # Safety
+    /// The callback context must remain valid for the host lifetime, including wakes on other threads.
+    pub unsafe fn new(wake: UhWakeFn, wake_user: *mut c_void) -> Option<Self> {
         let raw = unsafe { uh_create(Some(wake), wake_user) };
         if raw.is_null() {
             None
@@ -140,23 +158,9 @@ impl Host {
         }
     }
 
-    pub fn configure_editor_placement(
-        &self,
-        context: &eframe::CreationContext<'_>,
-        placement: crate::window_config::Placement,
-    ) {
-        use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-        match placement {
-            crate::window_config::Placement::RightThenBottomRight => {
-                if let Ok(handle) = context.window_handle() {
-                    if let RawWindowHandle::Win32(handle) = handle.as_raw() {
-                        unsafe {
-                            uh_ui_set_main_window(self.raw, handle.hwnd.get() as *mut c_void)
-                        };
-                    }
-                }
-            }
-        }
+    /// Native window registration is owned by each app's UI adapter.
+    pub fn set_main_window(&self, hwnd: isize) {
+        unsafe { uh_ui_set_main_window(self.raw, hwnd as *mut c_void) };
     }
 
     /// Call once per UI frame. Callbacks are delivered from inside this call.
@@ -169,7 +173,7 @@ impl Host {
         unsafe { uh_pump_startup(self.raw) }
     }
 
-    pub fn restore_plugin(&self, key: &crate::config::PluginKey) -> Option<PluginInfo> {
+    pub fn restore_plugin(&self, key: &PluginKey) -> Option<PluginInfo> {
         let format = CString::new(key.format.as_str()).ok()?;
         let id = CString::new(key.id.as_str()).ok()?;
         let name = CString::new(key.name.as_str()).ok()?;
@@ -192,12 +196,14 @@ impl Host {
             name: key.name.clone(),
             vendor: key.vendor.clone(),
             bundle_path: key.bundle_path.clone(),
-            kind: crate::plugin_list::PluginKind::Unknown,
+            kind: PluginKind::Unknown,
         })
     }
 
     /// Returns false if a scan is already running.
-    pub fn scan_async(&self, rescan: bool, done: UhScanDoneFn, user: *mut c_void) -> bool {
+    /// # Safety
+    /// The callback context must stay valid until scan completion.
+    pub unsafe fn scan_async(&self, rescan: bool, done: UhScanDoneFn, user: *mut c_void) -> bool {
         // ABI mode 2 scans only real Surge CLAP bundles, without the shared cache.
         let mode = if cfg!(feature = "recording-mode") {
             2
@@ -217,11 +223,20 @@ impl Host {
                 format: self.plugin_field(index, UH_PLUGIN_FORMAT),
                 id: self.plugin_field(index, UH_PLUGIN_ID),
                 bundle_path: self.plugin_field(index, UH_PLUGIN_PATH),
-                kind: crate::plugin_list::PluginKind::from_metadata(
-                    &self.plugin_field(index, UH_PLUGIN_KIND),
-                ),
+                kind: PluginKind::from_metadata(&self.plugin_field(index, UH_PLUGIN_KIND)),
             })
             .collect()
+    }
+
+    /// # Safety
+    /// The callback context must stay valid until scan completion.
+    pub unsafe fn scan_background(&self, done: UhScanDoneFn, user: *mut c_void) -> bool {
+        unsafe { uh_scan_async(self.raw, 3, Some(done), user) == 0 }
+    }
+
+    /// Call only between transactions that retain native catalog indices.
+    pub fn accept_scan(&self) {
+        unsafe { uh_scan_accept(self.raw) };
     }
 
     fn plugin_field(&self, index: i32, field: i32) -> String {
@@ -243,7 +258,9 @@ impl Host {
         String::from_utf8_lossy(&buf).into_owned()
     }
 
-    pub fn create_instance(
+    /// # Safety
+    /// The callback context must stay valid until creation completes on the main thread.
+    pub unsafe fn create_instance(
         &self,
         plugin_index: i32,
         sample_rate: u32,
@@ -269,6 +286,7 @@ impl Host {
 
     /// Owns all processors for a serial chain. Stop its audio stream and drop
     /// this handle before saving state or destroying any of the instances.
+    /// `bypass` starts every effect bypassed.
     pub fn create_chain(
         &self,
         instrument_id: i32,
@@ -283,12 +301,15 @@ impl Host {
                 instrument_id,
                 effects.as_ptr(),
                 effects.len() as i32,
-                bypass as i32,
                 sample_rate,
                 max_frames,
             )
         };
-        (!raw.is_null()).then_some(Processor { raw })
+        let processor = (!raw.is_null()).then_some(Processor { raw })?;
+        for index in 0..effects.len() {
+            processor.set_bypassed(index, bypass).ok()?;
+        }
+        Some(processor)
     }
 
     /// `Err` carries the UH_ERR_* code.
@@ -350,6 +371,15 @@ impl Processor {
     pub unsafe fn audio_ref(&self) -> ProcessorRef {
         ProcessorRef { raw: self.raw }
     }
+
+    /// Takes effect while the chain renders. `effect` counts effects only.
+    pub fn set_bypassed(&self, effect: usize, bypassed: bool) -> Result<(), String> {
+        let index = i32::try_from(effect).map_err(|_| "No such effect")?;
+        match unsafe { uh_chain_set_bypassed(self.raw, index, bypassed as i32) } {
+            0 => Ok(()),
+            _ => Err("No such effect".into()),
+        }
+    }
 }
 
 impl Drop for Processor {
@@ -368,6 +398,20 @@ pub struct ProcessorRef {
 unsafe impl Send for ProcessorRef {}
 
 impl ProcessorRef {
+    /// Processes an effects-only chain in place. Failure produces silence.
+    pub fn process_input(&mut self, samples: &mut [f32], channels: usize) -> bool {
+        if channels == 0 || !samples.len().is_multiple_of(channels) {
+            return false;
+        }
+        unsafe {
+            uh_processor_process_input(
+                self.raw,
+                samples.as_mut_ptr(),
+                channels as i32,
+                (samples.len() / channels) as i32,
+            ) == 0
+        }
+    }
     /// Renders `out.len() / channels` frames of interleaved audio, delivering
     /// `ump` at the start of the block. Returns false if rendering failed
     /// (the output is silence then).

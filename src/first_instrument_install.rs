@@ -13,11 +13,6 @@ const PACKAGE_ID: &str = "SurgeSynth.SurgeXT";
 const MANUAL_URL: &str = "https://surge-synthesizer.github.io/";
 /// The package manifest's LicenseUrl.
 const LICENSE_URL: &str = "https://github.com/surge-synthesizer/surge/blob/main/LICENSE";
-/// Tried in order; egui's built-in fonts have no Japanese glyphs.
-const JAPANESE_FONTS: [&str; 2] = [
-    r"C:\Windows\Fonts\meiryo.ttc",
-    r"C:\Windows\Fonts\msgothic.ttc",
-];
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Step {
@@ -71,6 +66,10 @@ pub(crate) struct FirstInstrument {
 }
 
 impl FirstInstrument {
+    pub(crate) fn dialog_open(&self) -> bool {
+        self.dialog != Dialog::Hidden
+    }
+
     /// Returns the Surge XT to load when this scan follows a successful install.
     pub(crate) fn on_scan(&mut self, plugins: &[PluginInfo]) -> Option<usize> {
         if self.job.is_some() {
@@ -166,23 +165,6 @@ fn windows_ui_is_japanese() -> bool {
     unsafe { GetUserDefaultUILanguage() & 0x3ff == LANG_JAPANESE }
 }
 
-fn add_japanese_font(ctx: &egui::Context) {
-    let Some(bytes) = JAPANESE_FONTS
-        .iter()
-        .find_map(|path| std::fs::read(path).ok())
-    else {
-        return;
-    };
-    ctx.add_font(egui::epaint::text::FontInsert::new(
-        "first_instrument_japanese",
-        egui::FontData::from_owned(bytes),
-        vec![egui::epaint::text::InsertFontFamily {
-            family: egui::FontFamily::Proportional,
-            priority: egui::epaint::text::FontPriority::Lowest,
-        }],
-    ));
-}
-
 impl App {
     pub(crate) fn first_instrument_dialog(&mut self, ctx: &egui::Context) {
         self.poll_first_instrument();
@@ -205,7 +187,7 @@ impl App {
         }
         let text = *state.text.get_or_insert_with(|| {
             if windows_ui_is_japanese() {
-                add_japanese_font(ctx);
+                crate::japanese_font::add(ctx);
                 &text::JAPANESE
             } else {
                 &text::ENGLISH

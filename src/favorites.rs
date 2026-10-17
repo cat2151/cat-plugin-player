@@ -76,6 +76,7 @@ impl App {
                 instance.kind == PluginKind::Effect,
                 &state,
                 FavoriteCapture {
+                    preset_name: instance.preset_name.clone(),
                     sequence_pattern: self.sequence_pattern,
                     sweep_cc1: instance.sweep_cc1,
                     selected_sequence: Some(
@@ -107,6 +108,9 @@ impl App {
     }
 
     pub(crate) fn mark_favorite(&mut self, id: i32, favorite: &Favorite) {
+        if let Some(instance) = self.instances.iter_mut().find(|i| i.id == id) {
+            instance.preset_name = favorite.preset_name.clone();
+        }
         self.favorites.active.retain(|(instance, favorite_id)| {
             *instance != id
                 && self.instances.iter().any(|i| i.id == *instance)
@@ -155,6 +159,7 @@ impl App {
             instance.kind == PluginKind::Effect,
             &state,
             FavoriteCapture {
+                preset_name: instance.preset_name.clone(),
                 sequence_pattern: self.sequence_pattern,
                 sweep_cc1: instance.sweep_cc1,
                 selected_sequence: Some(self.sequence_pattern.selection(self.selected_sequence)),
@@ -185,12 +190,23 @@ impl App {
             .find(|f| f.id == favorite_id)
             .ok_or("favorite not found")?
             .clone();
-        let playback = favorite.prepare_playback(
-            &self.mml_input,
-            self.sequence_pattern,
-            self.selected_sequence,
-            self.sample_rate(),
-        )?;
+        if self.selecting_master() && !favorite.effect {
+            return Err("Master selection edits effects only".into());
+        }
+        let playback = if self.selection.is_some() {
+            crate::favorite_playback::Playback {
+                input: self.mml_input.clone(),
+                selected: self.selected_sequence,
+                transport: self.sequence_pattern,
+            }
+        } else {
+            favorite.prepare_playback(
+                &self.mml_input,
+                self.sequence_pattern,
+                self.selected_sequence,
+                self.sample_rate(),
+            )?
+        };
         if favorite.effect && self.instrument_id().is_none() {
             return Err("Load an instrument first".into());
         }
@@ -298,6 +314,7 @@ impl App {
                 ""
             }
         );
+        self.selection_committed();
         self.save_session();
         Ok(())
     }

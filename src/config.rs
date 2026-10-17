@@ -1,37 +1,8 @@
 //! User-owned settings. Application status is stored separately.
-use crate::ffi::PluginInfo;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct PluginKey {
-    pub format: String,
-    pub id: String,
-    #[serde(default)]
-    pub name: String,
-    #[serde(default)]
-    pub vendor: String,
-    #[serde(default)]
-    pub bundle_path: String,
-}
-
-impl PluginKey {
-    pub fn from_plugin(plugin: &PluginInfo) -> Self {
-        Self {
-            format: plugin.format.clone(),
-            id: plugin.id.clone(),
-            name: plugin.name.clone(),
-            vendor: plugin.vendor.clone(),
-            bundle_path: plugin.bundle_path.clone(),
-        }
-    }
-
-    pub fn find(&self, plugins: &[PluginInfo]) -> Option<usize> {
-        plugins
-            .iter()
-            .position(|plugin| plugin.format == self.format && plugin.id == self.id)
-    }
-}
+pub use crate::ffi::PluginKey;
 
 #[derive(Default, Deserialize)]
 pub struct Config {
@@ -94,6 +65,7 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ffi::PluginInfo;
 
     #[test]
     fn plugin_display_defaults_to_on_in_old_and_new_configs() {

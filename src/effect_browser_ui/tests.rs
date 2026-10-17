@@ -31,6 +31,29 @@ fn key(key: Key) -> egui::Event {
     }
 }
 
+#[test]
+fn favorite_does_not_apply_a_candidate_and_ignores_search() {
+    let ctx = egui::Context::default();
+    let mut browser = browser();
+    frame(&mut browser, &ctx, vec![]);
+    frame(&mut browser, &ctx, vec![key(Key::F)]);
+    assert!(std::mem::take(&mut browser.favorite_requested));
+    assert!(browser.desired.is_none());
+    let mut release = key(Key::F);
+    if let egui::Event::Key { pressed, .. } = &mut release {
+        *pressed = false;
+    }
+    frame(&mut browser, &ctx, vec![release]);
+    frame(&mut browser, &ctx, vec![key(Key::Slash)]);
+    frame(
+        &mut browser,
+        &ctx,
+        vec![key(Key::F), egui::Event::Text("f".into())],
+    );
+    assert!(!browser.favorite_requested);
+    assert_eq!(browser.query, "f");
+}
+
 fn selected(browser: &EffectBrowser) -> &str {
     &browser.candidates[browser.selected.unwrap()].name
 }
@@ -70,6 +93,22 @@ fn headless_grid_keys_count_search_focus_and_close() {
         browser.desired.is_none(),
         "closing drops an unsent selection"
     );
+}
+
+#[test]
+fn headless_w_toggles_columns_that_fit_every_label() {
+    let ctx = egui::Context::default();
+    let mut browser = browser();
+    frame(&mut browser, &ctx, vec![]);
+    frame(&mut browser, &ctx, vec![]);
+    let default = browser.list_columns;
+    // Short labels fit narrower cells, so more columns appear; W again restores the default.
+    frame(&mut browser, &ctx, vec![key(Key::W)]);
+    frame(&mut browser, &ctx, vec![]);
+    assert!(browser.list_columns > default, "{}", browser.list_columns);
+    frame(&mut browser, &ctx, vec![key(Key::W)]);
+    frame(&mut browser, &ctx, vec![]);
+    assert_eq!(browser.list_columns, default);
 }
 
 #[test]

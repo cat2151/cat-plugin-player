@@ -59,17 +59,23 @@ impl Browser {
             .show(ctx, |ui| {
                 if differs {
                     let selected = selected.unwrap();
-                    let playing = self.requests.applied.as_ref().map_or_else(
-                        || "current instrument state".into(),
-                        |applied| format!("{} — {}", applied.plugin_name, applied.display),
-                    );
-                    compact_label(
-                        ui,
+                    let loading = [&self.requests.preparing, &self.requests.applying]
+                        .into_iter()
+                        .flatten()
+                        .any(|ticket| self.requests.current(ticket));
+                    let text = if loading {
+                        format!("Loading, please wait: {}", selected.display)
+                    } else {
+                        let playing = self.requests.applied.as_ref().map_or_else(
+                            || "current instrument state".into(),
+                            |applied| format!("{} — {}", applied.plugin_name, applied.display),
+                        );
                         format!(
                             "Not yet applied: {} — {}; playing: {playing}",
                             selected.plugin_name, selected.display,
-                        ),
-                    );
+                        )
+                    };
+                    compact_label(ui, text);
                 }
                 if heavy {
                     ui.add(

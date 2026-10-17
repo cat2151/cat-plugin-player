@@ -2,7 +2,7 @@
 use super::{Host, UhHost, UH_OK};
 use std::ffi::{c_char, c_void, CStr};
 
-extern "C" {
+unsafe extern "C" {
     fn uh_state_save(
         host: *mut UhHost,
         id: i32,
@@ -22,9 +22,9 @@ extern "C" {
 }
 
 unsafe extern "C" fn receive(user: *mut c_void, data: *const u8, size: u64) {
-    let bytes = &mut *(user as *mut Vec<u8>);
+    let bytes = unsafe { &mut *(user as *mut Vec<u8>) };
     if size > 0 {
-        bytes.extend_from_slice(std::slice::from_raw_parts(data, size as usize));
+        bytes.extend_from_slice(unsafe { std::slice::from_raw_parts(data, size as usize) });
     }
 }
 

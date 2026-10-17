@@ -316,12 +316,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "175571dd1d178ced59193a6fc02dde1b972eb0bc56c892cde9beeceac5bf0f6b"
 
 [[package]]
-name = "ascii"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d92bec98840b8f03a5ff5413de5293bfcd8bf96467cf5452609f939ec6f5de16"
-
-[[package]]
 name = "ash"
 version = "0.38.0+1.3.281"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -783,7 +777,6 @@ name = "cat-plugin-player"
 version = "0.1.0"
 dependencies = [
  "clap",
- "clap-mml-render-tui",
  "cmrt-chord",
  "cmrt-core",
  "cmrt-patch-select",
@@ -798,6 +791,7 @@ dependencies = [
  "quick-xml 0.41.0",
  "rand 0.8.8",
  "raw-window-handle",
+ "regex",
  "serde",
  "serde_json",
  "sha2",
@@ -894,12 +888,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "chunked_transfer"
-version = "1.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e4de3bc4ea267985becf712dc6d9eed8b04c953b3fcfb339ebc87acd9804901"
-
-[[package]]
 name = "clack-common"
 version = "0.2.0"
 source = "git+https://github.com/prokopyl/clack.git#27ca28391b57a61bad4bb5099288a7bf9247350d"
@@ -963,57 +951,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "clap-mml-render-tui"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "cat-self-update-lib",
- "chord2mml-core",
- "chrono",
- "clap",
- "cmrt-chord",
- "cmrt-chord-chart",
- "cmrt-config-editor",
- "cmrt-daw",
- "cmrt-drum-sequencer",
- "cmrt-effect-chain-select",
- "cmrt-grid-sequencer",
- "cmrt-guitar-articulation",
- "cmrt-history",
- "cmrt-keyboard",
- "cmrt-loop-browser",
- "cmrt-loop-browser-domain",
- "cmrt-loop-domain",
- "cmrt-mml-overlay",
- "cmrt-notepad",
- "cmrt-offline-render",
- "cmrt-patch-select",
- "cmrt-patches",
- "cmrt-realtime-play",
- "cmrt-render-core",
- "cmrt-runtime",
- "cmrt-tui-core",
- "crossterm",
- "dirs",
- "hound",
- "midly",
- "mmlabc-to-smf",
- "rand 0.10.3",
- "ratatui",
- "ratatui-textarea",
- "rodio",
- "rubberband-ffi",
- "rustfft",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
- "tiny_http",
- "toml 1.1.7+spec-1.1.0",
- "ureq",
- "windows-sys 0.61.2",
-]
-
-[[package]]
 name = "clap-sys"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1059,13 +996,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cmrt-arpeggiator"
-version = "0.1.0"
-dependencies = [
- "rand 0.10.3",
-]
-
-[[package]]
 name = "cmrt-cache-player"
 version = "0.1.0"
 dependencies = [
@@ -1089,34 +1019,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "cmrt-chord-chart"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "cmrt-history",
- "cmrt-tui-core",
- "crossterm",
- "ratatui",
- "ratatui-textarea",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "cmrt-clack-timeline"
 version = "0.1.0"
 dependencies = [
  "clack-host",
  "cmrt-timeline",
-]
-
-[[package]]
-name = "cmrt-config-editor"
-version = "0.1.0"
-dependencies = [
- "serde",
- "thiserror 2.0.21",
- "toml 1.1.7+spec-1.1.0",
 ]
 
 [[package]]
@@ -1147,234 +1054,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "cmrt-daw"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chord2mml-core",
- "cmrt-chord",
- "cmrt-effect-chain-select",
- "cmrt-history",
- "cmrt-mml-overlay",
- "cmrt-offline-render",
- "cmrt-patch-select",
- "cmrt-patches",
- "cmrt-realtime-play",
- "cmrt-render-core",
- "cmrt-runtime",
- "cmrt-tui-core",
- "crossterm",
- "mmlabc-to-smf",
- "ratatui",
- "ratatui-explorer",
- "ratatui-textarea",
- "rodio",
- "serde",
- "serde_json",
- "tiny_http",
-]
-
-[[package]]
-name = "cmrt-drum-sequencer"
-version = "0.1.0"
-dependencies = [
- "cmrt-tui-core",
- "crossterm",
- "midly",
- "ratatui",
-]
-
-[[package]]
-name = "cmrt-effect-chain-select"
-version = "0.1.0"
-dependencies = [
- "cmrt-patch-select",
- "cmrt-render-core",
- "cmrt-tui-core",
- "crossterm",
- "ratatui",
- "ratatui-textarea",
- "serde_json",
-]
-
-[[package]]
-name = "cmrt-grid-sequencer"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "cmrt-arpeggiator",
- "cmrt-chord",
- "cmrt-patch-select",
- "cmrt-patches",
- "cmrt-realtime-play",
- "cmrt-render-core",
- "cmrt-rhythm",
- "cmrt-tui-core",
- "crossterm",
- "rand 0.10.3",
- "ratatui",
- "ratatui-textarea",
-]
-
-[[package]]
-name = "cmrt-guitar-articulation"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "cmrt-arpeggiator",
- "cmrt-chord",
- "cmrt-effect-chain-select",
- "cmrt-history",
- "cmrt-midi-filter",
- "cmrt-render-core",
- "cmrt-tui-core",
- "crossterm",
- "rand 0.10.3",
- "ratatui",
- "ratatui-textarea",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "cmrt-history"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "cmrt-patches",
- "cmrt-realtime-play",
- "cmrt-runtime",
- "cmrt-tui-core",
- "dirs",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "cmrt-keyboard"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "cmrt-chord",
- "cmrt-effect-chain-select",
- "cmrt-patch-select",
- "cmrt-patches",
- "cmrt-realtime-play",
- "cmrt-render-core",
- "cmrt-runtime",
- "cmrt-tui-core",
- "crossterm",
- "rand 0.10.3",
- "ratatui",
- "ratatui-textarea",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "cmrt-loop-browser"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "cmrt-loop-browser-domain",
- "cmrt-loop-domain",
- "cmrt-runtime",
- "cmrt-tui-core",
- "crossterm",
- "rand 0.10.3",
- "ratatui",
- "ratatui-textarea",
- "regex",
- "rodio",
- "rubberband-ffi",
- "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "cmrt-loop-browser-domain"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "cmrt-loop-domain",
- "cmrt-runtime",
- "cmrt-tui-core",
- "hound",
- "rand 0.10.3",
- "rodio",
- "rubberband-ffi",
- "serde",
- "serde_json",
- "toml 1.1.7+spec-1.1.0",
- "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "cmrt-loop-domain"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "hound",
- "rustfft",
- "serde",
-]
-
-[[package]]
 name = "cmrt-midi-filter"
 version = "0.1.0"
-
-[[package]]
-name = "cmrt-mml-overlay"
-version = "0.1.0"
-dependencies = [
- "cmrt-chord",
- "cmrt-core",
- "cmrt-midi-filter",
- "cmrt-patch-select",
- "cmrt-patches",
- "cmrt-realtime-play",
- "cmrt-tui-core",
- "crossterm",
- "mmlabc-to-smf",
- "ratatui",
- "ratatui-textarea",
- "regex",
- "serde_json",
-]
-
-[[package]]
-name = "cmrt-notepad"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "cmrt-effect-chain-select",
- "cmrt-history",
- "cmrt-offline-render",
- "cmrt-patch-select",
- "cmrt-patches",
- "cmrt-realtime-play",
- "cmrt-render-core",
- "cmrt-runtime",
- "cmrt-tui-core",
- "crossterm",
- "hound",
- "mmlabc-to-smf",
- "ratatui",
- "ratatui-textarea",
- "rodio",
- "serde_json",
-]
-
-[[package]]
-name = "cmrt-offline-render"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "cmrt-history",
- "cmrt-render-core",
- "cmrt-runtime",
- "hound",
- "ureq",
-]
 
 [[package]]
 name = "cmrt-patch-select"
@@ -1420,13 +1101,6 @@ dependencies = [
  "cmrt-runtime",
  "mmlabc-to-smf",
  "serde_json",
-]
-
-[[package]]
-name = "cmrt-rhythm"
-version = "0.1.0"
-dependencies = [
- "rand 0.10.3",
 ]
 
 [[package]]
@@ -1994,18 +1668,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "educe"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d7bc049e1bd8cdeb31b68bbd586a9464ecf9f3944af3958a7a9d0f8b9799417"
-dependencies = [
- "enum-ordinalize",
- "proc-macro2",
- "quote",
- "syn 2.0.119",
-]
-
-[[package]]
 name = "eframe"
 version = "0.31.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2149,26 +1811,6 @@ name = "endi"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "66b7e2430c6dff6a955451e2cfc438f09cea1965a9d6f87f7e3b90decc014099"
-
-[[package]]
-name = "enum-ordinalize"
-version = "4.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89dd01549b09589510cf0647475075d12071456586d70f5c75c98ae2a5537677"
-dependencies = [
- "enum-ordinalize-derive",
-]
-
-[[package]]
-name = "enum-ordinalize-derive"
-version = "4.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a65863d15a4ce2888bd2f0f543cc963d3879c3a022c8ee43f6141d479a3ac815"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 3.0.6",
-]
 
 [[package]]
 name = "enumflags2"
@@ -2737,12 +2379,6 @@ name = "httparse"
 version = "1.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6dbf3de79e51f3d586ab4cb9d5c3e2c14aa28ed23d180cf89b4df0454a69cc87"
-
-[[package]]
-name = "httpdate"
-version = "1.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
 
 [[package]]
 name = "iana-time-zone"
@@ -3526,15 +3162,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "num-complex"
-version = "0.4.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73f88a1307638156682bada9d7604135552957b7818057dcef22705b4d509495"
-dependencies = [
- "num-traits",
-]
-
-[[package]]
 name = "num-conv"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4310,15 +3937,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "primal-check"
-version = "0.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc0d895b311e3af9902528fbb8f928688abbd95872819320517cc24ca6b2bd08"
-dependencies = [
- "num-integer",
-]
-
-[[package]]
 name = "proc-macro-crate"
 version = "3.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4499,16 +4117,6 @@ dependencies = [
  "crossterm",
  "instability",
  "ratatui-core",
-]
-
-[[package]]
-name = "ratatui-explorer"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1034d08c806b090cf2eb450f60717e38d28b3a0a9fae01eee282db488d2e513b"
-dependencies = [
- "educe",
- "ratatui",
 ]
 
 [[package]]
@@ -4710,14 +4318,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fae8ee26b0371a29a77d2b2d6b3ae13aa81def6f9bf1b1b92a32d279a5e709b7"
 
 [[package]]
-name = "rubberband-ffi"
-version = "0.1.0"
-dependencies = [
- "cc",
- "thiserror 2.0.21",
-]
-
-[[package]]
 name = "rustc-hash"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4736,20 +4336,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cfcb3a22ef46e85b45de6ee7e79d063319ebb6594faafcf1c225ea92ab6e9b92"
 dependencies = [
  "semver",
-]
-
-[[package]]
-name = "rustfft"
-version = "6.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21db5f9893e91f41798c88680037dba611ca6674703c1a18601b01a72c8adb89"
-dependencies = [
- "num-complex",
- "num-integer",
- "num-traits",
- "primal-check",
- "strength_reduce",
- "transpose",
 ]
 
 [[package]]
@@ -5150,12 +4736,6 @@ name = "streaming-iterator"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b2231b7c3057d5e4ad0156fb3dc807d900806020c5ffa3ee6ff2c8c76fb8520"
-
-[[package]]
-name = "strength_reduce"
-version = "0.2.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe895eb47f22e2ddd4dabc02bce419d2e643c8e3b585c78158b349195bc24d82"
 
 [[package]]
 name = "strict-num"
@@ -5619,18 +5199,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tiny_http"
-version = "0.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "389915df6413a2e74fb181895f933386023c71110878cd0825588928e64cdc82"
-dependencies = [
- "ascii",
- "chunked_transfer",
- "httpdate",
- "log",
-]
-
-[[package]]
 name = "tinystr"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5771,16 +5339,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a"
 dependencies = [
  "once_cell",
-]
-
-[[package]]
-name = "transpose"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1ad61aed86bc3faea4300c7aee358b4c6d0c8d6ccc36524c96e4c92ccf26e77e"
-dependencies = [
- "num-integer",
- "strength_reduce",
 ]
 
 [[package]]

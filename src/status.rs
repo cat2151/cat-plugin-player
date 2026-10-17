@@ -87,16 +87,12 @@ pub struct BrowserFilter {
     pub query: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub playing: Option<PatchIdentity>,
+    /// Patch under the cursor; restoring it never applies its sound.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected: Option<PatchIdentity>,
 }
 
-/// The catalog patch the restored instrument state came from.
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-pub struct PatchIdentity {
-    pub format: String,
-    pub plugin_id: String,
-    pub path: PathBuf,
-    pub display: String,
-}
+pub use crate::patch_identity::PatchIdentity;
 
 impl BrowserFilter {
     fn is_empty(&self) -> bool {

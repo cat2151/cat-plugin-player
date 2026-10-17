@@ -78,13 +78,15 @@ impl App {
             },
         });
         startup::mark(startup::Stage::LoadRequested);
-        self.host.create_instance(
-            plugin.index,
-            self.sample_rate(),
-            audio::MAX_BLOCK_FRAMES,
-            on_instance,
-            std::ptr::null_mut(),
-        );
+        unsafe {
+            self.host.create_instance(
+                plugin.index,
+                self.sample_rate(),
+                audio::MAX_BLOCK_FRAMES,
+                on_instance,
+                std::ptr::null_mut(),
+            )
+        };
         startup::mark(startup::Stage::LoadReturned);
     }
 
@@ -203,6 +205,23 @@ impl App {
             kind,
             voice: None,
             sweep_cc1: false,
+            preset_name: self.selection.as_ref().map_or_else(
+                || {
+                    self.config_path
+                        .as_ref()
+                        .ok()
+                        .and_then(|path| crate::state_store::load_preset_name(path, &key))
+                },
+                |selection| {
+                    selection
+                        .settings
+                        .instrument
+                        .iter()
+                        .chain(&selection.settings.effects)
+                        .find(|slot| slot.plugin.format == key.format && slot.plugin.id == key.id)
+                        .and_then(|slot| slot.preset_name.clone())
+                },
+            ),
         });
         if browser_effect && self.effect_browser.open {
             self.effect_browser.target = Some(id);
@@ -249,12 +268,21 @@ impl App {
         }
         self.fast_restore = false;
         self.restoring = false;
+        // Selection mode opens the browser before the chain exists.
+        if self.effect_browser.open {
+            let ids = self.effect_ids();
+            self.effect_browser.resolve_restored_slot(&ids);
+        }
+        self.selection_committed();
         self.save_session();
     }
 
     pub(crate) fn load_failed(&mut self, message: String) {
         self.pending = None;
         if self.restoring {
+            if let Some(selection) = &mut self.selection {
+                selection.restoration_failed = true;
+            }
             self.pause_audio();
             let effects = self.effect_ids();
             self.instances.retain(|i| i.kind != PluginKind::Effect);

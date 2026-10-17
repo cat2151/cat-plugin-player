@@ -12,6 +12,7 @@ fn restored_selection_requires_the_saved_slot_and_plugin_identity() {
     let instrument = Favorite {
         id: "instrument".into(),
         name: "Renamed favorite".into(),
+        preset_name: None,
         plugin: plugin.clone(),
         effect: false,
         history: false,
