@@ -81,10 +81,14 @@ impl App {
         let host = unsafe { ffi::Host::new(on_wake, std::ptr::null_mut()) }
             .expect("uh_create() failed: could not set up the uapmd plugin host");
         startup::mark(Stage::HostReady);
+        #[cfg(test)]
+        ffi::trace::mark("device query begin");
         let (output, status) = match audio::Output::open_default() {
             Ok(output) => (Some(output), String::new()),
             Err(error) => (None, format!("No audio: {error}")),
         };
+        #[cfg(test)]
+        ffi::trace::mark("device query end");
         startup::mark(Stage::DeviceReady);
         let mut mml_input = crate::mml_input::MmlInput::default();
         mml_input.confirmed = mml;

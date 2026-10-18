@@ -11,7 +11,12 @@ pub fn load() -> Result<libloading::Library, Box<dyn std::error::Error + Send + 
     let root = dirs::cache_dir()
         .ok_or("cache directory unavailable")?
         .join("cat-plugin-player");
-    embedded::load_at(&root)
+    #[cfg(test)]
+    crate::ffi::trace::mark("DLL load begin");
+    let result = embedded::load_at(&root);
+    #[cfg(test)]
+    crate::ffi::trace::mark("DLL load end");
+    result
 }
 
 #[cfg(test)]

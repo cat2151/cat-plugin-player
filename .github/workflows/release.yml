@@ -177,8 +177,18 @@ jobs:
           path: cat-plugin-player/${{ env.ZIP }}
           if-no-files-found: error
       - name: Test
+        id: release_tests
         working-directory: cat-plugin-player
-        run: cargo test --release --locked
+        env:
+          CAT_NATIVE_TEST_TRACE: '1'
+        run: cargo test --release --locked -- --nocapture
+      - name: Serial failure diagnosis (does not clear the failed parallel test)
+        if: ${{ failure() && steps.release_tests.outcome == 'failure' }}
+        timeout-minutes: 5
+        working-directory: cat-plugin-player
+        env:
+          CAT_NATIVE_TEST_TRACE: '1'
+        run: cargo test --release --locked -- --test-threads=1 --nocapture
       - name: Disk usage
         if: always()
         run: Get-PSDrive -PSProvider FileSystem | Format-Table Name, Used, Free

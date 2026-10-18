@@ -9,6 +9,10 @@ use std::ptr;
 mod identity;
 pub use identity::{PluginKey, PluginKind};
 
+#[cfg(test)]
+#[path = "native_test_trace.rs"]
+pub(crate) mod trace;
+
 #[path = "plugin_state.rs"]
 mod plugin_state;
 #[path = "settling.rs"]
@@ -150,7 +154,11 @@ impl Host {
     /// # Safety
     /// The callback context must remain valid for the host lifetime, including wakes on other threads.
     pub unsafe fn new(wake: UhWakeFn, wake_user: *mut c_void) -> Option<Self> {
+        #[cfg(test)]
+        trace::mark("host create begin");
         let raw = unsafe { uh_create(Some(wake), wake_user) };
+        #[cfg(test)]
+        trace::mark("host create end");
         if raw.is_null() {
             None
         } else {
@@ -352,7 +360,11 @@ impl Host {
 
 impl Drop for Host {
     fn drop(&mut self) {
-        unsafe { uh_destroy(self.raw) }
+        #[cfg(test)]
+        trace::mark("host destroy begin");
+        unsafe { uh_destroy(self.raw) };
+        #[cfg(test)]
+        trace::mark("host destroy end");
     }
 }
 
