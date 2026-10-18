@@ -120,6 +120,27 @@ mod tests {
     use super::*;
     use crate::smf::model::{Event, Music, Track};
 
+    fn sidecar_input(path: &Path) {
+        // Selection setup only queues this identity. Sidecar tests never load it.
+        let settings = crate::chain_settings::Settings {
+            instrument: Some(crate::chain_settings::PluginState {
+                reference: None,
+                plugin: crate::config::PluginKey {
+                    format: "CLAP".into(),
+                    id: "cat.test.sidecar".into(),
+                    name: "Sidecar fixture".into(),
+                    vendor: "cat test".into(),
+                    bundle_path: "X:/fixtures/sidecar.clap".into(),
+                },
+                state: vec![1],
+                preset_name: None,
+                bypass: false,
+            }),
+            ..Default::default()
+        };
+        crate::selection_tests::input(path, &settings);
+    }
+
     #[test]
     fn preview_includes_every_track_and_conductor_end_and_format_two_tempos() {
         let event = |tick, status, meta_type, data| Event {
@@ -166,9 +187,12 @@ mod tests {
 
     #[test]
     fn exact_filter_roundtrip_retains_empty_query_and_does_not_reapply_word_fallback() {
+        if crate::native_library::process::isolated() {
+            return;
+        }
         let root = crate::selection_tests::directory("filter sidecar");
         let input = root.join("track.mid");
-        crate::selection_tests::input(&input, &Default::default());
+        sidecar_input(&input);
         let _library = crate::native_library::load().unwrap();
         let mut app = App::prepare_mode(true);
         app.config_path = Ok(root.join("config.toml"));
@@ -207,7 +231,7 @@ mod tests {
         use crate::effect_browser::tests::candidate;
         let root = crate::selection_tests::directory("effect filter sidecar");
         let input = root.join("track.mid");
-        crate::selection_tests::input(&input, &Default::default());
+        sidecar_input(&input);
         let _library = crate::native_library::load().unwrap();
         let sidecar = root.join("effect-filter.json");
         let candidates = vec![

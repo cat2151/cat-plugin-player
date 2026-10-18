@@ -25,7 +25,7 @@ CIの異常終了位置はdevice照会まで絞れているが、CPAL内の命�
 
 ## 決定
 
-通常のApp起動テスト17件は、`native_library::process::isolated`でcaseごとに子プロセスを使う。
+通常のApp起動テスト18件は、`native_library::process::isolated`でcaseごとに子プロセスを使う。
 case本体のassertionと実際のdevice照会を残し、DLL読込・host作成より前に境界を置く。
 
 - 子は正確なテスト名一つを実行する。親は正常終了と「1件合格・失敗0件・ignore 0件」の結果を検査する。
