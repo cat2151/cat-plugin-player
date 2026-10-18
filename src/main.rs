@@ -25,8 +25,8 @@ mod ffi;
 mod first_instrument_install;
 mod history;
 mod host_ui;
-mod japanese_font;
 use ffi as host;
+use first_instrument_install::japanese_font;
 #[path = "../shared/chain.rs"]
 mod chain;
 #[path = "../shared/chain_settings.rs"]

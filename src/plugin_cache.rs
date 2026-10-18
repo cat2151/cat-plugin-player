@@ -1,17 +1,11 @@
 //! Complete catalog metadata; loading never opens plugin libraries.
+use crate::ffi;
 use crate::{config::PluginKey, ffi::PluginInfo, plugin_list::PluginKind};
-use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
-
-#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub(crate) struct Entry {
-    pub plugin: PluginKey,
-    pub kind: String,
-}
-
-fn path(config: &Path) -> PathBuf {
-    config.with_file_name("plugin-list-cache.json")
-}
+use std::path::Path;
+#[path = "../shared/plugin_cache.rs"]
+mod metadata;
+use metadata::path;
+pub(crate) use metadata::{load, Entry};
 
 pub(crate) fn entries(plugins: &[PluginInfo]) -> Vec<Entry> {
     let mut entries: Vec<_> = plugins
@@ -28,17 +22,6 @@ pub(crate) fn entries(plugins: &[PluginInfo]) -> Vec<Entry> {
         .collect();
     entries.sort_by(|a, b| (&a.plugin.format, &a.plugin.id).cmp(&(&b.plugin.format, &b.plugin.id)));
     entries
-}
-
-pub(crate) fn load(config: &Path) -> Result<Option<Vec<Entry>>, String> {
-    let bytes = match std::fs::read(path(config)) {
-        Ok(bytes) => bytes,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(error.to_string()),
-    };
-    serde_json::from_slice(&bytes)
-        .map(Some)
-        .map_err(|error| error.to_string())
 }
 
 pub(crate) fn save(config: &Path, plugins: &[PluginInfo]) -> Result<bool, String> {

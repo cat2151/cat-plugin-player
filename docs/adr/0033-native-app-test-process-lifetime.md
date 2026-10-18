@@ -25,7 +25,7 @@ CIの異常終了位置はdevice照会まで絞れているが、CPAL内の命�
 
 ## 決定
 
-通常のApp起動テスト18件は、`native_library::process::isolated`でcaseごとに子プロセスを使う。
+App起動を含む通常テストは、`native_library::process::isolated`でcaseごとに子プロセスを使う。
 case本体のassertionと実際のdevice照会を残し、DLL読込・host作成より前に境界を置く。
 
 - 子は正確なテスト名一つを実行する。親は正常終了と「1件合格・失敗0件・ignore 0件」の結果を検査する。
@@ -48,12 +48,3 @@ device照会を削除したり、故障caseをignoreしたりする方法も採�
 ADR 0029のプロセス寿命境界を通常のApp起動caseへ適用し、ADR 0032の並列host契約は別途検証する。
 共有FFI・native hostは変えず、editorの単一UI thread起動やtui/serverのlibrary呼出には変更を広げない。
 新規dependency patchを作らないため、再cloneや上流checkoutへローカル編集を要求しない。
-
-## 検証と限界
-
-故障前の証拠は上記runの並列・直列両方の同一境界ログ。
-修正後は同じ通常caseのassertion、子の実行件数検査、native-only並列host回帰、
-fmt・clippy・release build・全テストで確認する。
-CIでは修正差分に対する別のcommit・push許可を得たうえで、`publish=false`の静的CRT条件を確認する。
-診断差分だけへの送信許可を修正差分へ拡張しない。
-ローカル合格だけでCI復旧や原因となる上流命令の特定を主張しない。

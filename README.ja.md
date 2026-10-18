@@ -175,6 +175,8 @@ UAPMD が兄弟の `uapmd` ディレクトリ以外にある場合は、先に `
 
 3repoの依存構成と運用方針は [ADR 0012](docs/adr/0012-local-dependencies-and-release-execution.md) を参照してください。catでのビルドにTUIのlocal切替は不要です。TUI自身で横断ビルドする場合はTUIの既存 `python scripts/cross_repo_local.py on` 手順を使い、offは人間が担当します。ローカル参照は未commit変更も使い、Cargo.lockは各checkoutの内容を固定しません。検証時は各repoのHEADと差分を記録してください。
 
+Surge XTの初回導入は`shared/first_instrument_install.rs`に集約し、cat-smf-editorも同じ音源不在判定・規約画面・winget処理を参照します。各アプリは導入成功後の再スキャン・読み込みを担当します。
+
 hostのRust/nativeとSMF処理は`shared/`に集約し、cat-smf-editorも同じ正本をmoduleとして参照します。独立crateは追加せず、各appの既定target/shimから自分のDLLを同梱します。
 
 引数なしで通常の GUI を起動します。`--help` と `--version` も使えます。
