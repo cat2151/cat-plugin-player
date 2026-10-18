@@ -38,8 +38,9 @@ mod lissajous;
 mod lissajous_ui;
 #[path = "../shared/master_effects.rs"]
 mod master_effects;
+#[path = "../shared/mml.rs"]
+mod mml;
 mod mml_input;
-mod mml_preview;
 mod native_library;
 mod patch_apply;
 mod patch_catalog;

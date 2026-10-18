@@ -2,19 +2,7 @@
 use crate::seq::{jr_timestamp, note_off, note_on, EventBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct Notes {
-    // High bits: gate in samples; low byte: velocity (zero means absent).
-    pub pitches: [u64; 128],
-}
-impl Notes {
-    pub const MAX_GATE: u64 = u64::MAX >> 8;
-}
-impl Default for Notes {
-    fn default() -> Self {
-        Self { pitches: [0; 128] }
-    }
-}
+pub(crate) use crate::mml::Notes;
 
 pub(crate) struct Mailbox {
     generation: AtomicU64,

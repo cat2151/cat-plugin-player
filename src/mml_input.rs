@@ -11,7 +11,7 @@ pub struct MmlInput {
     pub error: Option<String>,
     pub phrase: Option<Arc<Phrase>>,
     focus: bool,
-    cursor_preview: crate::mml_preview::CursorPreview,
+    cursor_preview: crate::mml::CursorPreview,
     sequence_before_open: Option<SequencePattern>,
 }
 
@@ -109,62 +109,28 @@ impl App {
             return;
         }
         self.stop_sequence_for_mml();
-        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
-            self.cancel_mml();
-            return;
-        }
-        let ready = !self.actions_busy();
         let rate = self.sample_rate();
-        let mut confirm =
-            ready && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter));
-        let mut cancel = false;
-        egui::Window::new("MML / Chord progression")
-            .collapsible(false)
-            .resizable(true)
-            .default_width(520.0)
-            .show(ctx, |ui| {
-                ui.label("Enter: confirm   Esc: cancel");
-                let output = (egui::TextEdit::multiline(&mut self.mml_input.buffer)
-                    .id_salt("mml_editor_text")
-                    .desired_rows(5)
-                    .desired_width(f32::INFINITY))
-                .show(ui);
-                let response = output.response;
-                if ready {
-                    let request = output.cursor_range.and_then(|range| {
-                        self.mml_input.cursor_preview.refresh(
-                            &self.mml_input.buffer,
-                            range.primary.ccursor.index,
-                            rate,
-                            response.changed(),
-                        )
-                    });
-                    if let Some(notes) = request {
-                        for instance in &self.instances {
-                            if let Some(voice) = &instance.voice {
-                                voice.preview(notes);
-                            }
-                        }
-                    }
+        let ready = !self.actions_busy();
+        let result = crate::mml::editor(
+            ctx,
+            &mut self.mml_input.buffer,
+            &mut self.mml_input.focus,
+            &mut self.mml_input.cursor_preview,
+            self.mml_input.error.as_deref(),
+            rate,
+            ready,
+        );
+        if let Some(notes) = result.1 {
+            for instance in &self.instances {
+                if let Some(voice) = &instance.voice {
+                    voice.preview(notes);
                 }
-                if self.mml_input.focus {
-                    response.request_focus();
-                    self.mml_input.focus = false;
-                }
-                if let Some(error) = &self.mml_input.error {
-                    ui.colored_label(ui.visuals().error_fg_color, error);
-                }
-                ui.horizontal(|ui| {
-                    confirm |= ui
-                        .add_enabled(ready, egui::Button::new("Confirm"))
-                        .clicked();
-                    cancel = ui.button("Cancel").clicked();
-                });
-            });
-        if cancel {
-            self.cancel_mml();
-        } else if confirm {
-            self.confirm_mml();
+            }
+        }
+        match result.0 {
+            crate::mml::Action::Cancel => self.cancel_mml(),
+            crate::mml::Action::Confirm => self.confirm_mml(),
+            crate::mml::Action::None => {}
         }
     }
 

@@ -8,34 +8,7 @@ use std::sync::Arc;
 #[path = "timed_sequence_tests.rs"]
 mod tests;
 
-#[derive(Clone, Debug)]
-pub struct Phrase {
-    pub events: Vec<(u64, [u8; 3])>,
-    pub duration: u64,
-    pub notes: usize,
-}
-
-impl Phrase {
-    /// Conversion and allocation happen before building the audio callback.
-    pub fn parse(input: &str, rate: u32) -> Result<Self, String> {
-        let performance = cmrt_chord::timed_performance(input)?;
-        let duration = (performance.duration_seconds * f64::from(rate)).round() as u64;
-        if duration == 0 {
-            return Err("Phrase is shorter than one sample".into());
-        }
-        let events: Vec<_> = performance
-            .events
-            .into_iter()
-            .map(|e| ((e.seconds * f64::from(rate)).round() as u64, e.message))
-            .collect();
-        let notes = events.iter().filter(|(_, m)| m[0] == 0x90).count();
-        Ok(Self {
-            events,
-            duration,
-            notes,
-        })
-    }
-}
+pub use crate::mml::Phrase;
 
 pub struct TimedPlayer {
     phrase: Option<Arc<Phrase>>,

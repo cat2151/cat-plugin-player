@@ -33,7 +33,7 @@ fn pitches(notes: Notes) -> Vec<usize> {
 fn context_length_accidental_and_mid_phrase_edits_match_confirmed_units() {
     for text in ["o5 l8 c", "o5 l8 c+", "o5 l8 'ceg'", "o5 l8 c4."] {
         let preview = at_cursor(text, text.chars().count(), 48000).unwrap();
-        let phrase = crate::timed_sequence::Phrase::parse(text, 48000).unwrap();
+        let phrase = super::super::Phrase::parse(text, 48000).unwrap();
         let expected = phrase
             .events
             .iter()
@@ -59,7 +59,7 @@ fn context_length_accidental_and_mid_phrase_edits_match_confirmed_units() {
 #[test]
 fn chord_input_auditions_only_the_cursor_chord() {
     let text = "C F G";
-    let phrase = crate::timed_sequence::Phrase::parse(text, 48000).unwrap();
+    let phrase = super::super::Phrase::parse(text, 48000).unwrap();
     let onsets = phrase
         .events
         .iter()
@@ -80,7 +80,7 @@ fn chord_input_auditions_only_the_cursor_chord() {
 fn multiline_prefix_carries_confirmed_octave_and_length() {
     let text = "o5 l8 c\nd";
     let notes = at_cursor(text, text.chars().count(), 48000).unwrap();
-    let phrase = crate::timed_sequence::Phrase::parse(text, 48000).unwrap();
+    let phrase = super::super::Phrase::parse(text, 48000).unwrap();
     let last = phrase
         .events
         .iter()
@@ -94,7 +94,7 @@ fn multiline_prefix_carries_confirmed_octave_and_length() {
 fn cursor_track_is_selected_even_when_another_track_ends_later() {
     let text = "o3 c1 d1; o5 l8 e";
     let notes = at_cursor(text, text.chars().count(), 48000).unwrap();
-    let phrase = crate::timed_sequence::Phrase::parse(text, 48000).unwrap();
+    let phrase = super::super::Phrase::parse(text, 48000).unwrap();
     let pitch = 64;
     assert_eq!(pitches(notes), [pitch]);
     let on = phrase

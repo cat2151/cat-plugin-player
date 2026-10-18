@@ -1,8 +1,8 @@
 //! UI-side cursor extraction through the same cmrt converter as confirmed playback.
-use crate::preview::Notes;
+use super::Notes;
 
 #[derive(Clone, Default)]
-pub(crate) struct CursorPreview {
+pub struct CursorPreview {
     cursor: Option<usize>,
     unit: Option<Box<(std::ops::Range<usize>, Notes)>>,
 }
@@ -43,11 +43,11 @@ fn unit_at_cursor(
         .nth(cursor_chars)
         .map_or(input.len(), |(i, _)| i);
     let span = cmrt_chord::cursor_sounding_unit(input, byte)?;
-    let performance = cmrt_chord::timed_performance(&input[..span.end]).ok()?;
+    let performance = super::performance(&input[..span.end]).ok()?;
     // Prefixes keep multiline and track directives in the exact confirmed context.
     // Other tracks can end later than this unit: remove previously present note ons
     // instead of simply selecting the globally last onset in the merged timeline.
-    let mut prior = cmrt_chord::timed_performance(&input[..span.start])
+    let mut prior = super::performance(&input[..span.start])
         .ok()
         .map(|p| {
             p.events
@@ -62,14 +62,11 @@ fn unit_at_cursor(
         .enumerate()
         .filter(|(_, e)| e.message[0] == 0x90)
         .filter_map(|(i, e)| {
-            if !performance.from_chord {
-                if let Some(index) = prior
-                    .iter()
-                    .position(|old| old.seconds == e.seconds && old.message == e.message)
-                {
-                    prior.remove(index);
-                    return None;
-                }
+            if let Some(index) = prior.iter().position(|old| {
+                !performance.from_chord && old.seconds == e.seconds && old.message == e.message
+            }) {
+                prior.remove(index);
+                return None;
             }
             Some(i)
         })
