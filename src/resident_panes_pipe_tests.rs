@@ -2,6 +2,9 @@ use super::*;
 
 #[test]
 fn closing_reports_pane_changes_without_selecting_any_patch() {
+    if crate::native_library::process::isolated() {
+        return;
+    }
     let _library = crate::native_library::load().unwrap();
     let (mut app, (mut editor, mut input)) = app("resident pane reporting");
     let open = Open::Patch { track: 1 };

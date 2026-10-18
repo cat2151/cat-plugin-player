@@ -72,6 +72,9 @@ fn shown(app: &App) -> Option<Open> {
 
 #[test]
 fn show_hide_show_again_then_end_when_the_editor_closes() {
+    if crate::native_library::process::isolated() {
+        return;
+    }
     let _library = crate::native_library::load().unwrap();
     let (mut app, (mut editor, editor_in)) = app("resident states");
     let ctx = egui::Context::default();
@@ -129,6 +132,9 @@ fn show_hide_show_again_then_end_when_the_editor_closes() {
 
 #[test]
 fn the_patch_catalog_loads_without_audio() {
+    if crate::native_library::process::isolated() {
+        return;
+    }
     let _library = crate::native_library::load().unwrap();
     let (mut app, _editor) = app("resident catalog");
     assert!(app.instances.is_empty());
@@ -188,6 +194,9 @@ fn answer(app: &mut App, editor: &mut Sender, result: Result<(), String>) {
 
 #[test]
 fn chosen_patches_and_effects_go_to_the_editor_instead_of_loading() {
+    if crate::native_library::process::isolated() {
+        return;
+    }
     use crate::plugin_list::PluginKind;
     let _library = crate::native_library::load().unwrap();
     let (mut app, (mut editor, mut editor_in)) = app("resident offers");

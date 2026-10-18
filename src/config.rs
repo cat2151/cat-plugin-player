@@ -43,6 +43,10 @@ pub fn save_prefer_clap(path: &Path, enabled: bool) -> Result<(), String> {
 }
 
 pub fn path() -> Result<PathBuf, String> {
+    #[cfg(test)]
+    if let Some(root) = std::env::var_os(crate::native_library::process::ROOT) {
+        return Ok(PathBuf::from(root).join("config.toml"));
+    }
     #[cfg(feature = "recording-mode")]
     return crate::recording::config_path();
 

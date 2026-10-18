@@ -6,6 +6,9 @@ use crate::{
 
 #[test]
 fn named_cursor_waits_for_catalog_then_cursor_only_changes_are_reported() {
+    if crate::native_library::process::isolated() {
+        return;
+    }
     let _library = crate::native_library::load().unwrap();
     let (mut app, (mut editor, mut input)) = app("named cursor");
     let patch = PatchIdentity {

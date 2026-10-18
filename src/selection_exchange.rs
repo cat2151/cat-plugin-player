@@ -201,6 +201,9 @@ mod tests {
 
     #[test]
     fn effect_filter_sidecar_restores_category_kind_and_cursor_in_the_next_selection() {
+        if crate::native_library::process::isolated() {
+            return;
+        }
         use crate::effect_browser::tests::candidate;
         let root = crate::selection_tests::directory("effect filter sidecar");
         let input = root.join("track.mid");

@@ -1,6 +1,12 @@
 //! Per-app cache policy; the loader and embedded native host are shared.
 #[path = "../shared/native_library.rs"]
 mod embedded;
+#[cfg(test)]
+#[path = "native_host_parallel_tests.rs"]
+mod host_parallel;
+#[cfg(test)]
+#[path = "native_test_process.rs"]
+pub(crate) mod process;
 pub fn load() -> Result<libloading::Library, Box<dyn std::error::Error + Send + Sync>> {
     #[cfg(feature = "recording-mode")]
     let root = crate::recording::config_path()?
@@ -11,6 +17,10 @@ pub fn load() -> Result<libloading::Library, Box<dyn std::error::Error + Send + 
     let root = dirs::cache_dir()
         .ok_or("cache directory unavailable")?
         .join("cat-plugin-player");
+    #[cfg(test)]
+    let root = std::env::var_os(process::ROOT)
+        .map(std::path::PathBuf::from)
+        .unwrap_or(root);
     #[cfg(test)]
     crate::ffi::trace::mark("DLL load begin");
     let result = embedded::load_at(&root);
@@ -23,6 +33,9 @@ pub fn load() -> Result<libloading::Library, Box<dyn std::error::Error + Send + 
 mod tests {
     #[test]
     fn embedded_shim_loads_and_exports_host_entry_point() {
+        if super::process::isolated() {
+            return;
+        }
         let library = super::load().expect("embedded shim should load");
         extern "C" {
             fn uh_plugin_count(host: *mut crate::ffi::UhHost) -> i32;

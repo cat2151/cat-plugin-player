@@ -93,6 +93,9 @@ mod tests {
 
     #[test]
     fn restores_panes_after_catalog_load_and_never_requests_a_sound() {
+        if crate::native_library::process::isolated() {
+            return;
+        }
         let _library = crate::native_library::load().unwrap();
         let mut app = App::prepare_mode(true);
         let patch = Open::Patch { track: 1 };

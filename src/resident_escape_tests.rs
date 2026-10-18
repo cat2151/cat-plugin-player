@@ -38,6 +38,9 @@ fn nothing_sent(app: &mut App, ctx: &egui::Context) {
 
 #[test]
 fn resident_esc_after_an_applied_patch_hides_and_keeps_it() {
+    if crate::native_library::process::isolated() {
+        return;
+    }
     use crate::plugin_list::PluginKind;
     let _library = crate::native_library::load().unwrap();
     let (mut app, (mut editor, mut editor_in)) = app("escape keeps patch");
@@ -74,6 +77,9 @@ fn resident_esc_after_an_applied_patch_hides_and_keeps_it() {
 /// patch the editor already plays is the one kept.
 #[test]
 fn resident_esc_while_the_editor_applies_keeps_that_patch() {
+    if crate::native_library::process::isolated() {
+        return;
+    }
     use crate::plugin_list::PluginKind;
     let _library = crate::native_library::load().unwrap();
     let (mut app, (mut editor, mut editor_in)) = app("escape while applying");
@@ -96,6 +102,9 @@ fn resident_esc_while_the_editor_applies_keeps_that_patch() {
 /// the patch playing before stays.
 #[test]
 fn resident_esc_while_preparing_drops_that_patch() {
+    if crate::native_library::process::isolated() {
+        return;
+    }
     use crate::plugin_list::PluginKind;
     let _library = crate::native_library::load().unwrap();
     let (mut app, (mut editor, mut editor_in)) = app("escape while preparing");
@@ -126,6 +135,9 @@ fn resident_esc_while_preparing_drops_that_patch() {
 
 #[test]
 fn resident_esc_in_the_heavy_confirmation_returns_to_the_browser() {
+    if crate::native_library::process::isolated() {
+        return;
+    }
     let _library = crate::native_library::load().unwrap();
     let (mut app, (mut editor, _editor_in)) = app("escape heavy confirmation");
     let ctx = egui::Context::default();
@@ -153,6 +165,9 @@ fn resident_esc_in_the_heavy_confirmation_returns_to_the_browser() {
 
 #[test]
 fn resident_esc_after_an_applied_effect_hides_and_sends_nothing() {
+    if crate::native_library::process::isolated() {
+        return;
+    }
     use crate::plugin_list::PluginKind;
     let _library = crate::native_library::load().unwrap();
     let (mut app, (mut editor, mut editor_in)) = app("escape keeps effect");
@@ -190,6 +205,9 @@ fn standalone(test: &str) -> App {
 
 #[test]
 fn standalone_esc_closes_the_browser_and_keeps_the_applied_patch() {
+    if crate::native_library::process::isolated() {
+        return;
+    }
     let _library = crate::native_library::load().unwrap();
     let mut app = standalone("escape standalone");
     let playing = crate::patch_browser_catalog::tests::candidate("a", "Alpha", "Bass", None);
@@ -205,6 +223,9 @@ fn standalone_esc_closes_the_browser_and_keeps_the_applied_patch() {
 
 #[test]
 fn standalone_esc_in_the_heavy_confirmation_closes_only_the_dialog() {
+    if crate::native_library::process::isolated() {
+        return;
+    }
     let _library = crate::native_library::load().unwrap();
     let mut app = standalone("escape standalone heavy");
     let mut heavy = crate::patch_browser_catalog::tests::candidate("b", "Beta", "Heavy", None);
@@ -221,6 +242,9 @@ fn standalone_esc_in_the_heavy_confirmation_closes_only_the_dialog() {
 
 #[test]
 fn mml_esc_drops_the_typed_text_and_restores_the_pattern() {
+    if crate::native_library::process::isolated() {
+        return;
+    }
     let _library = crate::native_library::load().unwrap();
     let mut app = App::prepare_mode(true);
     app.config_path = Ok(crate::selection_tests::directory("escape mml").join("config.toml"));

@@ -3,6 +3,9 @@ use crate::{config::PluginKey, ffi::PluginInfo};
 
 #[test]
 fn cached_catalog_is_ready_without_loading_plugins_and_unchanged_refresh_keeps_generation() {
+    if crate::native_library::process::isolated() {
+        return;
+    }
     let _library = crate::native_library::load().unwrap();
     let root = crate::selection_tests::directory("cached-startup");
     let config = root.join("config.toml");

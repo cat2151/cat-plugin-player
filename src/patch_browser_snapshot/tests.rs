@@ -7,6 +7,9 @@ use std::time::{Duration, Instant};
 
 #[test]
 fn startup_publishes_only_the_complete_scanned_catalog() {
+    if crate::native_library::process::isolated() {
+        return;
+    }
     let _library = crate::native_library::load().unwrap();
     let mut app = App::prepare();
     app.output = None;
