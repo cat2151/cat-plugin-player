@@ -121,6 +121,7 @@ impl App {
             self.pending = Some(PendingLoad {
                 plugin: plugin.clone(),
                 purpose: LoadPurpose::Patch(Box::new(replacement)),
+                data_home: None,
             });
             if let Err(error) = self.patch_operation(Operation::Create, |_| Ok(())) {
                 self.instance_created(-1, Some(error));
@@ -232,6 +233,7 @@ impl App {
                 kind: PluginKind::Instrument,
                 voice,
                 sweep_cc1: false,
+                minimal_data_home: false,
                 preset_name: None,
             },
         );

@@ -20,6 +20,7 @@ fn instance(id: i32, plugin: &PluginInfo) -> Instance {
         kind: plugin.kind,
         voice: None,
         sweep_cc1: false,
+        minimal_data_home: false,
         preset_name: None,
     }
 }

@@ -9,6 +9,16 @@ mod surge_xt;
 mod tyrell_n6;
 mod vaporizer2;
 
+pub(crate) use surge_xt::StartupDataHome;
+
+/// Surge XT scans its browser trees per instance; the restored one skips them.
+pub(crate) fn startup_data_home(
+    plugin: &PluginKey,
+    cache: &std::path::Path,
+) -> Result<Option<StartupDataHome>, String> {
+    surge_xt::startup_data_home(plugin, cache)
+}
+
 pub(crate) fn automatic_note_start_delay(plugin: &PluginKey) -> std::time::Duration {
     surge_xt::automatic_note_start_delay(plugin).max(floe::automatic_note_start_delay(plugin))
 }

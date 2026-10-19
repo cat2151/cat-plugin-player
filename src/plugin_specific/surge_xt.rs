@@ -5,6 +5,45 @@ use quick_xml::{events::Event, Reader};
 #[cfg(test)]
 #[path = "surge_xt_tests.rs"]
 mod tests;
+// ADR 0034: the editor configures its whole process; the player switches per creation.
+#[allow(dead_code)]
+#[path = "../../shared/surge_data_home.rs"]
+mod data_home;
+
+/// Holds `SURGE_DATA_HOME` at the minimal tree; dropping restores the original value.
+pub(crate) struct StartupDataHome {
+    original: Option<std::ffi::OsString>,
+}
+
+impl Drop for StartupDataHome {
+    fn drop(&mut self) {
+        match &self.original {
+            Some(value) => std::env::set_var("SURGE_DATA_HOME", value),
+            None => std::env::remove_var("SURGE_DATA_HOME"),
+        }
+    }
+}
+
+/// Surge reads `SURGE_DATA_HOME` with `getenv` in every instance constructor, so
+/// the value set here reaches only the creations requested while the guard lives.
+/// Set and drop it on the main thread around one creation: nothing else creates
+/// plugins then, because scans and catalogs wait for the pending load to finish.
+pub(super) fn startup_data_home(
+    plugin: &PluginKey,
+    cache: &std::path::Path,
+) -> Result<Option<StartupDataHome>, String> {
+    if !matches_plugin(plugin) {
+        return Ok(None);
+    }
+    let Some(minimal) = data_home::minimal_path(cache)? else {
+        return Ok(None);
+    };
+    let guard = StartupDataHome {
+        original: std::env::var_os("SURGE_DATA_HOME"),
+    };
+    std::env::set_var("SURGE_DATA_HOME", minimal);
+    Ok(Some(guard))
+}
 
 fn matches_plugin(plugin: &PluginKey) -> bool {
     matches!(

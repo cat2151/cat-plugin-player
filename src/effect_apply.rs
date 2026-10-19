@@ -74,6 +74,7 @@ impl App {
                 prepared,
                 old_state,
             }),
+            data_home: None,
         });
         unsafe {
             self.host.create_instance(
@@ -157,6 +158,7 @@ impl App {
             kind: PluginKind::Effect,
             voice: None,
             sweep_cc1: false,
+            minimal_data_home: false,
             preset_name: Some(prepared.candidate.preset.display.clone()),
         };
         if let Some(target) = prepared.target {

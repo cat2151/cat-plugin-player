@@ -178,6 +178,8 @@ struct Instance {
     voice: Option<audio::Voice>,
     /// Whether the most recently delivered automatic CC1 came from sweep.
     sweep_cc1: bool,
+    /// Created with Surge XT's minimal data home; its editor menus are nearly empty.
+    minimal_data_home: bool,
     /// Last preset applied by a browser; plugin GUI edits are not observable.
     preset_name: Option<String>,
 }
@@ -260,17 +262,6 @@ impl App {
             } else {
                 "Loading plugin list...".into()
             };
-        }
-    }
-
-    fn log_status_error(&self, previous: &str) {
-        if self.status == previous || !error_log::is_error(&self.status) {
-            return;
-        }
-        if let Ok(path) = &self.config_path {
-            if let Err(error) = error_log::append(path, &self.status) {
-                eprintln!("{error}");
-            }
         }
     }
 

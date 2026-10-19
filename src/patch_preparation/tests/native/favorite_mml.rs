@@ -120,6 +120,7 @@ fn native_favorite_mml_restore_and_rejection() {
                 kind: PluginKind::Effect,
                 voice: None,
                 sweep_cc1: false,
+                minimal_data_home: false,
                 preset_name: None,
             });
             app.load_favorite(&favorite.id);

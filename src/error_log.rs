@@ -21,6 +21,23 @@ pub(crate) fn is_error(status: &str) -> bool {
     .any(|term| status.contains(term))
 }
 
+impl crate::App {
+    pub(crate) fn log_status_error(&self, previous: &str) {
+        if self.status == previous || !is_error(&self.status) {
+            return;
+        }
+        self.log_error(&self.status);
+    }
+
+    pub(crate) fn log_error(&self, message: &str) {
+        if let Ok(path) = &self.config_path {
+            if let Err(error) = append(path, message) {
+                eprintln!("{error}");
+            }
+        }
+    }
+}
+
 pub(crate) fn append(config: &Path, message: &str) -> Result<(), String> {
     let path = config.with_file_name(FILE_NAME);
     let line = format!("{} {message}\n", utc_now());

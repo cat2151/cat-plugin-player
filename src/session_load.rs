@@ -4,6 +4,7 @@ use crate::{audio, config, on_instance, plugin_list::PluginKind, startup, App, I
 pub(crate) struct PendingLoad {
     pub plugin: crate::ffi::PluginInfo,
     pub purpose: LoadPurpose,
+    pub data_home: Option<crate::plugin_specific::StartupDataHome>,
 }
 pub(crate) enum LoadPurpose {
     Manual,
@@ -17,6 +18,8 @@ pub(crate) enum LoadPurpose {
     ),
     Patch(Box<crate::patch_apply::Replacement>),
     EffectPreset(crate::effect_apply::Replacement),
+    /// Reloads the instance with this id with the normal data home, then opens its editor.
+    Editor(i32),
 }
 
 impl App {
@@ -76,6 +79,7 @@ impl App {
             } else {
                 LoadPurpose::Manual
             },
+            data_home: None,
         });
         startup::mark(startup::Stage::LoadRequested);
         unsafe {
@@ -114,12 +118,17 @@ impl App {
 
     pub(crate) fn instance_created(&mut self, id: i32, error: Option<String>) {
         startup::mark(startup::Stage::InstanceHandled);
-        let Some(pending) = self.pending.take() else {
+        let Some(mut pending) = self.pending.take() else {
             return;
         };
+        let minimal_data_home = pending.data_home.take().is_some();
         let plugin = pending.plugin;
         let auto_play = matches!(pending.purpose, LoadPurpose::AutoInstrument);
         let browser_effect = matches!(pending.purpose, LoadPurpose::BrowserEffect);
+        let editor_of = match pending.purpose {
+            LoadPurpose::Editor(previous) => Some(previous),
+            _ => None,
+        };
         let favorite = match pending.purpose {
             LoadPurpose::EffectPreset(prepared) => {
                 self.effect_instance_created(plugin, prepared, id, error);
@@ -133,7 +142,8 @@ impl App {
             LoadPurpose::Manual
             | LoadPurpose::Restore
             | LoadPurpose::AutoInstrument
-            | LoadPurpose::BrowserEffect => None,
+            | LoadPurpose::BrowserEffect
+            | LoadPurpose::Editor(_) => None,
         };
         let label = format!("{} [{}]", plugin.name, plugin.format);
         if let Some(error) = error.or_else(|| (id < 0).then(|| "creation failed".into())) {
@@ -205,6 +215,7 @@ impl App {
             kind,
             voice: None,
             sweep_cc1: false,
+            minimal_data_home,
             preset_name: self.selection.as_ref().map_or_else(
                 || {
                     self.config_path
@@ -245,6 +256,14 @@ impl App {
         } else {
             format!("Loaded {label}, but no audio device")
         };
+        if let Some(previous) = editor_of {
+            // The same sound continues in the new instance.
+            for (instance, _) in &mut self.favorites.active {
+                if *instance == previous {
+                    *instance = id;
+                }
+            }
+        }
         self.favorites
             .active
             .retain(|(instance, _)| self.instances.iter().any(|i| i.id == *instance));
@@ -261,6 +280,9 @@ impl App {
             );
         } else if self.restoring {
             self.restore_favorite_selection(id);
+        }
+        if editor_of.is_some() {
+            self.show_editor(id);
         }
         if wait_for_effect {
             self.restore_effect_after_instrument();
@@ -307,6 +329,39 @@ impl App {
             Err(error) => format!("{message}; no audio: {error}"),
         };
         // Keep the disk session intact on failure, including a missing effect.
+    }
+
+    /// An instance created with Surge XT's minimal data home is first reloaded with
+    /// the normal one, so that its editor lists the installed patches and wavetables.
+    pub(crate) fn open_editor(&mut self, id: i32) {
+        let Some(instance) = self.instances.iter().find(|i| i.id == id) else {
+            return;
+        };
+        if !instance.minimal_data_home {
+            self.show_editor(id);
+            return;
+        }
+        if self.pending.is_some() {
+            return;
+        }
+        if self.actions_busy() {
+            self.status = "Wait for loading to finish, then open the plugin UI again".into();
+            return;
+        }
+        let Some(index) = instance.plugin.find(&self.plugins) else {
+            self.status = format!("Plugin not found: {}", instance.label);
+            return;
+        };
+        self.load_plugin(index);
+        if let Some(pending) = &mut self.pending {
+            pending.purpose = LoadPurpose::Editor(id);
+        }
+    }
+
+    fn show_editor(&mut self, id: i32) {
+        if let Err(code) = self.host.show_ui(id) {
+            self.status = format!("Could not open the plugin UI (code {code})");
+        }
     }
 
     fn restore_effect_after_instrument(&mut self) {

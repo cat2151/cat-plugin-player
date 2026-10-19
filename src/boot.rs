@@ -160,6 +160,19 @@ impl App {
     }
 
     pub(crate) fn restore_before_gui(&mut self) {
+        let data_home = self.startup_data_home();
+        let requested = self.request_startup_restore();
+        // The pending load restores the environment when the creation finishes or fails.
+        if let Some(pending) = &mut self.pending {
+            pending.data_home = data_home;
+        }
+        if requested {
+            self.wait_for_startup_audio();
+        }
+    }
+
+    /// Returns whether a restoration was requested before the GUI opens.
+    fn request_startup_restore(&mut self) -> bool {
         if !self.deferred_scan {
             // A newly imported SMF may name a valid plugin absent from the
             // last complete scan. Add that target without losing the cache.
@@ -174,13 +187,12 @@ impl App {
                         // restoration; keep its key until the scan completes.
                         self.deferred_scan = true;
                         self.catalog_startup.cancel_refresh();
-                        return;
+                        return false;
                     }
                 }
             }
             self.restore_session();
-            self.wait_for_startup_audio();
-            return;
+            return true;
         }
         let Some(plugin) = self
             .restore
@@ -188,7 +200,7 @@ impl App {
             .and_then(|key| self.host.restore_plugin(key))
         else {
             // Old history, missing bundle, or no history: scan after the GUI opens.
-            return;
+            return false;
         };
         self.fast_restore = true;
         self.restoring = true;
@@ -196,7 +208,27 @@ impl App {
         plugin.kind = crate::plugin_list::PluginKind::Instrument;
         self.plugins.push(plugin);
         self.load_plugin(0);
-        self.wait_for_startup_audio();
+        true
+    }
+
+    /// Only the startup creation of the last instrument skips Surge XT's browser
+    /// scans; an editor opened later needs the full menus, so other loads keep the
+    /// normal data home. SMF selection and resident players are not startups.
+    fn startup_data_home(&self) -> Option<crate::plugin_specific::StartupDataHome> {
+        let key = self.restore.as_ref()?;
+        if self.selection.is_some() || self.resident.is_some() {
+            return None;
+        }
+        let cache = crate::native_library::cache_root().map(|root| root.join("cache"));
+        match cache.and_then(|cache| crate::plugin_specific::startup_data_home(key, &cache)) {
+            Ok(guard) => guard,
+            Err(error) => {
+                self.log_error(&format!(
+                    "Could not prepare Surge XT minimal data home; using the normal one: {error}"
+                ));
+                None
+            }
+        }
     }
 
     fn wait_for_startup_audio(&mut self) {

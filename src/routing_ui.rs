@@ -242,9 +242,7 @@ impl App {
             self.set_effect_bypass(bypass);
         }
         if let Some(id) = show {
-            if let Err(code) = self.host.show_ui(id) {
-                self.status = format!("Could not open the plugin UI (code {code})");
-            }
+            self.open_editor(id);
         }
         if let Some(id) = hide {
             self.host.hide_ui(id);

@@ -82,6 +82,7 @@ https://github.com/user-attachments/assets/c4a7cec0-ebfd-4cea-bc21-bbfc4dd8e92d
   - instrument の `Load` は音源だけを置き換え、接続済み effect と設定は維持します。置き換えるプラグインの state を保存し、新しいプラグインの生成・復元・接続に成功してから切り替えます。失敗した場合は元の構成を維持してエラーを表示します
   - stateの保存範囲はプラグインとUAPMDの形式別実装によります。UI stateも要求しますが、現在のUAPMDのVST3実装はcomponent stateのみを取得します。外部サンプルの複製や、強制終了時の保存は含みません
   - 起動時は保存済みの全プラグイン一覧を読み、前回の instrument と effect を直接ロードしてstateを復元し、演奏を開始します。その後にGUIを初期化し、操作が落ち着いてから一覧を背景で再検出します。全一覧のキャッシュがない初回はGUI表示後に検出します
+  - 前回の instrument が Surge XT（CLAP / VST3）のときは、起動時のこの1件だけを、patch・wavetable・FX preset の一覧を省いた構成で作って早く鳴らします。この構成のままでは Surge のGUIのメニューがほぼ空になるため、その Surge の `Show UI` を押すと、音色を保ったまま通常の構成で作り直してからGUIを開きます。その間は音が一度止まり、0.3〜0.4秒ほどで戻ります。`Load`・音色ブラウザー・お気に入り・History・effect で作る Surge XT は通常の構成です。環境変数 `CMRT_SURGE_MINIMAL_DATA_HOME=0` で無効にできます。理由は[ADR 0034](docs/adr/0034-surge-xt-startup-minimal-data-home.md)を参照してください
   - 古い履歴やファイル移動などで直接ロードできない場合は、GUI表示後の走査結果から復元します。古い履歴は一度演奏すると更新されます
   - 主音源がCLAP Floeの場合は、ロードや音色復元などで音声処理を再構築した際、最初のフレーズの開始を100ms遅らせます。MMLの先頭休符はさらに加算されます。冒頭音が消える症状の観察用の暫定対策で、実機での解消は未確認です。適用条件と見直し方針は[ADR 0018](docs/adr/0018-floe-automatic-note-start-delay.md)を参照してください
   - 起動時間の計測方法と結果は [docs/startup-timing.md](docs/startup-timing.md) を参照してください

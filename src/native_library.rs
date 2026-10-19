@@ -8,6 +8,16 @@ mod host_parallel;
 #[path = "native_test_process.rs"]
 pub(crate) mod process;
 pub fn load() -> Result<libloading::Library, Box<dyn std::error::Error + Send + Sync>> {
+    let root = cache_root()?;
+    #[cfg(test)]
+    crate::ffi::trace::mark("DLL load begin");
+    let result = embedded::load_at(&root);
+    #[cfg(test)]
+    crate::ffi::trace::mark("DLL load end");
+    result
+}
+
+pub(crate) fn cache_root() -> Result<std::path::PathBuf, String> {
     #[cfg(feature = "recording-mode")]
     let root = crate::recording::config_path()?
         .parent()
@@ -21,12 +31,7 @@ pub fn load() -> Result<libloading::Library, Box<dyn std::error::Error + Send + 
     let root = std::env::var_os(process::ROOT)
         .map(std::path::PathBuf::from)
         .unwrap_or(root);
-    #[cfg(test)]
-    crate::ffi::trace::mark("DLL load begin");
-    let result = embedded::load_at(&root);
-    #[cfg(test)]
-    crate::ffi::trace::mark("DLL load end");
-    result
+    Ok(root)
 }
 
 #[cfg(test)]

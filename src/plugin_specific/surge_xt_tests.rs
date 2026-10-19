@@ -4,6 +4,15 @@ use crate::favorites_store::Library;
 #[path = "surge_xt_startup_tests.rs"]
 mod startup_tests;
 
+#[path = "surge_xt_data_home_tests.rs"]
+mod data_home_tests;
+
+#[path = "surge_xt_startup_data_home_tests.rs"]
+mod startup_data_home_tests;
+
+#[path = "surge_xt_editor_rebuild_tests.rs"]
+mod editor_rebuild_tests;
+
 fn plugin() -> PluginKey {
     PluginKey {
         format: "CLAP".into(),
