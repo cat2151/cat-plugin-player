@@ -33,7 +33,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// Bump to force one new configure run in existing build directories.
-const CONFIGURE_STAMP: &str = ".uh_configured_v3";
+const CONFIGURE_STAMP: &str = ".uh_configured_v4";
 
 fn run(cmd: &mut Command) {
     println!("cargo:warning=running: {:?}", cmd);
@@ -121,6 +121,11 @@ pub fn build() {
         uapmd_dir
             .join("source/uapmd-plugin-hosting/src/scanner/PluginScanTool.cpp")
             .display()
+    );
+
+    println!(
+        "cargo:rerun-if-changed={}",
+        player_dir.join("patches/uapmd/stb-revision-pin").display()
     );
 
     if env::var_os("UH_SKIP_CMAKE").is_none() {

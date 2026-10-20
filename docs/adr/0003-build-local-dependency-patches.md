@@ -1,6 +1,6 @@
 # ADR 0003: 依存ライブラリの補修をpatchesに集約し、ビルド用コピーへ適用する
 
-- 状態: 採用（UAPMDの補修3件で使用中）
+- 状態: 採用（UAPMDの補修4件で使用中）
 - 記録範囲: 現在の `patches/` の構成と適用方式。新しい補修の導入を承認するものではない。
 
 ## 何の話か
@@ -14,7 +14,7 @@
 
 - 依存ライブラリへのローカル補修は `patches/<依存名>/<補修名>/` にまとめる。
   UAPMDでは `patches/uapmd/<補修名>/` に適用処理、回帰テスト、説明書、作者向け報告文を置く。
-- 依存checkoutを直接書き換えず、既定の `target/shim` 内に補修済みソースを生成して
+- ソースを補修する場合は依存checkoutを直接書き換えず、既定の `target/shim` 内に補修済みソースを生成して
   コンパイル対象を切り替える。別のtargetディレクトリは作成・使用しない。
 - 補修前に対象と想定するコードを検証する。
   条件が一致しなければ、補修名、対象、失敗条件、取得可能な上流リビジョン、説明書の場所を示して停止する。
@@ -33,15 +33,19 @@
 | UAPMD / remidyのCLAP入力Note形式 | [clap-note-dialect](../../patches/uapmd/clap-note-dialect/README.md) | [ADR 0005](0005-clap-input-note-dialect.md) |
 | UAPMD / remidyのCLAP state読込失敗 | [clap-state-load-error](../../patches/uapmd/clap-state-load-error/README.md) | [ADR 0013](0013-clap-state-load-error.md) |
 | UAPMD / PluginScanToolのdata directory競合 | [scan-tool-data-dir-race](../../patches/uapmd/scan-tool-data-dir-race/README.md) | [ADR 0032](0032-scan-tool-data-dir-race.md) |
+| UAPMD / rtlogのstb revision | [stb-revision-pin](../../patches/uapmd/stb-revision-pin/README.md) | [ADR 0035](0035-stb-revision-pin.md) |
 
 撤去済み: Windows VST3ローダー（[ADR 0021](0021-remove-windows-vst3-loader-patch.md)）。
 
 ### 適用経路
 
-[shim/CMakeLists.txt](../../shim/CMakeLists.txt) が各補修の `CMakeLists.cmake` を読み込む。
+stb補修はソースコピーではなく、[共有host](../../shared/host.cmake)でUAPMDより前にFetchContentを宣言し、取得前の既存cacheと取得後を検証する。
+
+[shim/CMakeLists.txt](../../shim/CMakeLists.txt) から共有hostを経由し、各補修の `CMakeLists.cmake` を読み込む。
+以下はソース補修3件の適用方式。
 configure時に適用処理が上流ソースを検証し、`target/shim/generated/<補修名>/` に補修済みのコピーを生成して、
 remidyの元ファイルをコンパイル対象から外す。
-[build.rs](../../build.rs) は補修ディレクトリと上流の対象ソースを監視し、
+[共有build driver](../../shared/build.rs) は補修ディレクトリと上流の対象ソースを監視し、
 CMakeも対象ソースと適用処理の変更を再configureの対象とする。
 同じ適用条件を満たすcheckoutでは、再clone後もconfigure時に再生成される。
 `UH_SKIP_CMAKE` は既存DLLを流用するため、補修の適用・検証には使わない。

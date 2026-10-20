@@ -25,7 +25,9 @@ set(UAPMD_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 
 # The whole of uapmd gets configured, but EXCLUDE_FROM_ALL means that only what
 # uapmd_shim links against gets compiled.
+include("${UH_PLAYER_ROOT}/patches/uapmd/stb-revision-pin/CMakeLists.cmake")
 add_subdirectory("${UAPMD_DIR}" uapmd EXCLUDE_FROM_ALL)
+uh_stb_verify()
 include("${UH_PLAYER_ROOT}/patches/uapmd/clap-note-dialect/CMakeLists.cmake")
 include("${UH_PLAYER_ROOT}/patches/uapmd/clap-state-load-error/CMakeLists.cmake")
 include("${UH_PLAYER_ROOT}/patches/uapmd/scan-tool-data-dir-race/CMakeLists.cmake")

@@ -1,0 +1,43 @@
+include(FetchContent)
+set(UH_STB_PIN 2c980bb59875b0d32144a71867fbdebb2f77cd20)
+set(UH_STB_PATCH_DIR "${CMAKE_CURRENT_LIST_DIR}")
+function(uh_stb_fail reason source)
+    execute_process(COMMAND git -C "${UAPMD_DIR}" rev-parse HEAD
+        OUTPUT_VARIABLE upstream OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    execute_process(COMMAND git -C "${source}" rev-parse HEAD
+        OUTPUT_VARIABLE revision OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    message(FATAL_ERROR "[stb-revision-pin] target: ${source}; ${reason}; UAPMD revision: ${upstream}; stb revision: ${revision}; instructions: ${UH_STB_PATCH_DIR}/README.md")
+endfunction()
+function(uh_stb_validate source)
+    if(NOT EXISTS "${source}/stb_sprintf.h")
+        uh_stb_fail("required root stb_sprintf.h missing" "${source}")
+    endif()
+    execute_process(COMMAND git -C "${source}" rev-parse HEAD
+        RESULT_VARIABLE result OUTPUT_VARIABLE revision OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    execute_process(COMMAND git -C "${source}" status --porcelain --untracked-files=all
+        RESULT_VARIABLE status_result OUTPUT_VARIABLE dirty ERROR_QUIET)
+    if(NOT result EQUAL 0 OR NOT revision STREQUAL UH_STB_PIN OR NOT status_result EQUAL 0 OR dirty)
+        uh_stb_fail("expected clean checkout at ${UH_STB_PIN}; preserve cache before recovery" "${source}")
+    endif()
+endfunction()
+# Validate before FetchContent can update an existing source directory.
+if(FETCHCONTENT_SOURCE_DIR_STB OR TARGET stb OR TARGET stb::stb)
+    uh_stb_fail("source override or pre-existing target bypasses pinned acquisition" "${FETCHCONTENT_SOURCE_DIR_STB}")
+endif()
+if(EXISTS "${FETCHCONTENT_BASE_DIR}/stb-src")
+    uh_stb_validate("${FETCHCONTENT_BASE_DIR}/stb-src")
+endif()
+FetchContent_Declare(stb
+    GIT_REPOSITORY https://github.com/nothings/stb
+    GIT_TAG ${UH_STB_PIN})
+function(uh_stb_verify)
+    FetchContent_GetProperties(stb)
+    if(NOT stb_POPULATED OR NOT TARGET stb::stb)
+        uh_stb_fail("upstream no longer populates stb or creates stb::stb" "${stb_SOURCE_DIR}")
+    endif()
+    uh_stb_validate("${stb_SOURCE_DIR}")
+    get_target_property(includes stb::stb INTERFACE_INCLUDE_DIRECTORIES)
+    if(NOT "$<BUILD_INTERFACE:${stb_SOURCE_DIR}>" IN_LIST includes)
+        uh_stb_fail("upstream target no longer exports the root include directory" "${stb_SOURCE_DIR}")
+    endif()
+endfunction()
