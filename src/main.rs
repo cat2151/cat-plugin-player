@@ -118,6 +118,7 @@ mod sequence_velocity;
 use sequence_pattern::SequencePattern;
 use sequence_velocity::SequenceVelocity;
 mod session;
+mod session_editor;
 mod session_load;
 mod shutdown;
 mod startup;
@@ -185,6 +186,7 @@ struct Instance {
 }
 
 struct App {
+    editor_rebuild: Option<session_editor::Rebuild>,
     // Declared before `host` so that it drops first: the audio streams and
     // processors in here must be gone before the host is destroyed.
     instances: Vec<Instance>,

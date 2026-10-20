@@ -165,6 +165,13 @@ impl App {
     }
 
     pub(crate) fn save_session(&mut self) {
+        if self.editor_rebuild.is_some() {
+            if self.pending.is_some() || self.instrument_id().is_none() {
+                return;
+            }
+            // An explicit patch/favorite may succeed after recovery failed.
+            self.editor_rebuild = None;
+        }
         if self.selection.is_some() {
             return;
         }

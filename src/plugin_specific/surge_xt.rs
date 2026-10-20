@@ -5,7 +5,7 @@ use quick_xml::{events::Event, Reader};
 #[cfg(test)]
 #[path = "surge_xt_tests.rs"]
 mod tests;
-// ADR 0034: the editor configures its whole process; the player switches per creation.
+// ADR 0034: the editor configures its process; the player releases the minimal DLL.
 #[allow(dead_code)]
 #[path = "../../shared/surge_data_home.rs"]
 mod data_home;
@@ -24,8 +24,8 @@ impl Drop for StartupDataHome {
     }
 }
 
-/// Surge reads `SURGE_DATA_HOME` with `getenv` in every instance constructor, so
-/// the value set here reaches only the creations requested while the guard lives.
+/// Surge reads `SURGE_DATA_HOME` through its DLL's runtime. On Windows the DLL
+/// must unload before a normal creation can observe the restored environment.
 /// Set and drop it on the main thread around one creation: nothing else creates
 /// plugins then, because scans and catalogs wait for the pending load to finish.
 pub(super) fn startup_data_home(

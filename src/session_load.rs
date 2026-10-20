@@ -34,6 +34,9 @@ impl App {
         } else {
             self.invalidate_browser_live();
         }
+        if !self.restoring && self.rebuild_minimal(index, false) {
+            return;
+        }
         if plugin.kind == PluginKind::Effect && self.instrument_id().is_none() {
             self.status = "Load an instrument first".into();
             return;
@@ -151,15 +154,19 @@ impl App {
             return;
         }
         let key = config::PluginKey::from_plugin(&plugin);
-        let restored = match &favorite {
-            Some((_, state, _)) => self.host.load_state(id, state),
-            None => self.restore_plugin_state(id, &key),
+        let rebuild = self.editor_rebuild.as_ref().filter(|r| r.matches(&key));
+        let restored = match (&favorite, rebuild) {
+            (Some((_, state, _)), _) => self.host.load_state(id, state),
+            (None, Some(rebuild)) => crate::session_editor::checkpoint("state")
+                .and_then(|()| self.host.load_state(id, &rebuild.state)),
+            (None, None) => self.restore_plugin_state(id, &key),
         };
         if let Err(error) = restored {
             self.host.destroy_instance(id);
             self.load_failed(format!("Could not restore {label}: {error}"));
             return;
         }
+        let rebuilding = rebuild.is_some();
         let kind = if plugin.kind == PluginKind::Effect {
             PluginKind::Effect
         } else {
@@ -186,7 +193,12 @@ impl App {
             (favorite, state)
         });
         let new_instrument = (kind == PluginKind::Instrument).then_some(&key);
-        let prepared = self.prepare_voice(instrument, &effects, wait_for_effect, new_instrument);
+        let prepared = if rebuilding {
+            crate::session_editor::checkpoint("chain")
+        } else {
+            Ok(())
+        }
+        .and_then(|()| self.prepare_voice(instrument, &effects, wait_for_effect, new_instrument));
         let voice = match prepared {
             Ok(voice) => voice,
             Err(error) => {
@@ -264,6 +276,11 @@ impl App {
                 }
             }
         }
+        let rebuild_error = if kind == PluginKind::Instrument {
+            self.finish_editor_rebuild(id)
+        } else {
+            None
+        };
         self.favorites
             .active
             .retain(|(instance, _)| self.instances.iter().any(|i| i.id == *instance));
@@ -297,10 +314,17 @@ impl App {
         }
         self.selection_committed();
         self.save_session();
+        if let Some(error) = rebuild_error {
+            self.status = format!("{error}; saved sound recovered; open UI again to retry");
+            self.config_error = Some(self.status.clone());
+        }
     }
 
     pub(crate) fn load_failed(&mut self, message: String) {
         self.pending = None;
+        if self.recover_editor_rebuild(&message) {
+            return;
+        }
         if self.restoring {
             if let Some(selection) = &mut self.selection {
                 selection.restoration_failed = true;
@@ -352,10 +376,7 @@ impl App {
             self.status = format!("Plugin not found: {}", instance.label);
             return;
         };
-        self.load_plugin(index);
-        if let Some(pending) = &mut self.pending {
-            pending.purpose = LoadPurpose::Editor(id);
-        }
+        self.rebuild_minimal(index, true);
     }
 
     fn show_editor(&mut self, id: i32) {

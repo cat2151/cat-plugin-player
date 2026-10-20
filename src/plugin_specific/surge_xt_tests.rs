@@ -13,6 +13,15 @@ mod startup_data_home_tests;
 #[path = "surge_xt_editor_rebuild_tests.rs"]
 mod editor_rebuild_tests;
 
+#[path = "surge_xt_catalog_probe.rs"]
+mod catalog_probe;
+
+#[path = "surge_xt_recovery_tests.rs"]
+mod recovery_tests;
+
+#[path = "surge_xt_user_session_tests.rs"]
+mod user_session_tests;
+
 fn plugin() -> PluginKey {
     PluginKey {
         format: "CLAP".into(),

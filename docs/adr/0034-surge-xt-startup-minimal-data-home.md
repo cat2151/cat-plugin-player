@@ -1,41 +1,52 @@
-# ADR 0034: 起動時に復元する Surge XT だけを最小 data home で作る
+# ADR 0034: Surge XTの起動高速化と、Show UIで通常構成へ戻す方式の変更
 
-- 状態: 採用
-- 関連: [cat-smf-editor ADR 0012](../../../cat-smf-editor/docs/adr/0012-surge-minimal-data-home.md) / [0008](0008-surge-xt-automatic-note-start-delay.md) / [起動時間の計測](../startup-timing.md)
+- 状態: 採用。旧instanceを保持したまま作り直す方式は撤回。
+- 関連: [cat-smf-editor ADR 0012](../../../cat-smf-editor/docs/adr/0012-surge-minimal-data-home.md) / [自動note開始待ち（ADR 0008）](0008-surge-xt-automatic-note-start-delay.md)
 
-## 決定
+## 起動順序を変えた当初の判断
 
-前回の音源が Surge XT（CLAP・VST3）のとき、起動時の復元で作る1件だけを、`SURGE_DATA_HOME` を最小構成の
-data home にした状態で生成する。最小構成の作り方と無効化（`CMRT_SURGE_MINIMAL_DATA_HOME=0`）は
-cat-smf-editor と共有する `shared/surge_data_home.rs` に従い、cache は
-`%LOCALAPPDATA%\cat-plugin-player\cache\surge-data-min-v2\` に置く。
+起動から演奏までの待ちを測ると、GUI初期化と全体走査が大きな割合を占めていた。
+前回の音源を鳴らすために全pluginの一覧完成を待つ必要はないため、保存したplugin情報から直接復元し、GUI初期化と全体走査を後回しにした。
+当時の連続起動比較では、最初の信号生成までの中央値が約1.35秒から約0.56秒へ短縮した（実装: `b7fbb38`）。
+直接復元できない場合は走査後の復元へ戻すことで、速い起動のために従来の復元経路を失わない方針とした。
 
-- 環境変数は main thread で生成要求の直前に変え、完了または失敗の時点で元の値に戻す（元が未設定なら削除）。
-- 最小構成で作った instance には印を付け、その editor を開く操作は、state を持ったまま通常構成で
-  同じ plugin を作り直してから開く。作り直しは手動の `Load` と同じ差し替え経路を使う。
-- 準備に失敗したら環境変数を変えずに通常構成で作り、`error.log` に記録する。
-- 手動ロード・patch browser・Favorite / History・エフェクト・走査後の復元・`--select-smf`・resident は通常構成のまま。
+## Surge XTを最小構成で生成する判断
 
-## 理由
+起動順序を変えても、Surge XTは生成時にpatch・wavetable・FX presetを走査し、その待ちが残った。
+保存したstateで演奏を始めるだけなら一覧は不要なので、起動時に復元する主音源のSurge XTだけを、一覧を省いた最小の `SURGE_DATA_HOME` で生成することにした。
+この最小化の有無を比べた連続起動では、最初の信号生成の中央値は約0.82秒から約0.22秒になった。
 
-- Surge は instance を作るたびに patch・FX preset・wavetable を走査し、発音までの大半を占める。
-  最小構成で生成は約690ms から約70ms になり、起動から最初の信号は約820ms から約215ms になった。
-- Surge は instance の constructor ごとに `getenv("SURGE_DATA_HOME")` を読むので、同じ process の中で
-  生成ごとに切り替えられる。切り替えている間は走査と patch catalog が保留中のロードを待つため、
-  他の生成が最小構成を拾わない。
-- 最小構成では Surge の画面の patch・wavetable・FX preset のメニューがほぼ空になる。
-  画面を開くのは起動直後の一部の場合だけなので、そのときだけ作り直しの待ち（音が一度止まる）を払う。
+一方、最小構成ではSurgeの画面のメニューがほぼ空になる。画面も使うplayerでprocess全体を最小構成にする案は採らず、
+Show UI時に音色を引き継いで通常構成へ作り直し、そのときだけカタログ走査の待ちを払う方針を選んだ（実装: `f7ab046`）。
+手動ロード・音色選択・effectなどで作るinstanceは通常構成とし、最小化の影響を起動時の1件に限定した。
 
-## 却下した案
+## 当初の作り直しで発生した不具合
 
-- **cat-smf-editor と同じく process 全体を最小構成にする。** player は Surge の画面を開けるので、
-  メニューが常に空になる。
-- **editor を開くときだけ別 process で作る。** 画面と演奏の instance が分かれ、音色の往復が要る。
-- **手動ロード・patch 適用も最小構成にする。** 作り直しの対象が増える。起動時の1件だけで目的は満たす。
+Show UIでの作り直しは、失敗時に元の音源を維持できる通常のLoad経路を使い、旧instanceを残したまま新instanceを生成していた。
+ホストの環境変数を元に戻せば新instanceは通常カタログを読むと判断したが、実際には最小カタログを引き継ぎ、
+Show UI後も通常のpatch・wavetable・FX presetを選べなかった。instanceを作り直して画面が開くことだけでは、通常構成への復帰を確認できていなかった。
 
-## 結果
+WindowsのSurge XT 1.3.4 CLAP・VST3で列挙先を調べると、旧DLLの生存中は環境変数を戻しても最小treeを参照し、
+全instanceを破棄してDLLを解放した後の生成では通常treeを参照した。
+DLL内部で環境を保持する仕組みまでは確定していないが、旧instanceを保持したままの生成では必要な切り替えが成立しないと分かった。
 
-- 起動直後に Surge の画面を開くと、音が一度止まり、0.3〜0.4秒ほどで画面が開いて音が戻る。
-- 罠: Surge は editor を一度開くと state に editor 専用の項目（`instanceZoomFactor` など）を足す。
-  作り直しの前後で state を比べるときは、旧 instance でも editor を開閉してから基準を取る。
-- 前回の構成にある Surge XT Effects は通常構成のままで、その生成待ちは残る。
+## 旧instanceを先に破棄する方式への変更
+
+この観測から、最小instanceのShow UIと同一音源へのLoadは、最新stateを保存し、旧instanceとDLLを先に解放してから通常構成で再生成する方式へ変更した。
+新instanceの成功まで旧instanceを保持する方針は、この切り替えについて撤回した。
+DLLを別パスへコピーして新旧を共存させる案も通常カタログを読めたが、初回生成が遅く、コピー管理とresource探索の複雑さが増えるため採らなかった。
+
+先に破棄すると旧instanceへそのまま戻せないため、保存の成功を破棄の前提とし、生成や復元に失敗した場合は保存stateから1回だけ回復を試すことにした。
+回復にも失敗した場合は保存済みstate・sessionを残し、音源が戻るまでsessionを上書きしない。
+音色・編集内容・Favorite選択・演奏設定・接続中のeffectを保つための変更であり、他の音源差し替えまで先に破棄する方式には広げない。
+
+## 結果と残る制約
+
+修正後の再計測でも、最小化有効時の起動は約0.2秒で、無効時の約0.8秒に対する高速化を維持した。
+通常カタログへ切り替えるShow UIは約1.0〜1.4秒かかり、その間は音が止まる。
+当初の0.3〜0.4秒は正常なカタログ復帰を確認した値ではなく、待ち時間の目安として引き継がない。
+
+起動時間の比較は各時点のWindows・Surge XT 1.3.4 CLAPでの連続起動による。条件の異なる比較を一つの連続した性能推移とは扱わず、
+Rustのmain入口から最初の信号生成までを測った値で、コールド起動やスピーカーからの出音時刻でもない。
+CLAP・VST3の通常カタログ列挙は確認したが、実画面でのメニュー選択と聴取は未確認。
+Surge XT Effectsは最小化の対象外なので、その生成待ちは残る。計測方法は [READMEの開発者向け説明](../../README.ja.md#起動時間の計測) を参照する。

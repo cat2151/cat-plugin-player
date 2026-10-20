@@ -79,13 +79,13 @@ https://github.com/user-attachments/assets/c4a7cec0-ebfd-4cea-bc21-bbfc4dd8e92d
   - ギター開放弦は MIDI note number 40・45・50・55・59・64（ミ・ラ・レ・ソ・シ・ミ）を125ms間隔で順にNote Onします。最後のNote Onから2秒後に6音を同時にNote Offし、0.5秒後に繰り返します
   - `Load` 成功時、`Sequence` の種類選択・開始・停止時に記憶します。停止や `Remove` 後も記憶は残ります。古い履歴・お気に入りは従来の4音パターンで復元します
   - 通常起動の終了時と `Remove` 時には、UAPMDのstate APIでプラグインが公開する音色・パラメータ等のバイナリstateを `%LOCALAPPDATA%\cat-plugin-player\states\` にプラグインごとに保存します。次回起動時や同じプラグインの再load時には、演奏開始前に復元します
-  - instrument の `Load` は音源だけを置き換え、接続済み effect と設定は維持します。置き換えるプラグインの state を保存し、新しいプラグインの生成・復元・接続に成功してから切り替えます。失敗した場合は元の構成を維持してエラーを表示します
+  - instrument の `Load` は音源だけを置き換え、接続済み effect と設定は維持します。置き換えるプラグインの state を保存し、新しいプラグインの生成・復元・接続に成功してから切り替えます。失敗した場合は元の構成を維持してエラーを表示します。起動時の最小構成の Surge XT を同じ音源へ読み直す場合だけは、下記の `Show UI` と同じ保全・再生成・回復経路を使います
   - stateの保存範囲はプラグインとUAPMDの形式別実装によります。UI stateも要求しますが、現在のUAPMDのVST3実装はcomponent stateのみを取得します。外部サンプルの複製や、強制終了時の保存は含みません
   - 起動時は保存済みの全プラグイン一覧を読み、前回の instrument と effect を直接ロードしてstateを復元し、演奏を開始します。その後にGUIを初期化し、操作が落ち着いてから一覧を背景で再検出します。全一覧のキャッシュがない初回はGUI表示後に検出します
-  - 前回の instrument が Surge XT（CLAP / VST3）のときは、起動時のこの1件だけを、patch・wavetable・FX preset の一覧を省いた構成で作って早く鳴らします。この構成のままでは Surge のGUIのメニューがほぼ空になるため、その Surge の `Show UI` を押すと、音色を保ったまま通常の構成で作り直してからGUIを開きます。その間は音が一度止まり、0.3〜0.4秒ほどで戻ります。`Load`・音色ブラウザー・お気に入り・History・effect で作る Surge XT は通常の構成です。環境変数 `CMRT_SURGE_MINIMAL_DATA_HOME=0` で無効にできます。理由は[ADR 0034](docs/adr/0034-surge-xt-startup-minimal-data-home.md)を参照してください
+  - 前回の instrument が Surge XT（CLAP / VST3）のときは、起動時のこの1件だけを、patch・wavetable・FX preset の一覧を省いた構成で作って早く鳴らします。この構成のままでは Surge のGUIのメニューがほぼ空になるため、その Surge の `Show UI` を押すと、最新の音色・編集内容・Favorite 選択・演奏設定・接続中のeffectを保って通常構成で作り直し、GUIを開きます。その間は音が一度止まります。保存できなければ作り直さず元の音源を維持します。生成・復元・接続に失敗した場合は保存した内容から1回だけ回復し、エラーを表示します。回復も失敗した場合は保存済み内容を残して停止するので、`Load` で再試行してください。連打しても作り直しは増えません。`Load`・音色ブラウザー・お気に入り・History・effect で作る Surge XT は通常の構成です。環境変数 `CMRT_SURGE_MINIMAL_DATA_HOME=0` で無効にできます。理由・待ち時間の実測と検証範囲は[ADR 0034](docs/adr/0034-surge-xt-startup-minimal-data-home.md)を参照してください
   - 古い履歴やファイル移動などで直接ロードできない場合は、GUI表示後の走査結果から復元します。古い履歴は一度演奏すると更新されます
   - 主音源がCLAP Floeの場合は、ロードや音色復元などで音声処理を再構築した際、最初のフレーズの開始を100ms遅らせます。MMLの先頭休符はさらに加算されます。冒頭音が消える症状の観察用の暫定対策で、実機での解消は未確認です。適用条件と見直し方針は[ADR 0018](docs/adr/0018-floe-automatic-note-start-delay.md)を参照してください
-  - 起動時間の計測方法と結果は [docs/startup-timing.md](docs/startup-timing.md) を参照してください
+  - 起動高速化の採用経緯、Show UIで発生した不具合と破棄順序の変更は [ADR 0034](docs/adr/0034-surge-xt-startup-minimal-data-home.md)、計測方法は[開発者向けの説明](#起動時間の計測)を参照してください
 - エフェクトルーティング
   - `Browse effects`／`E`／`X` を開くと、対応するCLAP effect候補が1つだけなら自動ロードして、その枠をプリセット変更の対象にします。既に接続されている場合は再ロードせず、その枠を使います。音源が未ロードで音源候補も1つだけなら、先に音源をロードして演奏を始めます。音源候補が複数ある場合は先に音源を選んでください。候補数の判定はPlugins一覧のCLAP優先設定に従い、検索文字列では候補数を減らしません
   - instrument 1つ → 複数effect → 出力の直列接続です。instrument を読み込んでから最初の effect の `Load` を押し、以降は `Add` で末尾に追加します。接続済みの effect は `Remove` でその1つだけを外します。同じ形式＋IDの effect を重複して接続することはできません
@@ -185,6 +185,30 @@ hostのRust/nativeとSMF処理は`shared/`に集約し、cat-smf-editorも同じ
 SMF選択モードは `--select-smf <SMF> --browser patch|effect --preserve-position` です。browser省略時はpatch、位置保持は明示指定が必要です。`--patch-filter <program名>`を渡すとpatch browserをALL条件からその名前で検索します。名前中の正規表現記号は文字として扱い、空白はANDです。カタログ読込後に0件の場合だけ単語を`|`でつないだOR検索へ一度切り替えます（例: `church organ` → `church|organ`）。`--patch-filter-file <JSON>`で検索・Role・Presetをそのまま復元し、正常終了時に同じfileへ返します。fileが無ければ初期検索を使い、既存fileの条件を優先します。空の検索も保持し、復元条件には単語ORへの自動切替を行いません。effect／master選択では使いません。検索欄は通常どおり大小無視の正規表現として編集できます。`--preview-smf <SMF>`で返却先とは別の全track試聴用SMFを指定できます。全trackのMIDIイベントを選択中の音源・effectへ送り、format 2ではtrackごとのtempoを反映します。試聴用SMFは書き換えません。`--start-seconds <秒>`で最初の試聴位置、`--loop-end-seconds <秒>`で入力SMF以上のloop終端を指定できます。省略時は先頭から入力SMFの終端までです。有限・非負の秒を使い、開始位置はloop終端より前にします。開始時点のcontroller・持続音を復元し、自然なloop境界は先頭へ戻ります。元SMFのイベントは変更しません。`--browser-only`を付けるとmain画面を表示せず、browserを前面に開きます。このoptionは選択モード専用です。通常のtrack選択ではbrowser内のボタンで別browserへ進めます。`--master-effects`ではeffect browserから始まり、patch browserには進みません。お気に入り・routingが必要なときだけ`Favorites / routing`からmain画面を表示できます。browserを閉じるEnterも保存・player全体の終了として扱います。保存失敗時や変更処理中はbrowserを保持し、エラーはbrowser内に表示します。Esc、検索等の入力に使われないq、本体／browserの×は入力SMFへinstrument・順序付きeffect・bypassのstateを保存して終了します。`--master-effects`ではconductorのmaster effect・bypassだけを保存し、track設定を保持します。検索欄のqは文字入力です。変更処理中は確定を待ち、保存失敗時は画面と選択を保持して再試行できます。通常のstatus.jsonは更新しません。選択中の既存state保存／お気に入り操作は通常と同じ保存先を使います。OS・plugin版をまたぐstate互換や外部sampleの複製は保証しません。[保存契約と共通host（ADR 0029）](docs/adr/0029-shared-host-smf-selection.md)を参照してください。
 
 ## 開発者用
+
+### 起動時間の計測
+
+`CAT_STARTUP_TRACE` に出力先を指定すると、起動処理の各時点をCSVに記録します。未指定なら記録せず、起動順序や自動演奏の条件は変えません。
+Releaseビルド済みのリポジトリのルートで実行する例:
+
+```powershell
+$env:CAT_STARTUP_TRACE = Join-Path (Get-Location) 'target/startup.csv'
+try {
+    & ./target/release/cat-plugin-player.exe
+} finally {
+    Remove-Item Env:CAT_STARTUP_TRACE
+}
+Get-Content ./target/startup.csv
+```
+
+出力先の親ディレクトリは事前に作成してください。同名ファイルは上書きします。
+各計測点はprocess中の初回だけ記録するため、比較するたびにアプリを起動し直してください。
+
+- 基準はRustの `main()` 入口で、process生成やOSのDLLロードなど、それ以前の時間は含みません。
+- `scan_callback` は走査完了通知がmain threadへ届いた時点です。`load_call_returned` と `instance_callback` で生成API呼び出しと完了通知を分け、`gui_requested` から `app_creation` がGUI初期化区間です。
+- `first_audio_callback` は音声callback開始、`first_signal_rendered` は絶対値が0.000001（-120 dBFS）を超えるサンプルを初めて生成したブロックの処理後です。スピーカーからの出音時刻ではありません。
+- 音声threadでは時刻の取得とatomicへの記録だけを行い、CSVの保存はUI側で行います。通常は最初の信号生成とcatalog準備完了後に保存します。未完了の場合は10秒経過後のUI更新、または正常終了時に途中結果を保存します。UI停止中や強制終了では保存できない場合があります。
+- 未到達の計測点は `# missing:` に出ます。失敗の詳細は画面・標準エラーを確認してください。計測点の定義は [src/startup.rs](src/startup.rs)、起動高速化の判断と制限は [ADR 0034](docs/adr/0034-surge-xt-startup-minimal-data-home.md) を参照してください。
 
 ### 録画
 

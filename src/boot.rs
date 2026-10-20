@@ -102,6 +102,7 @@ impl App {
             .map(|e| format!("Could not restore MML: {e}"))
             .or(config_error);
         let mut app = Self {
+            editor_rebuild: None,
             instances: Vec::new(),
             selection: None,
             resident: None,
