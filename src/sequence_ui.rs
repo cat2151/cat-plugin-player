@@ -1,6 +1,9 @@
 //! Sequence controls independent of their containing panel and placement.
 use crate::{App, SequenceModulation, SequencePattern, SequenceVelocity};
 use eframe::egui;
+use value_bar::{drag_bar, value_bar};
+
+mod value_bar;
 
 /// Selecting a type preserves transport state; Play/Stop changes it explicitly.
 fn selected_state(current: SequencePattern, selected: SequencePattern) -> SequencePattern {
@@ -61,17 +64,22 @@ impl App {
         let mut velocity = original_velocity;
         let original_modulation = self.sequence_modulation;
         let mut modulation = original_modulation;
+        let original_macros = self.macro_lane.choices;
+        let mut macro_choices = original_macros;
+        // Saving and rereading the state wait for the drag to end.
+        let mut dragging = false;
+        let mut dropped = false;
         let ready = !self.actions_busy() && !self.mml_input.open && !self.browser_open();
         let mut open_mml = false;
         let has_audio = self.instances.iter().any(|i| i.voice.is_some());
         let shortcut =
             take_transport_shortcut(ui.ctx(), ready && has_audio && !self.mml_input.open);
 
-        let (velocity_value, modulation_value) = self
+        let (velocity_value, modulation_value, macro_values) = self
             .instances
             .iter()
             .find_map(|i| i.voice.as_ref().map(|v| v.current_values()))
-            .unwrap_or((0, 0));
+            .unwrap_or_default();
 
         ui.group(|ui| {
             ui.horizontal_wrapped(|ui| {
@@ -155,48 +163,74 @@ impl App {
                         velocity = velocity.adjacent(true);
                     }
                 });
-                value_bar(ui, velocity_value);
+                value_bar(ui, velocity_value, egui::Sense::hover());
             });
+            // "-" sends nothing: show the plugin's own value when its state reports it.
+            let shown = |choice: Option<SequenceModulation>, own: Option<u8>, sent| {
+                choice.map_or(own, |_| None).unwrap_or(sent)
+            };
+            let controls = self.macro_lane.controls.clone();
+            if ready
+                && controls.ccs.iter().any(Option::is_some)
+                && self.main_shortcut(ui.ctx(), egui::Key::M)
+            {
+                SequenceModulation::toggle_sweep(&mut macro_choices, &controls.ccs);
+            }
             ui.horizontal_wrapped(|ui| {
                 ui.label("CC1 modulation");
                 ui.add_enabled_ui(ready, |ui| {
-                    if ui
-                        .button("<")
-                        .on_hover_text("Previous modulation")
-                        .clicked()
-                    {
-                        modulation = modulation.adjacent(false);
-                    }
-                    egui::ComboBox::from_id_salt("sequence_modulation")
-                        .selected_text(modulation.label())
-                        .width(170.0)
-                        .show_ui(ui, |ui| {
-                            for &choice in SequenceModulation::TYPES {
-                                ui.selectable_value(&mut modulation, choice, choice.label());
-                            }
-                        })
-                        .response
-                        .on_hover_text(
-                            "sweep: 0 -> 127 in 2 seconds, then 127 -> 0 in 2 seconds; repeat",
-                        );
-                    if ui.button(">").on_hover_text("Next modulation").clicked() {
-                        modulation = modulation.adjacent(true);
-                    }
+                    modulation_selector(
+                        ui,
+                        "sequence_modulation",
+                        &mut modulation,
+                        "-: not sent; the patch's modulation wheel stays
+sweep: 0 -> 127 in 2 seconds, then 127 -> 0 in 2 seconds; repeat",
+                    )
                 });
-                value_bar(ui, modulation_value);
+                let value = shown(modulation, controls.wheel, modulation_value);
+                let drag = ui.add_enabled_ui(ready, |ui| drag_bar(ui, value)).inner;
+                drag.apply(&mut modulation, &mut dragging, &mut dropped);
             });
+            for (index, cc) in controls.ccs.iter().enumerate() {
+                let Some(cc) = cc else { continue };
+                ui.horizontal_wrapped(|ui| {
+                    let number = format!("CC{cc} {}", controls.labels[index]);
+                    match &controls.names[index] {
+                        Some(name) => ui.label(name).on_hover_text(number),
+                        None => ui.label(number),
+                    };
+                    ui.add_enabled_ui(ready, |ui| {
+                        modulation_selector(
+                            ui,
+                            ("sequence_macro_modulation", index),
+                            &mut macro_choices[index],
+                            "This macro of the patch, sent as MIDI CC
+-: not sent; the patch's macro value stays
+sweep: 0 -> 127 in 4 seconds, then 127 -> 0 in 4 seconds; repeat
+m: every macro to sweep, or back to - once all sweep",
+                        )
+                    });
+                    let own = controls.macros[index];
+                    let value = shown(macro_choices[index], own, macro_values[index]);
+                    let drag = ui.add_enabled_ui(ready, |ui| drag_bar(ui, value)).inner;
+                    drag.apply(&mut macro_choices[index], &mut dragging, &mut dropped);
+                });
+            }
         });
 
         if !self.actions_busy()
             && (selected != original
                 || next != current
                 || velocity != original_velocity
-                || modulation != original_modulation)
+                || modulation != original_modulation
+                || dropped)
         {
             self.selected_sequence = selected;
             self.sequence_pattern = next;
             self.sequence_velocity = velocity;
             self.sequence_modulation = modulation;
+            // A choice of "-" shows the value the plugin keeps now.
+            self.macro_lane.reread |= modulation != original_modulation && modulation.is_none();
             for instance in &self.instances {
                 if let Some(voice) = &instance.voice {
                     if next != current {
@@ -206,7 +240,20 @@ impl App {
                     voice.set_modulation(modulation);
                 }
             }
-            self.save_session();
+            if !dragging {
+                self.save_session();
+            }
+        }
+        if !self.actions_busy() && macro_choices != original_macros {
+            self.macro_lane.choices = macro_choices;
+            self.macro_lane.reread |= macro_choices
+                .iter()
+                .zip(original_macros)
+                .any(|(now, was)| now.is_none() && was.is_some());
+            self.apply_macro_lane();
+            if !dragging {
+                self.save_session();
+            }
         }
         if open_mml {
             self.open_mml_editor();
@@ -214,24 +261,33 @@ impl App {
     }
 }
 
-fn value_bar(ui: &mut egui::Ui, value: u8) {
-    let (rect, response) = ui.allocate_exact_size(egui::vec2(120.0, 18.0), egui::Sense::hover());
-    ui.painter()
-        .rect_filled(rect, 2.0, ui.visuals().extreme_bg_color);
-    if value > 0 {
-        let mut fill = rect;
-        fill.max.x = fill.min.x + rect.width() * f32::from(value) / 127.0;
-        ui.painter()
-            .rect_filled(fill, 2.0, ui.visuals().selection.bg_fill);
+/// A patch change sets fixed values back to "-" (ADR 0036).
+fn modulation_selector(
+    ui: &mut egui::Ui,
+    id: impl std::hash::Hash,
+    choice: &mut Option<SequenceModulation>,
+    hover: &str,
+) {
+    if ui
+        .button("<")
+        .on_hover_text("Previous modulation")
+        .clicked()
+    {
+        *choice = SequenceModulation::adjacent(*choice, false);
     }
-    ui.painter().text(
-        rect.center(),
-        egui::Align2::CENTER_CENTER,
-        value.to_string(),
-        egui::FontId::monospace(12.0),
-        ui.visuals().text_color(),
-    );
-    response.on_hover_text(format!("Current MIDI value: {value} / 127"));
+    egui::ComboBox::from_id_salt(id)
+        .selected_text(SequenceModulation::label(*choice))
+        .width(170.0)
+        .show_ui(ui, |ui| {
+            for value in SequenceModulation::CHOICES {
+                ui.selectable_value(choice, value, SequenceModulation::label(value));
+            }
+        })
+        .response
+        .on_hover_text(hover);
+    if ui.button(">").on_hover_text("Next modulation").clicked() {
+        *choice = SequenceModulation::adjacent(*choice, true);
+    }
 }
 
 #[cfg(test)]

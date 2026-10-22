@@ -19,6 +19,7 @@ unsafe extern "C" {
         error: *mut c_char,
         error_size: i32,
     ) -> i32;
+    fn uh_parameter_list_changes(host: *mut UhHost, id: i32) -> u64;
 }
 
 unsafe extern "C" fn receive(user: *mut c_void, data: *const u8, size: u64) {
@@ -38,6 +39,11 @@ fn result(code: i32, error: &[c_char]) -> Result<(), String> {
 }
 
 impl Host {
+    /// Changes after a patch change, even one in the plugin's editor; audio may run.
+    pub fn parameter_list_changes(&self, id: i32) -> u64 {
+        unsafe { uh_parameter_list_changes(self.raw, id) }
+    }
+
     /// Caller must stop audio rendering until this operation returns.
     pub fn save_state(&self, id: i32) -> Result<Vec<u8>, String> {
         let mut data = Vec::new();

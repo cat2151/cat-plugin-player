@@ -235,7 +235,7 @@ impl App {
         self.mml_input = Default::default();
         self.sequence_pattern = crate::SequencePattern::Steps;
         self.selected_sequence = crate::SequencePattern::Steps;
-        self.sequence_modulation = crate::SequenceModulation::Zero;
+        self.sequence_modulation = Some(crate::SequenceModulation::Fixed(0));
         self.auto_start_pending = false;
         self.favorites.restore = Default::default();
         self.favorites.active.clear();

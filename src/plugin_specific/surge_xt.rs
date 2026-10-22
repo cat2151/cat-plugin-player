@@ -1,4 +1,4 @@
-//! Exclude only measured editor zoom and live CC1 values from favorite comparison.
+//! Exclude only measured editor zoom and live CC1 / macro values from favorite comparison.
 use crate::config::PluginKey;
 use quick_xml::{events::Event, Reader};
 
@@ -45,7 +45,7 @@ pub(super) fn startup_data_home(
     Ok(Some(guard))
 }
 
-fn matches_plugin(plugin: &PluginKey) -> bool {
+pub(super) fn matches_plugin(plugin: &PluginKey) -> bool {
     matches!(
         (plugin.format.as_str(), plugin.id.as_str()),
         ("CLAP", "org.surge-synth-team.surge-xt") | ("VST3", "ABCDEF019182FAEB566D624153675854")
@@ -66,7 +66,7 @@ pub(super) fn automatic_note_start_delay(plugin: &PluginKey) -> std::time::Durat
     }
 }
 
-fn parts(state: &[u8], vst: bool) -> Option<(&[u8], &[u8])> {
+pub(super) fn parts(state: &[u8], vst: bool) -> Option<(&[u8], &[u8])> {
     if state.get(..4)? != b"sub3" {
         return None;
     }
@@ -95,6 +95,12 @@ fn runtime_field(path: &[Vec<u8>], tag: &[u8], key: &[u8]) -> bool {
             && path[1] == b"dawExtraState"
             && tag == b"instanceZoomFactor"
             && key == b"v")
+        // ADR 0036: Macro 1-8 positions, moved by CC like the modulation wheel.
+        || (path.len() == 2
+            && path[0] == b"patch"
+            && path[1] == b"customcontroller"
+            && tag == b"entry"
+            && key == b"v")
 }
 
 fn valid_value(tag: &[u8], value: &[u8]) -> bool {
@@ -104,6 +110,10 @@ fn valid_value(tag: &[u8], value: &[u8]) -> bool {
     if tag == b"modwheel" {
         text.parse::<f64>()
             .is_ok_and(|n| n.is_finite() && (0.0..=1.0).contains(&n))
+    } else if tag == b"entry" {
+        // Bipolar macros range from -1.
+        text.parse::<f64>()
+            .is_ok_and(|n| n.is_finite() && (-1.0..=1.0).contains(&n))
     } else {
         text.parse::<i32>()
             .is_ok_and(|n| n == -1 || (1..=1000).contains(&n))

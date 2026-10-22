@@ -15,9 +15,9 @@ the application-used modulation and all-sound-off messages.
 Suggested correction: query and cache input note-port capability on the main
 thread while deactivated, then emit native CLAP when supported or MIDI otherwise.
 Keep On/Off port, channel, key and sample time consistent; avoid double emission
-and accidental zero velocity when reducing MIDI2 Note On to MIDI1. CC1/CC120 need
+and accidental zero velocity when reducing MIDI2 Note On to MIDI1. CC messages need
 MIDI on MIDI-capable ports. This application's local patch deliberately avoids
-general MIDI2/MPE/CC expansion.
+general MIDI2/MPE expansion.
 
 The local generated-source repair preserves the upstream checkout. It includes
 tests for native/MIDI/both/unsupported ports, one emission, On/Off fields, velocity,

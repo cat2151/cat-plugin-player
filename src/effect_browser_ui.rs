@@ -84,6 +84,7 @@ impl App {
         let mut exit_selection = false;
         ctx.show_viewport_immediate(viewport(), builder, |ctx, _class| {
             self.catalog_startup.observe_activity(ctx);
+            crate::help_overlay::show(ctx, crate::help_overlay::Page::Effect);
             if focus {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
             }

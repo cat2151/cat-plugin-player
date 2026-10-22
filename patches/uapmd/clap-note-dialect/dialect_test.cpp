@@ -31,10 +31,10 @@ int main() {
     uh::clap_dialect::note(allocate, 2, true, 0, 0, 60, 1, 0);
     CHECK(reinterpret_cast<clap_event_midi_t*>(bytes)->data[2] == 1);
     for (uint32_t dialect : {1u, 2u, 3u}) {
-        for (uint8_t index : {1, 120, 7}) {
+        for (uint8_t index : {1, 120, 41, 0, 127}) {
             count = 0;
             uh::clap_dialect::cc(allocate, dialect, 2, 4, index, 127u << 25, 9);
-            CHECK(count == ((dialect & 2) && index != 7 ? 1 : 0));
+            CHECK(count == ((dialect & 2) ? 1 : 0));
             if (count) {
                 auto* event = reinterpret_cast<clap_event_midi_t*>(bytes);
                 CHECK(event->header.time == 9 && event->port_index == 2);
@@ -43,5 +43,5 @@ int main() {
         }
     }
     uh::clap_dialect::note([](size_t) -> void* { return nullptr; }, 2, true, 0, 0, 60, 1, 0);
-    std::cout << "dialect policy: single event, On/Off, velocity, port/time, CC1/120 PASS\n";
+    std::cout << "dialect policy: single event, On/Off, velocity, port/time, CC PASS\n";
 }

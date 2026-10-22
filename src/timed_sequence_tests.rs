@@ -141,7 +141,7 @@ fn velocity_and_cc1_still_apply_without_changing_phrase_times() {
     let phrase = Arc::new(Phrase::parse("t120 c4d4r4", 1000).unwrap());
     let mut seq = Sequencer::new(1000);
     seq.set_phrase(Some(phrase));
-    seq.set_modulation(SequenceModulation::Sweep);
+    seq.set_modulation(Some(SequenceModulation::Sweep));
     let first = collect(&mut seq, SequencePattern::Custom, 0, 1);
     assert!(first.iter().any(|(_, w)| *w == note_on(0, 60, 100)));
     let mut buf = EventBuf::new();
@@ -162,7 +162,7 @@ fn velocity_and_cc1_still_apply_without_changing_phrase_times() {
 fn switching_to_custom_keeps_the_last_delivered_fixed_cc1_meter() {
     let mut seq = Sequencer::new(1000);
     seq.set_phrase(Some(Arc::new(Phrase::parse("c4r4", 1000).unwrap())));
-    seq.set_modulation(SequenceModulation::Full);
+    seq.set_modulation(Some(SequenceModulation::Fixed(127)));
     collect(&mut seq, SequencePattern::Steps, 0, 1);
     assert_eq!(seq.current_values().1, 127);
     let custom = collect(&mut seq, SequencePattern::Custom, 0, 1);

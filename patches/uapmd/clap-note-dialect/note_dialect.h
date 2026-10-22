@@ -36,8 +36,8 @@ void note(Allocate allocate, uint32_t dialects, bool on, uint16_t port,
 template<class Allocate>
 void cc(Allocate allocate, uint32_t dialects, uint16_t port, uint8_t channel,
         uint8_t index, uint32_t value, uint32_t time) {
-    // This application uses modulation and all-sound-off only.
-    if (!(dialects & CLAP_NOTE_DIALECT_MIDI) || (index != 1 && index != 120)) return;
+    // Native CLAP has no CC event; MIDI-capable ports receive every controller.
+    if (!(dialects & CLAP_NOTE_DIALECT_MIDI)) return;
     auto* event = static_cast<clap_event_midi_t*>(allocate(sizeof(clap_event_midi_t)));
     if (!event) return;
     *event = {};

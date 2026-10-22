@@ -99,6 +99,9 @@ UH_API int32_t uh_state_save(UhHost* host, int32_t instance_id, UhStateFn receiv
                             void* user, char* error, int32_t error_size);
 UH_API int32_t uh_state_load(UhHost* host, int32_t instance_id, const uint8_t* data,
                             uint64_t size, char* error, int32_t error_size);
+/* Counts the plugin's parameter list rescans, which follow a patch change made
+ * anywhere, including the plugin's own editor. 0 for a missing instance. */
+UH_API uint64_t uh_parameter_list_changes(UhHost* host, int32_t instance_id);
 
 /* ---- Audio ----
  * A processor feeds one plugin instance with events and pulls audio out of it.
@@ -108,6 +111,38 @@ UH_API int32_t uh_state_load(UhHost* host, int32_t instance_id, const uint8_t* d
  *    processor BEFORE destroying its instance or the host.
  */
 typedef struct UhProcessor UhProcessor;
+
+/* Parameter calls are opt-in: no enumeration on ordinary startup. UI-only
+ * count/info/text/prepare. Prepare requires a stopped renderer. Value space:
+ * normalized=0 CLAP plain; normalized=1 VST3 normalized. Flags: eligible=1.
+ * Strings are UTF-8; oversized strings fail, never silently truncate. */
+typedef struct UhParameterInfo {
+    uint64_t generation, revision;
+    uint32_t index, eligible, normalized;
+    double minimum, maximum, current;
+    char stable_id[256], name[1024], path[2048];
+} UhParameterInfo;
+typedef struct UhParameterValue {
+    uint64_t generation, revision;
+    uint32_t index;
+    double value;
+} UhParameterValue;
+UH_API int32_t uh_parameter_count(UhHost*, int32_t instance_id);
+UH_API int32_t uh_parameter_info(UhHost*, int32_t instance_id, uint32_t index, UhParameterInfo*);
+UH_API int32_t uh_parameter_text(UhHost*, int32_t instance_id, const UhParameterValue*, char*, int32_t size);
+UH_API int32_t uh_processor_prepare_parameters(UhProcessor*);
+/* Audio thread only. At most 256 distinct parameters, all validated before
+ * enqueue. Follow immediately with process. Errors reject/cancel the batch. */
+UH_API int32_t uh_processor_parameter_batch(UhProcessor*, const UhParameterValue*, uint32_t count);
+/* Ordered, offset-zero parameter/note actions for source ticks sharing one
+ * sample. kind 0=parameter, 1=MIDI1 UMP Note On/Off; at most 512 actions.
+ * VST3 retains native sample precision and separate parameter/event queues. */
+typedef struct UhAutomationEvent {
+    UhParameterValue parameter;
+    uint32_t midi, kind;
+} UhAutomationEvent;
+UH_API int32_t uh_processor_process_automation(UhProcessor*, const UhAutomationEvent*, uint32_t count,
+                                               float* out, int32_t channels, int32_t frames);
 
 /* max_frames: the largest frame count that will ever be passed to process.
  * Returns NULL on failure. */

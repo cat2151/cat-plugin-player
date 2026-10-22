@@ -20,6 +20,7 @@ impl App {
             mml,
             sequence_velocity,
             sequence_modulation,
+            macro_choices,
             favorite_selection,
             show_favorites,
             show_history,
@@ -28,6 +29,7 @@ impl App {
             effect_filter,
             window_config,
             prefer_clap,
+            surge_start_delay,
             config_error,
         ) = match config_path.as_ref().map_err(Clone::clone).and_then(|path| {
             let settings = config::Config::load(path)?;
@@ -47,6 +49,7 @@ impl App {
                 status.mml,
                 status.sequence_velocity,
                 status.sequence_modulation,
+                status.macro_modulation,
                 status.favorites,
                 status.show_favorites,
                 status.show_history,
@@ -55,6 +58,7 @@ impl App {
                 status.effect_browser,
                 settings.window,
                 settings.plugins.prefer_clap,
+                status.surge_start_delay,
                 None,
             ),
             Err(error) => (
@@ -65,7 +69,8 @@ impl App {
                 crate::SequencePattern::default(),
                 String::new(),
                 crate::SequenceVelocity::default(),
-                crate::SequenceModulation::default(),
+                None,
+                Default::default(),
                 crate::status::FavoriteSelection::default(),
                 None,
                 false,
@@ -74,6 +79,7 @@ impl App {
                 Default::default(),
                 Default::default(),
                 true,
+                None,
                 Some(format!("Could not read session: {error}")),
             ),
         };
@@ -102,6 +108,10 @@ impl App {
             .map(|e| format!("Could not restore MML: {e}"))
             .or(config_error);
         let mut app = Self {
+            surge_start_delay: config_path
+                .as_ref()
+                .map(|p| crate::surge_start_delay::Runtime::load(p, surge_start_delay))
+                .unwrap_or_default(),
             editor_rebuild: None,
             instances: Vec::new(),
             selection: None,
@@ -118,6 +128,7 @@ impl App {
             selected_sequence,
             sequence_velocity,
             sequence_modulation,
+            macro_lane: crate::macro_lane::MacroLane::new(macro_choices),
             restore,
             mml_input,
             restored: None,

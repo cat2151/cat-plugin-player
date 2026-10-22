@@ -18,9 +18,11 @@ the process callback reads the cached vector without querying plugin extensions.
 UMP group maps to note-port index, as before. Channel, key, port and timestamp match
 between On/Off. MIDI1 velocities round-trip via UAPMD's `velocity << 9`; positive
 MIDI2 velocities below one MIDI1 unit map to 1 instead of accidental Note Off.
-CC1 and CC120 use MIDI only on MIDI-capable ports, including both-capable ports.
+Every CC (0-127) uses MIDI only on MIDI-capable ports, including both-capable ports.
+The application sends CC1, CC120 and a patch's macro CC
+([ADR 0036](../../../docs/adr/0036-surge-xt-macro-sweep.md)).
 Native-only ports retain explicit Note Off; this patch does not invent native
-modulation or broaden to other CC, MIDI2 or MPE. See [ADR](../../../docs/adr/0005-clap-input-note-dialect.md).
+modulation or broaden to MIDI2 or MPE. See [ADR](../../../docs/adr/0005-clap-input-note-dialect.md).
 
 ## Application and lifecycle
 
@@ -62,7 +64,7 @@ target/shim/Release/clap_note_dialect_test.exe
 
 The application test's work directory must be new; artifacts are retained as
 evidence. The policy test checks MIDI-only/native/both/unsupported dialects,
-single emission, On/Off fields, timestamps, positive velocity and CC1/120.
+single emission, On/Off fields, timestamps, positive velocity and CC on MIDI-capable ports only.
 The application test checks fresh input generation, deterministic reapplication,
 unchanged input, no partial writes on upstream drift and stop diagnostics.
 

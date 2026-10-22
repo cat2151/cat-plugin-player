@@ -2,12 +2,12 @@
 //! audio from the shim and the sequencer that plays the selected phrase.
 
 use crate::seq::{EventBuf, Sequencer};
-use crate::sequence_modulation::SequenceModulation;
+use crate::sequence_modulation::{MacroLanes, SequenceModulation, MACROS};
 use crate::sequence_velocity::SequenceVelocity;
 use crate::startup::{self, Stage};
 use crate::{ffi, sequence_pattern::SequencePattern};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, AtomicU8, Ordering};
 use std::sync::Arc;
 
 use crate::seq::note_off;
@@ -61,6 +61,9 @@ pub struct Voice {
     sequence_modulation: Arc<AtomicU8>,
     current_velocity: Arc<AtomicU8>,
     current_modulation: Arc<AtomicU8>,
+    /// ADR 0036, per macro: high byte controller, low byte choice; `NO_MACRO` sends nothing.
+    macro_modulation: Arc<[AtomicU16; MACROS]>,
+    current_macro: Arc<[AtomicU8; MACROS]>,
     cc1_source: Arc<AtomicU8>,
     rendered: Arc<AtomicBool>,
     scope: crate::scope::Scope,
@@ -82,7 +85,8 @@ impl Voice {
         processor: ffi::Processor,
         sequence_pattern: SequencePattern,
         velocity: SequenceVelocity,
-        modulation: SequenceModulation,
+        modulation: Option<SequenceModulation>,
+        macro_modulation: &MacroLanes,
         start_delay: std::time::Duration,
         phrase: Option<Arc<crate::timed_sequence::Phrase>>,
         fade_in: bool,
@@ -107,10 +111,15 @@ impl Voice {
         let mut seen_restart = 0;
         let sequence_velocity = Arc::new(AtomicU8::new(velocity as u8));
         let velocity_flag = Arc::clone(&sequence_velocity);
-        let sequence_modulation = Arc::new(AtomicU8::new(modulation as u8));
+        let sequence_modulation = Arc::new(AtomicU8::new(SequenceModulation::to_u8(modulation)));
         let modulation_flag = Arc::clone(&sequence_modulation);
         let current_velocity = Arc::new(AtomicU8::new(0));
         let current_modulation = Arc::new(AtomicU8::new(0));
+        let macro_modulation =
+            Arc::new(macro_modulation.map(|lane| AtomicU16::new(encode_macro(lane))));
+        let macro_flag = Arc::clone(&macro_modulation);
+        let current_macro = Arc::new([const { AtomicU8::new(0) }; MACROS]);
+        let macro_meter = Arc::clone(&current_macro);
         // 0: no CC1 delivered, 1: fixed modulation, 2: sweep.
         let cc1_source = Arc::new(AtomicU8::new(0));
         let cc1_source_flag = Arc::clone(&cc1_source);
@@ -173,6 +182,11 @@ impl Voice {
                     let modulation =
                         SequenceModulation::from_u8(modulation_flag.load(Ordering::Relaxed));
                     sequencer.set_modulation(modulation);
+                    sequencer.set_macro_modulation(
+                        &macro_flag
+                            .each_ref()
+                            .map(|lane| decode_macro(lane.load(Ordering::Relaxed))),
+                    );
                     let fading_out = fade_out_flag.load(Ordering::Acquire);
                     let block = MAX_BLOCK_FRAMES as usize * channels;
                     for chunk in data.chunks_mut(block) {
@@ -202,9 +216,12 @@ impl Voice {
                         if let Some(source) = delivered_cc1_source(events, modulation, rendered) {
                             cc1_source_flag.store(source, Ordering::Release);
                         }
-                        let (velocity, modulation) = sequencer.current_values();
+                        let (velocity, modulation, macro_value) = sequencer.current_values();
                         velocity_meter.store(velocity, Ordering::Relaxed);
                         modulation_meter.store(modulation, Ordering::Relaxed);
+                        for (meter, value) in macro_meter.iter().zip(macro_value) {
+                            meter.store(value, Ordering::Relaxed);
+                        }
                         capture.record(chunk, channels, events);
                         if trace_signal && chunk.iter().any(|sample| sample.abs() > 0.000001) {
                             startup::mark(Stage::FirstSignalRendered);
@@ -238,6 +255,8 @@ impl Voice {
             sequence_modulation,
             current_velocity,
             current_modulation,
+            macro_modulation,
+            current_macro,
             cc1_source,
             rendered,
             scope,
@@ -277,10 +296,14 @@ impl Voice {
         }
     }
 
-    pub fn current_values(&self) -> (u8, u8) {
+    /// Last delivered (velocity, CC1, each macro CC).
+    pub fn current_values(&self) -> (u8, u8, [u8; MACROS]) {
         (
             self.current_velocity.load(Ordering::Relaxed),
             self.current_modulation.load(Ordering::Relaxed),
+            self.current_macro
+                .each_ref()
+                .map(|value| value.load(Ordering::Relaxed)),
         )
     }
 
@@ -302,9 +325,15 @@ impl Voice {
             .unwrap();
     }
 
-    pub fn set_modulation(&self, modulation: SequenceModulation) {
+    pub fn set_modulation(&self, modulation: Option<SequenceModulation>) {
         self.sequence_modulation
-            .store(modulation as u8, Ordering::Relaxed);
+            .store(SequenceModulation::to_u8(modulation), Ordering::Relaxed);
+    }
+
+    pub fn set_macro_modulation(&self, macro_modulation: &MacroLanes) {
+        for (flag, lane) in self.macro_modulation.iter().zip(macro_modulation) {
+            flag.store(encode_macro(*lane), Ordering::Relaxed);
+        }
     }
 
     /// Applies to subsequent note ons without restarting the phrase.
@@ -341,16 +370,26 @@ fn shutdown_events() -> [u32; 2064] {
     })
 }
 
+fn encode_macro(lane: Option<(u8, SequenceModulation)>) -> u16 {
+    lane.map_or(u16::MAX, |(controller, choice)| {
+        u16::from(controller) << 8 | u16::from(SequenceModulation::to_u8(Some(choice)))
+    })
+}
+
+fn decode_macro(word: u16) -> Option<(u8, SequenceModulation)> {
+    SequenceModulation::from_u8(word as u8).map(|choice| ((word >> 8) as u8, choice))
+}
+
 fn delivered_cc1_source(
     events: &[u32],
-    modulation: SequenceModulation,
+    modulation: Option<SequenceModulation>,
     rendered: bool,
 ) -> Option<u8> {
     (rendered
         && events
             .iter()
             .any(|event| event & 0xffff_ff00 == 0x20b0_0100))
-    .then_some(if modulation == SequenceModulation::Sweep {
+    .then_some(if modulation == Some(SequenceModulation::Sweep) {
         2
     } else {
         1
@@ -369,27 +408,27 @@ mod tests {
             crate::sequence_modulation::cc1(64),
         ];
         assert_eq!(
-            delivered_cc1_source(&events, SequenceModulation::Sweep, true),
+            delivered_cc1_source(&events, Some(SequenceModulation::Sweep), true),
             Some(2)
         );
         assert_eq!(
-            delivered_cc1_source(&events, SequenceModulation::Full, true),
+            delivered_cc1_source(&events, Some(SequenceModulation::Fixed(127)), true),
             Some(1)
         );
         assert_eq!(
-            delivered_cc1_source(&events, SequenceModulation::Zero, true),
+            delivered_cc1_source(&events, Some(SequenceModulation::Fixed(0)), true),
             Some(1)
         );
         assert_eq!(
-            delivered_cc1_source(&events, SequenceModulation::Sweep, false),
+            delivered_cc1_source(&events, Some(SequenceModulation::Sweep), false),
             None
         );
         assert_eq!(
-            delivered_cc1_source(&events[..2], SequenceModulation::Sweep, true),
+            delivered_cc1_source(&events[..2], Some(SequenceModulation::Sweep), true),
             None
         );
         assert_eq!(
-            delivered_cc1_source(&[0x20b0_027f], SequenceModulation::Sweep, true),
+            delivered_cc1_source(&[0x20b0_027f], Some(SequenceModulation::Sweep), true),
             None
         );
     }

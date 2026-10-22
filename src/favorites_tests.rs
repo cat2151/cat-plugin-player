@@ -85,11 +85,14 @@ fn native_favorites_restore_both_slots_without_overwriting_snapshots() {
         crate::SequencePattern::Off
     );
     app.sequence_velocity = crate::SequenceVelocity::Range40To100;
-    app.sequence_modulation = crate::SequenceModulation::Sweep;
+    app.sequence_modulation = Some(crate::SequenceModulation::Sweep);
     app.load_favorite(&effect_favorite.id);
     assert_eq!(app.sequence_pattern, crate::SequencePattern::Off);
     assert_eq!(app.sequence_velocity, crate::SequenceVelocity::Range40To100);
-    assert_eq!(app.sequence_modulation, crate::SequenceModulation::Sweep);
+    assert_eq!(
+        app.sequence_modulation,
+        Some(crate::SequenceModulation::Sweep)
+    );
     assert_eq!(app.instrument_id(), Some(source));
     assert_eq!(app.effect_id(), Some(fx));
     assert_eq!(app.host.save_state(source).unwrap(), snapshot);

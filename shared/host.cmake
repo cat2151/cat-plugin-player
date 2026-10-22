@@ -31,6 +31,8 @@ uh_stb_verify()
 include("${UH_PLAYER_ROOT}/patches/uapmd/clap-note-dialect/CMakeLists.cmake")
 include("${UH_PLAYER_ROOT}/patches/uapmd/clap-state-load-error/CMakeLists.cmake")
 include("${UH_PLAYER_ROOT}/patches/uapmd/scan-tool-data-dir-race/CMakeLists.cmake")
+include("${UH_PLAYER_ROOT}/patches/uapmd/parameter-automation/CMakeLists.cmake")
+include("${UH_PLAYER_ROOT}/patches/uapmd/parameter-automation/fixture.cmake")
 
 add_library(uapmd_shim SHARED
     "${UH_NATIVE_DIR}/uapmd_shim.cpp" "${UH_NATIVE_DIR}/uapmd_shim.h"

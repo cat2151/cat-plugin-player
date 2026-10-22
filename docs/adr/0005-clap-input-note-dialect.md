@@ -16,8 +16,8 @@ Cache per-input-port supported dialects on the main thread before activation.
 Prefer native CLAP on native-capable ports and MIDI on MIDI-only ports. Send exactly
 one note event, preserving port/channel/key/timestamp and positive velocity. Keep
 the previous native fallback when no note-port extension exists; do not send to
-explicitly unsupported or invalid ports. Send only currently used CC1/CC120 through
-MIDI-capable ports; retain explicit native Note Off on native-only ports.
+explicitly unsupported or invalid ports. Send every CC through MIDI-capable ports;
+retain explicit native Note Off on native-only ports.
 
 Generate a validated modified header and consistent copies of the nine CLAP
 translation units which include it under the default `target/shim`. Rewrite local

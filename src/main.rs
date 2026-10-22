@@ -2,6 +2,7 @@
 //! Scan plugins, instantiate one, open its editor, and play a hardcoded phrase
 //! using the sequence controls.
 
+mod app_events;
 mod audio;
 mod audio_fade;
 mod boot;
@@ -23,8 +24,11 @@ mod favorites_ui;
 #[path = "../shared/ffi.rs"]
 mod ffi;
 mod first_instrument_install;
+mod help_overlay;
 mod history;
 mod host_ui;
+use plugin_specific::surge_start_delay;
+mod surge_start_delay_app;
 use ffi as host;
 use first_instrument_install::japanese_font;
 #[path = "../shared/chain.rs"]
@@ -42,6 +46,7 @@ mod master_effects;
 mod mml;
 mod mml_input;
 mod native_library;
+mod offline_render;
 mod patch_apply;
 mod patch_catalog;
 mod patch_preparation;
@@ -83,6 +88,7 @@ mod selection;
 mod selection_exchange;
 mod state_request;
 use chain as selection_host;
+mod macro_lane;
 mod selection_ui;
 mod seq;
 mod sequence_modulation;
@@ -120,12 +126,14 @@ use sequence_velocity::SequenceVelocity;
 mod session;
 mod session_editor;
 mod session_load;
+mod session_state;
 mod shutdown;
 mod startup;
 mod state_store;
 mod status;
 mod status_migration;
 mod window_config;
+mod window_title;
 
 use eframe::egui;
 use startup::Stage;
@@ -186,6 +194,7 @@ struct Instance {
 }
 
 struct App {
+    surge_start_delay: surge_start_delay::Runtime,
     editor_rebuild: Option<session_editor::Rebuild>,
     // Declared before `host` so that it drops first: the audio streams and
     // processors in here must be gone before the host is destroyed.
@@ -204,7 +213,8 @@ struct App {
     sequence_pattern: SequencePattern,
     selected_sequence: SequencePattern,
     sequence_velocity: SequenceVelocity,
-    sequence_modulation: SequenceModulation,
+    sequence_modulation: Option<SequenceModulation>,
+    macro_lane: macro_lane::MacroLane,
     mml_input: mml_input::MmlInput,
     restore: Option<config::PluginKey>,
     restored: Option<config::PluginKey>,
@@ -246,85 +256,6 @@ impl App {
             .as_ref()
             .map_or(FALLBACK_SAMPLE_RATE, |o| o.sample_rate())
     }
-
-    fn start_scan(&mut self, rescan: bool) {
-        if self.preset_change_busy() || self.catalog_startup.running {
-            return;
-        }
-        startup::mark(Stage::ScanRequested);
-        self.patch_browser.requests.invalidate();
-        if unsafe {
-            self.host
-                .scan_async(rescan, on_scan_done, std::ptr::null_mut())
-        } {
-            self.catalog_startup.cancel_refresh();
-            self.scanning = true;
-            self.status = if rescan {
-                "Rescanning plugins...".into()
-            } else {
-                "Loading plugin list...".into()
-            };
-        }
-    }
-
-    fn handle_events(&mut self) {
-        let events = std::mem::take(&mut *EVENTS.lock().unwrap());
-        for event in events {
-            match event {
-                Event::ScanDone(error) => {
-                    if self.finish_background_scan(error.as_deref()) {
-                        continue;
-                    }
-                    self.scanning = false;
-                    self.plugins = self.host.plugins();
-                    self.patch_catalog.reconcile(&self.plugins);
-                    startup::mark(Stage::CatalogReady);
-                    let scan_succeeded = error.is_none();
-                    self.status = match error {
-                        Some(e) => format!("Scan failed: {e}"),
-                        None => String::new(),
-                    };
-                    if scan_succeeded {
-                        self.save_plugin_cache();
-                        if let Some(index) = self.first_instrument.on_scan(&self.plugins) {
-                            // Restoring too would leave `restoring` set behind this pending load.
-                            self.restore = None;
-                            self.restore_effect.clear();
-                            self.load_auto_instrument(index);
-                        } else {
-                            self.restore_session();
-                        }
-                    } else if self.restoring && self.instrument_id().is_some() {
-                        self.load_failed(format!(
-                            "{}; could not restore effect; playing instrument directly",
-                            self.status
-                        ));
-                    }
-                }
-                Event::InstanceCreated { id, error } => {
-                    self.instance_created(id, error);
-                }
-            }
-        }
-    }
-
-    /// Waits for the first audio callback; a resident player has no audio to wait for.
-    fn poll_patch_catalog(&mut self, ctx: &egui::Context) {
-        let ready = self.resident.is_some()
-            || self.instances.iter().any(|instance| {
-                instance
-                    .voice
-                    .as_ref()
-                    .is_some_and(audio::Voice::has_rendered)
-            });
-        if let Some(message) = self.patch_catalog.update(ready, ctx) {
-            self.patch_catalog.reconcile(&self.plugins);
-            if !message.is_empty() {
-                eprintln!("{message}");
-                self.status = message;
-            }
-        }
-    }
 }
 
 impl eframe::App for App {
@@ -341,6 +272,12 @@ impl eframe::App for App {
             // eframe shows the root after its first paint, overriding the builder.
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
         }
+        let help = if self.selection.is_some() {
+            help_overlay::Page::Smf
+        } else {
+            help_overlay::Page::Main
+        };
+        help_overlay::show(ctx, help);
         if let Some(unsaved) = self.selection.as_mut().filter(|s| !s.saved) {
             if selection::exit_key(ctx) {
                 ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
@@ -358,6 +295,8 @@ impl eframe::App for App {
             voice.pump_preview();
         }
         self.handle_events();
+        self.poll_surge_start_delay(ctx);
+        self.poll_macro_lane();
         if self
             .selection
             .as_ref()
@@ -388,6 +327,7 @@ impl eframe::App for App {
         self.poll_effect_browser(ctx);
         self.effect_browser_ui(ctx);
         self.log_resident_state();
+        self.update_window_title(ctx);
         if self.selection_exit(ctx) {
             return;
         }

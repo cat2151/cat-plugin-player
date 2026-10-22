@@ -1,6 +1,6 @@
 //! Immutable UI-prepared phrase and sample-timed loop playback.
 use crate::seq::{jr_timestamp, note_off, note_on, EventBuf};
-use crate::sequence_modulation::{cc1, Modulation};
+use crate::sequence_modulation::Lanes;
 use crate::sequence_velocity::SequenceVelocity;
 use std::sync::Arc;
 
@@ -19,7 +19,6 @@ pub struct TimedPlayer {
     sounding: [bool; 128],
     faulted: bool,
     pub velocity: u8,
-    pub modulation: u8,
 }
 
 impl Default for TimedPlayer {
@@ -33,7 +32,6 @@ impl Default for TimedPlayer {
             sounding: [false; 128],
             faulted: false,
             velocity: 0,
-            modulation: 0,
         }
     }
 }
@@ -74,7 +72,7 @@ impl TimedPlayer {
         rate: u32,
         frames: usize,
         out: &mut EventBuf,
-        modulation: &mut Modulation,
+        modulation: &mut Lanes,
     ) {
         if self.faulted {
             self.release(out);
@@ -111,9 +109,7 @@ impl TimedPlayer {
             modulation.advance(advance, true);
             elapsed = at;
             if cc_at == at {
-                out.push(cc1(modulation.value()));
-                self.modulation = modulation.value();
-                modulation.sent();
+                modulation.push_due(0, rate, true, out);
             }
             if note_at != at {
                 continue;

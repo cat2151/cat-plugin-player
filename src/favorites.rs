@@ -227,6 +227,9 @@ impl App {
                     && i.plugin.id == favorite.plugin.id
             })
             .map(|i| i.id);
+        if !favorite.effect {
+            self.patch_changing();
+        }
         if let Some(id) = existing {
             self.apply_favorite(id, &favorite, &state, playback)?;
         } else {
@@ -264,6 +267,7 @@ impl App {
             .unwrap()
             .sweep_cc1;
         let mut backup = None;
+        let old_permit = self.surge_start_delay.replace(id, None);
         let result = (|| {
             backup = Some(self.host.save_state(id)?);
             self.host.load_state(id, state)?;
@@ -276,6 +280,7 @@ impl App {
             self.resume_audio()
         })();
         if let Err(e) = result {
+            self.surge_start_delay.replace(id, old_permit);
             self.pause_audio();
             self.sequence_pattern = old_sequence;
             self.selected_sequence = old_selected;

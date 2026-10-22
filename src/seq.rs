@@ -9,7 +9,7 @@ pub const STEP_MILLIS: u32 = 250;
 #[cfg(test)]
 const VELOCITY: u8 = 100;
 const CHANNEL: u8 = 0;
-use crate::sequence_modulation::{cc1, Modulation, SequenceModulation};
+use crate::sequence_modulation::{Lanes, MacroLanes, SequenceModulation, MACROS};
 use crate::sequence_pattern::SequencePattern;
 use crate::sequence_velocity::SequenceVelocity;
 
@@ -87,8 +87,7 @@ pub struct Sequencer {
     timed: crate::timed_sequence::TimedPlayer,
     velocity_down: bool,
     current_velocity: u8,
-    current_modulation: u8,
-    modulation: Modulation,
+    modulation: Lanes,
 }
 
 impl Sequencer {
@@ -104,10 +103,9 @@ impl Sequencer {
             pattern: SequencePattern::Off,
             restart_pending: false,
             timed: crate::timed_sequence::TimedPlayer::default(),
-            modulation: Modulation::default(),
+            modulation: Lanes::default(),
             velocity_down: false,
             current_velocity: 0,
-            current_modulation: 0,
         }
     }
 
@@ -116,12 +114,19 @@ impl Sequencer {
         self.startup_remaining = (delay.as_secs_f64() * self.sample_rate as f64).ceil() as usize;
     }
 
-    pub fn set_modulation(&mut self, modulation: SequenceModulation) {
-        self.modulation.select(modulation);
+    pub fn set_modulation(&mut self, modulation: Option<SequenceModulation>) {
+        self.modulation.cc1.select(modulation);
     }
 
-    pub fn current_values(&self) -> (u8, u8) {
-        (self.current_velocity, self.current_modulation)
+    /// ADR 0036: per macro (controller, choice); `None` sends nothing.
+    pub fn set_macro_modulation(&mut self, modulation: &MacroLanes) {
+        self.modulation.select_macros(modulation);
+    }
+
+    /// Last delivered (velocity, CC1, each macro CC).
+    pub fn current_values(&self) -> (u8, u8, [u8; MACROS]) {
+        let (cc1, macro_cc) = self.modulation.values();
+        (self.current_velocity, cc1, macro_cc)
     }
 
     /// Restart even an unchanged pattern at the next block; preserve Off.
@@ -228,19 +233,13 @@ impl Sequencer {
             // A full buffer must not turn a dropped note off into a forgotten note.
             self.release(out);
             self.current_velocity = 0;
-            if frames > 0
-                && self.modulation.next(self.sample_rate, false).is_some()
-                && out.push(cc1(self.modulation.value()))
-            {
-                self.current_modulation = self.modulation.value();
-                self.modulation.sent();
+            if frames > 0 {
+                self.modulation.push_due(0, self.sample_rate, false, out);
             }
             return;
         }
 
         if pattern == SequencePattern::Custom {
-            // Fixed CC1 may already have been delivered by a built-in pattern.
-            self.timed.modulation = self.current_modulation;
             self.timed.render(
                 velocity,
                 self.sample_rate,
@@ -249,7 +248,6 @@ impl Sequencer {
                 &mut self.modulation,
             );
             self.current_velocity = self.timed.velocity;
-            self.current_modulation = self.timed.modulation;
             return;
         }
         let mut at = self.until_next_step; // sample offset of the next step in this block
@@ -269,12 +267,9 @@ impl Sequencer {
                 }
                 cursor = next;
             }
-            if modulation_at == next {
-                if !out.push(cc1(self.modulation.value())) {
-                    break;
-                }
-                self.current_modulation = self.modulation.value();
-                self.modulation.sent();
+            if modulation_at == next && !self.modulation.push_due(next, self.sample_rate, true, out)
+            {
+                break;
             }
             if at != next {
                 continue;

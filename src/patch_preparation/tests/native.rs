@@ -159,7 +159,7 @@ fn transaction_cases() {
         };
         app.selected_sequence = SequencePattern::GuitarArpeggio;
         app.sequence_velocity = crate::SequenceVelocity::Range40To100;
-        app.sequence_modulation = crate::SequenceModulation::Sweep;
+        app.sequence_modulation = Some(crate::SequenceModulation::Sweep);
         let velocity = app.sequence_velocity;
         let modulation = app.sequence_modulation;
         app.instances

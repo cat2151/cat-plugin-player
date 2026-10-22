@@ -33,7 +33,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// Bump to force one new configure run in existing build directories.
-const CONFIGURE_STAMP: &str = ".uh_configured_v4";
+const CONFIGURE_STAMP: &str = ".uh_configured_v5";
 
 fn run(cmd: &mut Command) {
     println!("cargo:warning=running: {:?}", cmd);
@@ -53,6 +53,12 @@ pub fn build() {
         manifest_dir.join("../cat-plugin-player")
     };
     let shim_dir = player_dir.join("shim");
+    println!(
+        "cargo:rerun-if-changed={}",
+        player_dir
+            .join("patches/uapmd/parameter-automation")
+            .display()
+    );
     let configure_dir = manifest_dir.join("shim");
     for file in ["host.cmake", "smf_shim.cpp", "build.rs"] {
         println!(
@@ -80,6 +86,8 @@ pub fn build() {
         "ui_thumbnail.h",
         "window_placement.h",
         "owned_instance.h",
+        "parameter_binding.h",
+        "parameter_api.inc",
         "plugin_catalog.cpp",
         "plugin_catalog.h",
         "windows_vst3_binary.h",

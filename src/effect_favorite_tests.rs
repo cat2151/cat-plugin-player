@@ -43,14 +43,14 @@ fn native_effect_recall_preserves_playback_when_reconnecting() {
         app.sequence_pattern = pattern;
         app.selected_sequence = SequencePattern::GuitarArpeggio;
         app.sequence_velocity = SequenceVelocity::Range40To100;
-        app.sequence_modulation = SequenceModulation::Sweep;
+        app.sequence_modulation = Some(SequenceModulation::Sweep);
         for reconnect in [true, false] {
             app.load_favorite(&favorite);
             settle(&mut app);
             assert_eq!(app.sequence_pattern, pattern, "reconnect={reconnect}");
             assert_eq!(app.selected_sequence, SequencePattern::GuitarArpeggio);
             assert_eq!(app.sequence_velocity, SequenceVelocity::Range40To100);
-            assert_eq!(app.sequence_modulation, SequenceModulation::Sweep);
+            assert_eq!(app.sequence_modulation, Some(SequenceModulation::Sweep));
             assert_eq!(app.instrument_id(), Some(source));
             assert!(app.effect_id().is_some(), "{}", app.status);
             assert_eq!(

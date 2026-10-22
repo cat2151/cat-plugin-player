@@ -1,6 +1,6 @@
 //! Machine-owned session status, alongside the user-owned config.toml.
 use crate::config::PluginKey;
-use crate::sequence_modulation::SequenceModulation;
+use crate::sequence_modulation::{SequenceModulation, MACROS};
 use crate::sequence_pattern::SequencePattern;
 use crate::sequence_velocity::SequenceVelocity;
 use serde::{Deserialize, Serialize};
@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 
 #[derive(Deserialize, Serialize)]
 pub struct Status {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub surge_start_delay: Option<crate::surge_start_delay::Permit>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub show_favorites: Option<bool>,
     #[serde(default)]
@@ -23,7 +25,10 @@ pub struct Status {
     #[serde(default)]
     pub sequence_velocity: SequenceVelocity,
     #[serde(default)]
-    pub sequence_modulation: SequenceModulation,
+    pub sequence_modulation: Option<SequenceModulation>,
+    /// ADR 0036: per macro; `None` sends nothing.
+    #[serde(default, skip_serializing_if = "no_macro")]
+    pub macro_modulation: [Option<SequenceModulation>; MACROS],
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_played: Option<PluginKey>,
     #[serde(default, skip_serializing)]
@@ -40,6 +45,10 @@ pub struct Status {
     pub effect_browser: EffectBrowserFilter,
 }
 
+fn no_macro(choices: &[Option<SequenceModulation>; MACROS]) -> bool {
+    choices.iter().all(Option::is_none)
+}
+
 fn default_on_right() -> bool {
     true
 }
@@ -47,6 +56,7 @@ fn default_on_right() -> bool {
 impl Default for Status {
     fn default() -> Self {
         Self {
+            surge_start_delay: None,
             show_favorites: None,
             show_history: false,
             on_right: default_on_right(),
@@ -55,6 +65,7 @@ impl Default for Status {
             mml: String::new(),
             sequence_velocity: Default::default(),
             sequence_modulation: Default::default(),
+            macro_modulation: Default::default(),
             last_played: None,
             effect: None,
             effects: Vec::new(),

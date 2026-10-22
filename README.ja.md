@@ -60,7 +60,9 @@ https://github.com/user-attachments/assets/c4a7cec0-ebfd-4cea-bc21-bbfc4dd8e92d
   - GUIは本体の右隣・上端合わせで画面の作業領域に収まる位置を優先します。収まらない場合は本体がある画面の作業領域の右下に配置します。表示時とGUIのサイズ変更時に配置し、本体の移動には常時追従しません。GUIは縮小せず、画面より横幅が大きい場合は左端、縦幅が大きい場合は上端を作業領域に合わせます
   - 白紙画像や撮影失敗時は1秒間隔で、GUI表示から最大20秒まで再試行します。保存済みの白紙画像も未撮影として扱い、GUIを開くと有効な画像で置き換えます。成功後は再撮影しません。
   - 再試行しても撮影に失敗した場合はエラーを表示します。GUIを開き直すと再試行します。撮影非対応のGUIでは仮アイコンのままです。撮り直したい場合や保存PNGが破損した場合は、該当プラグインの共有PNGと残っている旧形式別PNGを削除してアプリを再起動し、GUIを開いてください（移行時には旧PNGを残します）
+  - `?` または `F1` で、そのウィンドウ（本体・Browse patches・Browse effects）のキー操作一覧をoverlay表示します。機能ごとに色分けしています。もう一度 `?`／`F1` または `Esc` で閉じます。表示中は他のキー操作が効きません。文字入力中の `?` は文字として入力されます
 - 演奏
+  - Surge XTは通常、音声処理を再構築したときに最初のフレーズ開始を100ms待ちます。CLAPのcatalog音色のうち配布判定表で許可された音色は0msとし、そのstateに紐付けて次回起動にも引き継ぎます。表はGitHubから背景で取得し、`%LOCALAPPDATA%\cat-plugin-player\patch-catalog\surge-xt-start-delay.json`に保持します。同梱はせず、初回・未掲載・照合不一致は100ms、通信失敗時は保存済みの表を使います。プラグインGUIを開くと編集を追跡できないため許可を解除します。GUIを閉じてブラウザーから既知の音色を選び直すと再判定します。0msはUXを優先した採用判断であり、実測条件と制限は[ADR 0008](docs/adr/0008-surge-xt-automatic-note-start-delay.md)を参照してください
   - 最後に演奏した instrument と接続中の effect・Bypass 状態・演奏パターンを `%LOCALAPPDATA%\cat-plugin-player\status.json` に保存し、次回起動時に復元します。停止中の演奏パターン選択、確定したMML／コード本文も復元します。起動時にPlugins一覧で音源候補が1つだけなら、未ロードの場合は自動ロードし、保存された停止状態でも選択済みのパターンで演奏を始めます。複数候補の場合は停止状態を復元します。起動後に手動で停止した場合は停止を維持します。未確定の編集は保存しません
   - CLAPのNote On/Offはプラグインが対応する入力形式に合わせて送信します。MIDIのみを受け付けるsforzando CLAPもこの対象です。補修の適用範囲と検証記録は[CLAP Note形式の説明](patches/uapmd/clap-note-dialect/README.md)に記録しています
   - 左上の `Sequence` pane で、左右矢印またはドロップダウンから演奏の種類を選べます。矢印は種類の両端で循環し、停止は種類に含めません。演奏中の切替は鳴っているフレーズの全音を解放し、新しいフレーズの先頭から開始します。停止中は種類を選んでも演奏せず、`Play` で開始、`Stop` で停止します。本体ウィンドウでは `Space` キーでも開始・停止を切り替えられます（文字入力中を除く）。MML／コードを含む演奏パターンの選択と停止状態は次回起動時にも復元します。ただし音源候補が1つだけの起動時は停止状態から自動再生します
@@ -75,7 +77,9 @@ https://github.com/user-attachments/assets/c4a7cec0-ebfd-4cea-bc21-bbfc4dd8e92d
   - cat-smf-editorは`--resident <名前>`でplayerを1つ常駐させ、`t`／`x`のたびにpatch／effect browserを前面に出させます。常駐中のplayerは選んだ音色・effectを自分では読み込まず、stateをeditorへ送り、editorが自分の音源で鳴らします。Esc・`q`・×・effect browserを閉じるEnterはbrowserを隠すだけで、playerはeditorが終了すると一緒に終了します。前回の音色は復元せず、playerの通常のstatus.jsonも更新しません。Role／Preset・Category／Kindと検索文字列（Solo／Mute・除外条件を含む）は、editorのstatus.jsonへ曲・track・patch／effect別に保存し、master effectは曲ごとに独立して保存・復元します。音色を選ばず閉じても保存します。patch一覧の選択もpatch名と音源・元patchの識別情報でeditorのstatus.jsonへ曲・trackごとに保存し、再起動後に復元します。選択の復元では音色を再適用しません。
   - Six Sines／TyrellN6 CLAPでは、ロード・state復元・接続変更などで音声処理を再構築した際、冒頭音を保つため、通常の音声処理を続けながら最初のフレーズ開始を待ちます。48kHz時の待ちはSix Sinesで約21ms、TyrellN6で約85msです。MMLの先頭休符はさらに加算されます。適用条件と実機検証は[ADR 0019](docs/adr/0019-random-patch-all-catalog.md)を参照してください
   - 演奏パターンの下の `Velocity` 欄で、同じ左右矢印・ドロップダウンから `100`・`127`・`40-100`・`80-127` を選べます。初期値は100です。範囲指定はフレーズ内のNote On順に値を上げ、次のループでは下げる動作を繰り返します。変更はフレーズを再開せず次の発音から反映し、次回起動時にも復元します
-  - `CC1 modulation` 欄で、左右矢印・ドロップダウンから `0`・`127`・`sweep` を選べます。初期値は0です。`sweep` は2秒で0から127へ、次の2秒で127から0へ変化する動作を繰り返します。選択は次回起動時にも復元します
+  - `CC1 modulation` 欄で、左右矢印・ドロップダウンから `-`・`0`・`127`・`sweep` を選べます。初期値の `-` は何も送らず、音源のmodulation wheelの値を変えません。`sweep` は2秒で0から127へ、次の2秒で127から0へ変化する動作を繰り返します。欄の右の値表示バーを横にドラッグすると、ドラッグ開始時の値から増減した0〜127の値を送ります（バーの幅で0〜127を動きます。`sweep` 中なら止まり、欄はその値になります。クリックだけでは変わりません）。選択とドラッグした値は次回起動時にも復元します
+  - Surge XTで、現在のpatchがmodulationに使っていてCC番号が分かるMacro（Macro 1〜8）ごとに、`CC1 modulation` 欄の下に `CC41 Macro 1` のような欄が出ます（番号はSurge側の割り当て。既定はMacro 1〜8が41〜48）。patchがMacroに `LFO Speed` のような名前を付けているときは、`CC41 Macro 1` の代わりにその名前を出します（名前にマウスを乗せると `CC41 Macro 1` を表示）。選択肢と値表示バーのドラッグはCC1と同じで、`sweep` はMacroごとにCC1とも互いとも違う周期で繰り返します（0から127までの片道がMacro 1〜8でそれぞれ2.9 / 3.7 / 4.3 / 5.3 / 6.1 / 7.1 / 7.9 / 8.9秒。CC1は2秒）。初期値の `-` は何も送らず、patchに保存されたMacro値を変えません。Surge XTでは、`-` のときの値の表示に、patchを変えたときと選択を `-` に変えたときに読み直したpatchの値を出します（Surge XTのGUIでツマミを動かしても表示は変わりません）。Browse patches・Favorites・History、またはSurge XTのGUIでpatchを変えると、CC1とMacroの `0`・`127`・ドラッグした値は `-` に戻り、新しいpatchに保存された値で鳴ります（`sweep` は続けます）。`M` キーでMacro 1〜8をまとめて `sweep` にし、表示中のMacroが全部 `sweep` のときにもう一度押すとまとめて `-` に戻します。選択はCC1と同じく保存され、次回起動時も引き継ぎます。Favoriteの重複判定はCC1と同じくMacro値の違いを無視します。Surge XTのGUIでpatchを変えた場合も、すぐに欄の表示・非表示が切り替わります。詳細は[ADR 0036](docs/adr/0036-surge-xt-macro-sweep.md)を参照してください
+  - TyrellN6（CLAP）でも、現在のpatchがControl A・Control Bをmodulationに使っているとき、同じ場所に `CC2 Control A` のような欄が出ます（番号はpatchに保存されたControl A・Bの割り当て）。patchのUsage欄に `Ctrl A = bass dominator` のような説明があるときは、見出しをその説明にします。選択肢・ドラッグ・`M` キー・保存・patch変更時の動作はSurge XTのMacroと同じで、`sweep` の片道はControl Aが2.9秒、Control Bが3.7秒です。`-` のときの値の表示は送った値で、patchの値は出せません。TyrellN6のGUIでpatchを変えても欄は切り替わらず、Browse patches・Favorites・Historyでpatchを変えたときに切り替わります。他のプラグインのMacroは未対応です。詳細は[ADR 0038](docs/adr/0038-tyrell-n6-control-ab-sweep.md)を参照してください
   - ギター開放弦は MIDI note number 40・45・50・55・59・64（ミ・ラ・レ・ソ・シ・ミ）を125ms間隔で順にNote Onします。最後のNote Onから2秒後に6音を同時にNote Offし、0.5秒後に繰り返します
   - `Load` 成功時、`Sequence` の種類選択・開始・停止時に記憶します。停止や `Remove` 後も記憶は残ります。古い履歴・お気に入りは従来の4音パターンで復元します
   - 通常起動の終了時と `Remove` 時には、UAPMDのstate APIでプラグインが公開する音色・パラメータ等のバイナリstateを `%LOCALAPPDATA%\cat-plugin-player\states\` にプラグインごとに保存します。次回起動時や同じプラグインの再load時には、演奏開始前に復元します
@@ -109,7 +113,7 @@ https://github.com/user-attachments/assets/c4a7cec0-ebfd-4cea-bc21-bbfc4dd8e92d
   - sample容量が64,000,000 bytes以上のpink音色は自動適用しません（容量不明は通常扱い）。選択後に `Space` で音源・音色・容量の確認overlayを開き、その中で `Enter` を押すと準備・適用を開始します。確認中の `Esc` は変更せず取消します。一度適用した音色も再確認が必要です。読込中は進行overlayを表示し、途中cancelはできません。検索欄や保存メニュー・Solo／Mute overlayのSpace／Enterは音色適用に使いません（Solo／Mute overlayの `Enter` は `OK` と同じです）
   - ブラウザー内の `Random` または `R` キーは表示結果から均等に選びます。文字入力中は `T`／`R`／`M`／`/`／`h`／`j`／`k`／`l`／数字／`Enter` のショートカットは動作せず、ブラウザー内のoverlay・保存メニュー表示中も `R`／`M` は動作しません。pinkなら選択だけで、同じSpace→Enter確認が必要です。通常起動では`Esc`・`Enter` またはブラウザーウィンドウのOS closeでブラウザーだけを閉じ、本体と最後に適用成功した音色を保ち、未開始要求と古い準備結果を破棄します。既に適用を始めた処理は完了させます。確認overlay・Solo／Mute・保存メニューを開いているときの `Esc`／overlay外クリックは子だけを閉じ、ブラウザーや背後の操作へ同じ入力を通しません。OS closeはブラウザー全体を閉じます。再openでき、元の音色へ戻す取消操作はありません
   - 検索条件はハンバーガー `☰` 内の `Save condition to Role` でRoleへ追加し、Presetの `Delete` で削除できます。ALLからの追加先はEtcです。共通selectorの正規化・分類規則で扱い、catのconfig directory内 `patch-filter-presets.json` に保存します。読込破損時は元ファイルを保護して書込みを止め、保存失敗も画面に表示します。同じアプリ起動中はRole／Preset／検索・Solo／Muteを保持し、再起動後に復元するのは保存した自作条件だけです。TUIの条件やFavoritesは共有・移行しません
-  - Browse patchesの準備中は現在の演奏を続け、競合するロード・走査・音色操作を無効にします。Floeなどのsample読込で待つ場合があります。MML・Velocity・CC1の全体選択、effectの順序・state・Bypassを維持し、成功後は次回起動用stateを保存します。Favorites／Historyは自動追加しません。適用成功と保存失敗は区別して表示します。子ウィンドウのfocus中にも準備・適用の進行を更新します
+  - Browse patchesの準備中は現在の演奏を続け、競合するロード・走査・音色操作を無効にします。Floeなどのsample読込で待つ場合があります。MML・Velocity・CC1の `sweep`／`-` の選択、effectの順序・state・Bypassを維持し（CC1とMacroの `0`・`127` は `-` に戻します）、成功後は次回起動用stateを保存します。Favorites／Historyは自動追加しません。適用成功と保存失敗は区別して表示します。子ウィンドウのfocus中にも準備・適用の進行を更新します
   - 音色ブラウザーの候補は、既存cmrtカタログにあるSurge XT・Dexed・Floe・sforzando・Six Sines・TyrellN6・Vaporizer2のCLAP音色のうち、インストール済みのinstrumentと形式＋IDが一致するpatchです
   - 音色ブラウザーのカタログは既存の `%LOCALAPPDATA%\clap-mml-render-tui\patch-catalog\catalog.json` を読み取り専用で利用します。VST3への代替と未知の音源は対象外です。effectのプリセット選択はエフェクトルーティング欄のBrowse effectsを使います。Dexedはcartridge内のprogram指定を保持します。Floe・sforzandoの外部sampleは元の場所に必要で、sampleを複製・保存する機能はありません
   - cmrtが無く上記の `catalog.json` が存在しない環境では、Surge XTの音色一覧を[cat-music-patterns](https://github.com/cat2151/cat-music-patterns)から起動ごとに取得し、`%LOCALAPPDATA%\cat-plugin-player\patch-catalog\surge-xt.json` に保存して、Browse patchesの候補に使います。取得できない場合は前回保存した一覧を使い、それも無ければ音色ブラウザーに読込失敗を表示します。取得が終わるまで（最大10秒）は読込待ちの表示になります。一覧はSurge XT 1.3.4から作ったもので、版の違うSurge XTでは増えた音色が出ず、無い音色を選ぶと準備失敗を表示します。`catalog.json` が存在するのに読めない場合は切り替えません。理由は[ADR 0025](docs/adr/0025-surge-xt-patch-catalog-without-cmrt.md)にあります
@@ -180,11 +184,43 @@ Surge XTの初回導入は`shared/first_instrument_install.rs`に集約し、cat
 
 hostのRust/nativeとSMF処理は`shared/`に集約し、cat-smf-editorも同じ正本をmoduleとして参照します。独立crateは追加せず、各appの既定target/shimから自分のDLLを同梱します。
 
+共通hostはCLAP plain値・VST3 normalized値の直接parameter automationに対応します。UIでparameterを列挙・値表記を取得し、音声処理には解決済みの対象を容量固定のbatchで渡します。editorの専用trackがこの経路を利用します。生成補修の条件・再適用・回帰検証と未送信の作者向け報告文は[parameter automation補修](patches/uapmd/parameter-automation/README.md)、採用理由は[ADR 0037](docs/adr/0037-direct-parameter-automation.md)を参照してください。
+
 引数なしで通常の GUI を起動します。`--help` と `--version` も使えます。
 
 SMF選択モードは `--select-smf <SMF> --browser patch|effect --preserve-position` です。browser省略時はpatch、位置保持は明示指定が必要です。`--patch-filter <program名>`を渡すとpatch browserをALL条件からその名前で検索します。名前中の正規表現記号は文字として扱い、空白はANDです。カタログ読込後に0件の場合だけ単語を`|`でつないだOR検索へ一度切り替えます（例: `church organ` → `church|organ`）。`--patch-filter-file <JSON>`で検索・Role・Presetをそのまま復元し、正常終了時に同じfileへ返します。fileが無ければ初期検索を使い、既存fileの条件を優先します。空の検索も保持し、復元条件には単語ORへの自動切替を行いません。effect／master選択では使いません。検索欄は通常どおり大小無視の正規表現として編集できます。`--preview-smf <SMF>`で返却先とは別の全track試聴用SMFを指定できます。全trackのMIDIイベントを選択中の音源・effectへ送り、format 2ではtrackごとのtempoを反映します。試聴用SMFは書き換えません。`--start-seconds <秒>`で最初の試聴位置、`--loop-end-seconds <秒>`で入力SMF以上のloop終端を指定できます。省略時は先頭から入力SMFの終端までです。有限・非負の秒を使い、開始位置はloop終端より前にします。開始時点のcontroller・持続音を復元し、自然なloop境界は先頭へ戻ります。元SMFのイベントは変更しません。`--browser-only`を付けるとmain画面を表示せず、browserを前面に開きます。このoptionは選択モード専用です。通常のtrack選択ではbrowser内のボタンで別browserへ進めます。`--master-effects`ではeffect browserから始まり、patch browserには進みません。お気に入り・routingが必要なときだけ`Favorites / routing`からmain画面を表示できます。browserを閉じるEnterも保存・player全体の終了として扱います。保存失敗時や変更処理中はbrowserを保持し、エラーはbrowser内に表示します。Esc、検索等の入力に使われないq、本体／browserの×は入力SMFへinstrument・順序付きeffect・bypassのstateを保存して終了します。`--master-effects`ではconductorのmaster effect・bypassだけを保存し、track設定を保持します。検索欄のqは文字入力です。変更処理中は確定を待ち、保存失敗時は画面と選択を保持して再試行できます。通常のstatus.jsonは更新しません。選択中の既存state保存／お気に入り操作は通常と同じ保存先を使います。OS・plugin版をまたぐstate互換や外部sampleの複製は保証しません。[保存契約と共通host（ADR 0029）](docs/adr/0029-shared-host-smf-selection.md)を参照してください。
 
 ## 開発者用
+
+### オフラインWAVの取得
+
+`--render-wav` は呼出しごとに新しいhostとinstrumentを生成し、指定したバイナリstateを読み込んで、note48・velocity100・CC1=0の初音200msを取得して終了します。GUI・音声device・外部effect・通常sessionの復元は使いません。
+
+```powershell
+& ./target/release/cat-plugin-player.exe --render-wav X:/measure/out.wav --plugin-format CLAP --plugin-id org.surge-synth-team.surge-xt --plugin-path 'C:/Program Files/Common Files/CLAP/Surge Synth Team/Surge XT.clap' --state-file X:/measure/state.bin --wait-ms 10
+```
+
+形式は `CLAP` または `VST3`、idとpathはstateを保存したpluginに合わせて指定します。出力先の親フォルダーを先に作成し、WAVと同名の `.json` が存在しない新しい名前を使ってください。入力state、Favorites、History、通常のconfig/status/stateは書き換えません。
+
+48kHz・256frames・stereoの32bit float WAVで、note onから9600framesを保存します。`--wait-ms` は非負整数の音声サンプル時間です。その間は空イベントを処理し、発音後も含め実時間へ同期せずにレンダリングします。通常起動の自動待ちは加えません。JSONにはstate/PCMのSHA-256、plugin識別情報、wait、発音位置・処理frames、無音判定、生成・state適用・音声処理・保存の所要時間を記録します。生成callbackを待つ時間は別項目です。全サンプル0の収録は `status=silent` としてWAV/JSONを残して非zero終了し、読込・処理エラーも非zero終了します。同じ入力でもpluginによってPCMが一致するとは限りません。
+
+### Surge XT CLAPの初音待ち判定表
+
+全catalog音色を、新規process・新規instanceで各条件1回ずつ高速オフライン計測します。通常のconfig/status/state、Favorites、Historyは書き換えません。WAV・state・ログはcache内の計測専用runディレクトリに残し、配布JSONには全音色の開始位置・エラーと0msの採用判断を保存します。
+
+```powershell
+& ./target/release/cat-plugin-player.exe measure-surge-start-delay --output ../cat-music-patterns/surge-xt-start-delay.json
+```
+
+既定は10ms対100ms、200msの収録、開始位置の差1ms以内を0ms許可とします。`--candidate-wait-ms 0`などで比較待ちを変更でき、`--reference-wait-ms`、`--max-onset-delta-ms`、`--onset-ratio`で判定条件を変更できます。0ms許可は採用方針であり、10ms対100msの結果を0msの実測と扱いません。`--jobs`は並行数（既定4）、`--timeout-seconds`は各renderの上限（既定30秒）、`--limit`は動作確認用の件数制限、`--work-dir`は計測runの保存先親ディレクトリです。無音・エラーは別区分にして先へ進みます。
+
+閾値だけを変える場合は再レンダリング不要です。元の計測条件・値を保持したまま、例えば許容差2msで再選定できます。
+
+```powershell
+& ./target/release/cat-plugin-player.exe measure-surge-start-delay --reclassify ../cat-music-patterns/surge-xt-start-delay.json --max-onset-delta-ms 2 --output X:/measure/reclassified.json
+```
+
+正常完了時だけ出力表を置き換えます。cat-music-patternsへのcommit・pushは別途明示された操作として行います。起動時に通信完了を待たず、表の更新は演奏を再開しません。[計測の要点と採用判断（ADR 0008）](docs/adr/0008-surge-xt-automatic-note-start-delay.md)を参照してください。
 
 ### 起動時間の計測
 

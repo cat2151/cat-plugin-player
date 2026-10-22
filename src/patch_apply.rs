@@ -68,6 +68,7 @@ impl App {
             return;
         };
         self.pause_audio();
+        self.patch_changing();
         let old_pattern = self.sequence_pattern;
         let old_sweeps: Vec<_> = self.instances.iter().map(|i| (i.id, i.sweep_cc1)).collect();
         let old_state = match self
@@ -140,6 +141,11 @@ impl App {
     }
 
     fn patch_current(&mut self, id: i32, replacement: Replacement) {
+        if !self.host.ui_is_visible(id) {
+            self.surge_start_delay.editor_closed(id);
+        }
+        let permit = self.surge_start_delay.authorize(id, &replacement.prepared);
+        let previous_permit = self.surge_start_delay.replace(id, permit);
         let result = self
             .patch_operation(Operation::Apply, |app| {
                 app.host.load_state(id, &replacement.prepared.state)
@@ -158,6 +164,7 @@ impl App {
                 self.patch_succeeded(id, replacement);
             }
             Err(error) => {
+                self.surge_start_delay.replace(id, previous_permit);
                 self.pause_audio();
                 let state = &replacement.old_state.as_ref().unwrap().1;
                 let rollback =
@@ -198,6 +205,9 @@ impl App {
             return;
         }
         let key = PluginKey::from_plugin(&plugin);
+        self.surge_start_delay.forget(id);
+        let permit = self.surge_start_delay.authorize(id, &replacement.prepared);
+        self.surge_start_delay.replace(id, permit);
         let result = self
             .patch_operation(Operation::Apply, |app| {
                 app.host.load_state(id, &replacement.prepared.state)
@@ -210,6 +220,7 @@ impl App {
         let voice = match result {
             Ok(voice) => voice,
             Err(error) => {
+                self.surge_start_delay.forget(id);
                 self.host.destroy_instance(id);
                 self.patch_failed(
                     replacement.old_pattern,
@@ -223,6 +234,7 @@ impl App {
             self.instances.retain(|i| i.id != previous);
             self.unsafe_state.remove(&previous);
             self.host.destroy_instance(previous);
+            self.surge_start_delay.forget(previous);
         }
         self.instances.insert(
             0,

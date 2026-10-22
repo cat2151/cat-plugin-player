@@ -71,7 +71,7 @@ fn native_surge_editor_rebuild_recovers_failures() {
     let before = app.host.save_state(old).unwrap();
     app.favorites.active.push((old, "kept-favorite".into()));
     app.sequence_velocity = crate::SequenceVelocity::V127;
-    app.sequence_modulation = crate::SequenceModulation::Full;
+    app.sequence_modulation = Some(crate::SequenceModulation::Fixed(127));
 
     // A different DLL must already use the normal catalogs while the source is minimal.
     let mut effect = key.clone();
@@ -152,7 +152,10 @@ fn native_surge_editor_rebuild_recovers_failures() {
     assert!(app.editor_rebuild.is_none());
     assert_eq!(app.favorites.active, [(new, "kept-favorite".to_string())]);
     assert_eq!(app.sequence_velocity, crate::SequenceVelocity::V127);
-    assert_eq!(app.sequence_modulation, crate::SequenceModulation::Full);
+    assert_eq!(
+        app.sequence_modulation,
+        Some(crate::SequenceModulation::Fixed(127))
+    );
     assert_eq!(app.host.save_state(fx[0]).unwrap(), effect_state);
     app.open_editor(new);
     app.host.hide_ui(new);

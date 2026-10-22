@@ -154,7 +154,9 @@ impl App {
             return;
         }
         let key = config::PluginKey::from_plugin(&plugin);
+        self.surge_start_delay.forget(id);
         let rebuild = self.editor_rebuild.as_ref().filter(|r| r.matches(&key));
+        let rebuilding = rebuild.is_some();
         let restored = match (&favorite, rebuild) {
             (Some((_, state, _)), _) => self.host.load_state(id, state),
             (None, Some(rebuild)) => crate::session_editor::checkpoint("state")
@@ -166,7 +168,6 @@ impl App {
             self.load_failed(format!("Could not restore {label}: {error}"));
             return;
         }
-        let rebuilding = rebuild.is_some();
         let kind = if plugin.kind == PluginKind::Effect {
             PluginKind::Effect
         } else {
@@ -219,6 +220,7 @@ impl App {
             self.instances.retain(|i| i.id != previous);
             self.unsafe_state.remove(&previous);
             self.host.destroy_instance(previous);
+            self.surge_start_delay.forget(previous);
         }
         self.instances.push(Instance {
             id,
@@ -358,6 +360,10 @@ impl App {
     /// An instance created with Surge XT's minimal data home is first reloaded with
     /// the normal one, so that its editor lists the installed patches and wavetables.
     pub(crate) fn open_editor(&mut self, id: i32) {
+        if Some(id) == self.instrument_id() {
+            self.surge_start_delay.expose_editor(id);
+            self.save_session();
+        }
         let Some(instance) = self.instances.iter().find(|i| i.id == id) else {
             return;
         };

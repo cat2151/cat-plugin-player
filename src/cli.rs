@@ -4,7 +4,12 @@ use clap::Parser;
 
 #[derive(Debug, Parser)]
 #[command(version, about = "オーディオプラグインを手軽に演奏するアプリ")]
+#[command(args_conflicts_with_subcommands = true)]
 pub struct Cli {
+    #[command(subcommand)]
+    pub command: Option<crate::surge_start_delay::measure::Command>,
+    #[command(flatten)]
+    pub offline: crate::offline_render::Args,
     /// Read a patch reference from stdin and return opaque state on stdout.
     #[arg(long, conflicts_with_all = ["resident", "select_smf"])]
     pub restore_state: bool,

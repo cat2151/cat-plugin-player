@@ -4,6 +4,9 @@ use crate::favorites_store::Library;
 #[path = "surge_xt_startup_tests.rs"]
 mod startup_tests;
 
+#[path = "surge_xt_attack_tests.rs"]
+mod attack_tests;
+
 #[path = "surge_xt_data_home_tests.rs"]
 mod data_home_tests;
 
@@ -120,6 +123,37 @@ fn runtime_exclusions_are_scoped_to_exact_paths() {
         "<instanceZoomFactor v=\"125\"/></parameters>",
     );
     let b = a.replace("v=\"125\"", "v=\"150\"");
+    assert!(!same_sound(&plugin(), &wrap(&a, &[]), &wrap(&b, &[])));
+}
+
+#[test]
+fn macro_positions_match_but_labels_and_other_places_do_not() {
+    let with_macros = |v: &str, label: &str| {
+        XML.replace(
+            "<modwheel",
+            &format!(
+                "<customcontroller><entry i=\"0\" bipolar=\"1\" v=\"{v}\" label=\"{label}\"/>\
+                 </customcontroller><modwheel"
+            ),
+        )
+    };
+    let original = wrap(&with_macros("0.000", "De-Pad"), &[]);
+    for v in ["1.0", "-0.18110199272633"] {
+        assert!(same_sound(
+            &plugin(),
+            &original,
+            &wrap(&with_macros(v, "De-Pad"), &[])
+        ));
+    }
+    for xml in [
+        with_macros("1.5", "De-Pad"),
+        with_macros("NaN", "De-Pad"),
+        with_macros("0.000", "Sync"),
+    ] {
+        assert!(!same_sound(&plugin(), &original, &wrap(&xml, &[])));
+    }
+    let a = XML.replace("</parameters>", "<entry v=\"0\"/></parameters>");
+    let b = a.replace("<entry v=\"0\"", "<entry v=\"1\"");
     assert!(!same_sound(&plugin(), &wrap(&a, &[]), &wrap(&b, &[])));
 }
 

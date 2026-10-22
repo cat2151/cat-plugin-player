@@ -13,6 +13,9 @@ pub use identity::{PluginKey, PluginKind};
 #[path = "native_test_trace.rs"]
 pub(crate) mod trace;
 
+#[path = "parameters.rs"]
+#[allow(dead_code)] // Shared editor API; the player has no automation editor.
+pub mod parameters;
 #[path = "plugin_state.rs"]
 mod plugin_state;
 #[path = "settling.rs"]

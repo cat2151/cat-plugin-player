@@ -4,6 +4,7 @@
 
 #include "uapmd_shim.h"
 #include "owned_instance.h"
+#include "parameter_binding.h"
 #include "plugin_catalog.h"
 #include "plugin_specific/shu_ui.h"
 #include "ui_thumbnail.h"
@@ -120,6 +121,7 @@ struct UhHost {
 // Everything one plugin instance needs on the audio thread. A chain uses `ctx`
 // for its effects graph and keeps the instrument, if any, in `stages`.
 struct UhProcessor {
+    ParameterBinding parameters;
     uapmd_plugin_hosting::AudioPluginInstanceAPI* instance{};
     remidy::MasterContext master{};
     remidy::AudioProcessContext ctx;
@@ -165,6 +167,17 @@ void copyStateError(const std::string& message, char* error, int32_t size) {
 uapmd_plugin_hosting::AudioPluginInstanceAPI* getInstance(UhHost* host, int32_t id) {
     auto it = host->instances.find(id);
     return it == host->instances.end() ? nullptr : it->second->lifecycle->instance();
+}
+
+// Plugins rescan their parameter list after a patch change, also one made in
+// their own editor; CLAP calls it on the main thread.
+void watchParameterList(OwnedInstance& owned) {
+    auto* instance = owned.lifecycle->instance();
+    if (auto* params = instance ? instance->parameterSupport() : nullptr) {
+        auto* changes = &owned.parameter_list_changes;
+        params->parameterMetadataChangeEvent().addListener(
+            [changes] { changes->fetch_add(1, std::memory_order_relaxed); });
+    }
 }
 
 const std::string* pluginField(const AudioPluginCatalogEntry& e, int32_t field) {
@@ -432,6 +445,8 @@ void uh_instance_create(UhHost* host, int32_t index, uint32_t sample_rate,
                 --host->pending_instances;
                 if (!error.empty())
                     destroyInstance(host, instanceId);
+                else if (auto it = host->instances.find(instanceId); it != host->instances.end())
+                    watchParameterList(*it->second);
                 if (done)
                     done(user, error.empty() ? instanceId : -1,
                          error.empty() ? nullptr : error.c_str());
@@ -536,6 +551,7 @@ UhProcessor* uh_processor_create(UhHost* host, int32_t instance_id,
 
         auto processor = std::make_unique<UhProcessor>(kEventBufferBytes);
         processor->instance = instance;
+        processor->parameters.owned = host->instances.at(instance_id).get();
         processor->max_frames = max_frames;
         processor->master.sampleRate(static_cast<int32_t>(sample_rate));
         processor->master.isPlaying(true);
@@ -708,6 +724,10 @@ static int32_t processStage(UhProcessor* processor, const float* input,
         remidy::AudioThreadScope audioThreadRole;
         auto& ctx = processor->ctx;
         ctx.frameCount(frames);
+        if (processor->parameters.pending && !processor->parameters.valid()) {
+            processor->parameters.clear();
+            return -6;
+        }
         // These also reset the event positions, so they come before the events.
         ctx.clearAudioInputs();
         ctx.clearAudioOutputs();
@@ -734,6 +754,7 @@ static int32_t processStage(UhProcessor* processor, const float* input,
         eventIn.position(eventBytes);
 
         const auto status = processor->instance->processAudio(ctx);
+        processor->parameters.pending = false;
         eventIn.position(0);
         processor->master.playbackPositionSamples(processor->master.playbackPositionSamples() + frames);
         if (status != 0)
@@ -927,6 +948,14 @@ int32_t uh_ui_is_visible(UhHost* host, int32_t instance_id) {
 #endif
 }
 
+uint64_t uh_parameter_list_changes(UhHost* host, int32_t instance_id) {
+    if (!host)
+        return 0;
+    auto it = host->instances.find(instance_id);
+    return it == host->instances.end()
+        ? 0 : it->second->parameter_list_changes.load(std::memory_order_relaxed);
+}
+
 int32_t uh_ui_thumbnail(UhHost* host, int32_t instance_id, uint8_t* rgba,
                         int32_t len, int32_t* width, int32_t* height) {
     if (!host || !rgba || !width || !height || len < 192 * 128 * 4)
@@ -946,3 +975,5 @@ int32_t uh_ui_thumbnail(UhHost* host, int32_t instance_id, uint8_t* rgba,
 }
 
 } // extern "C"
+
+#include "parameter_api.inc"

@@ -142,7 +142,7 @@ fn native_editor_rebuilds_minimal_surge_with_normal_data_home() {
     app.sequence_pattern = SequencePattern::Off;
     app.selected_sequence = SequencePattern::GuitarArpeggio;
     app.sequence_velocity = crate::SequenceVelocity::Range40To100;
-    app.sequence_modulation = crate::SequenceModulation::Sweep;
+    app.sequence_modulation = Some(crate::SequenceModulation::Sweep);
     app.instances[0].sweep_cc1 = true;
     app.instances[0].preset_name = Some("edited Bass 2".into());
     let catalog = super::catalog_probe::CatalogProbe::start();
@@ -201,7 +201,10 @@ fn native_editor_rebuilds_minimal_surge_with_normal_data_home() {
     assert_eq!(app.sequence_pattern, SequencePattern::Off);
     assert_eq!(app.selected_sequence, SequencePattern::GuitarArpeggio);
     assert_eq!(app.sequence_velocity, crate::SequenceVelocity::Range40To100);
-    assert_eq!(app.sequence_modulation, crate::SequenceModulation::Sweep);
+    assert_eq!(
+        app.sequence_modulation,
+        Some(crate::SequenceModulation::Sweep)
+    );
     assert!(app.instances[0].sweep_cc1);
     assert_eq!(
         app.instances[0].preset_name.as_deref(),

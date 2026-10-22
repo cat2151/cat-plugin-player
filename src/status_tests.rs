@@ -46,7 +46,7 @@ fn migrates_legacy_session_preserves_settings_comments_and_backups() {
     assert_eq!(status.sequence_pattern, SequencePattern::Off);
     assert_eq!(status.selected_sequence, SequencePattern::GuitarArpeggio);
     assert_eq!(status.sequence_velocity, SequenceVelocity::Range80To127);
-    assert_eq!(status.sequence_modulation, SequenceModulation::Sweep);
+    assert_eq!(status.sequence_modulation, Some(SequenceModulation::Sweep));
     assert!(status.effect_bypassed);
     assert_eq!(status.effects[0].id, "reverb");
     assert_eq!(status.favorites.instrument.as_deref(), Some("favo1"));

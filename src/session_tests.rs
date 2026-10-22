@@ -1,4 +1,5 @@
 use super::*;
+use crate::state_store;
 
 // Opt-in: needs the native DLL and an installed plugin from existing history.
 // All writes go to a temporary session directory; user history is read only.

@@ -190,6 +190,31 @@ impl Chain {
         self.host.pump();
     }
 
+    /// Instrument parameters only; effects and host controls are excluded.
+    #[allow(dead_code)] // Used by the editor.
+    pub fn parameters(&self) -> Result<Vec<host::parameters::Parameter>, String> {
+        self.host
+            .parameters(*self.ids.first().ok_or("Chain has no instrument")?)
+    }
+
+    #[allow(dead_code)] // Used by the editor.
+    pub fn parameter_text(
+        &self,
+        value: host::parameters::ParameterValue,
+    ) -> Result<String, String> {
+        self.host
+            .parameter_text(*self.ids.first().ok_or("Chain has no instrument")?, value)
+    }
+
+    /// Every renderer using the chain must be stopped.
+    #[allow(dead_code)] // Used by the editor.
+    pub fn prepare_parameters(&self) -> Result<(), String> {
+        self.processor
+            .as_ref()
+            .ok_or("Chain has no processor")?
+            .prepare_parameters()
+    }
+
     /// # Safety
     /// The callback must finish before this chain is destroyed, and only one thread may render.
     pub unsafe fn audio_ref(&self) -> host::ProcessorRef {

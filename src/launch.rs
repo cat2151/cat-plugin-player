@@ -5,6 +5,14 @@ use std::time::Instant;
 
 pub(super) fn run() -> eframe::Result {
     let cli = cli::Cli::parse();
+    if let Some(command) = &cli.command {
+        return crate::surge_start_delay::measure::run(command)
+            .map_err(|e| eframe::Error::AppCreation(e.into()));
+    }
+    if cli.offline.render_wav.is_some() {
+        return crate::offline_render::run(&cli.offline)
+            .map_err(|e| eframe::Error::AppCreation(e.into()));
+    }
     if cli.restore_state {
         return crate::state_request::run().map_err(|e| eframe::Error::AppCreation(e.into()));
     }

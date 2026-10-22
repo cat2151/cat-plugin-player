@@ -1,5 +1,5 @@
 //! Session ownership, state persistence and changes to a stopped audio chain.
-use crate::{audio, config, ffi, plugin_list::PluginKind, startup, state_store, App};
+use crate::{audio, config, ffi, plugin_list::PluginKind, startup, App};
 
 impl App {
     pub(crate) fn instrument_id(&self) -> Option<i32> {
@@ -101,9 +101,13 @@ impl App {
         });
         let start_delay = instrument_plugin
             .map(|plugin| {
-                crate::plugin_specific::automatic_note_start_delay_at_rate(
+                self.surge_start_delay.delay(
+                    instrument,
                     plugin,
-                    self.sample_rate(),
+                    crate::plugin_specific::automatic_note_start_delay_at_rate(
+                        plugin,
+                        self.sample_rate(),
+                    ),
                 )
             })
             .unwrap_or_default();
@@ -113,6 +117,7 @@ impl App {
             self.sequence_pattern,
             self.sequence_velocity,
             self.sequence_modulation,
+            &self.macro_lane.active(),
             start_delay,
             self.mml_input.phrase.clone(),
             self.effect_swap_fade,
@@ -192,6 +197,9 @@ impl App {
             .map(|i| i.plugin.clone())
             .or_else(|| self.restored.clone());
         let status = crate::status::Status {
+            surge_start_delay: self
+                .instrument_id()
+                .and_then(|id| self.surge_start_delay.snapshot(id)),
             show_favorites: Some(self.favorites.show),
             show_history: self.favorites.show_history,
             on_right: self.scope_ui.on_right,
@@ -225,6 +233,7 @@ impl App {
             mml: self.mml_input.confirmed.clone(),
             sequence_velocity: self.sequence_velocity,
             sequence_modulation: self.sequence_modulation,
+            macro_modulation: self.macro_lane.choices,
             patch_browser: self.patch_browser.saved_filter(),
             effect_browser: self.effect_browser.saved_filter(&self.effect_ids()),
             ..Default::default()
@@ -248,54 +257,6 @@ impl App {
             .iter()
             .find(|(id, _)| *id == instance.id)
             .map(|(_, favorite)| favorite.clone())
-    }
-
-    pub(crate) fn restore_plugin_state(
-        &self,
-        id: i32,
-        key: &config::PluginKey,
-    ) -> Result<(), String> {
-        if let Some(selection) = &self.selection {
-            if self.restoring {
-                if let Some(slot) = selection
-                    .settings
-                    .instrument
-                    .iter()
-                    .chain(&selection.settings.effects)
-                    .find(|s| s.plugin.format == key.format && s.plugin.id == key.id)
-                {
-                    return self.host.load_state(id, &slot.state);
-                }
-            }
-            return Ok(());
-        }
-        let path = self.config_path.as_ref().map_err(Clone::clone)?;
-        if let Some(state) = state_store::load(path, key)? {
-            self.host.load_state(id, &state)?;
-        }
-        Ok(())
-    }
-
-    pub(crate) fn save_plugin_state(&mut self, id: i32) -> Result<(), String> {
-        if self.unsafe_state.contains(&id) {
-            return Err("state saving suppressed after failed rollback".into());
-        }
-        // Any instance can be an effect in the instrument's stream. Stop the
-        // whole stream before invoking a plugin state API.
-        self.pause_audio();
-        let instance = self
-            .instances
-            .iter()
-            .find(|i| i.id == id)
-            .ok_or("instance not found")?;
-        let state = self.host.save_state(id)?;
-        let path = self.config_path.as_ref().map_err(Clone::clone)?;
-        state_store::save_named(
-            path,
-            &instance.plugin,
-            &state,
-            instance.preset_name.as_deref(),
-        )
     }
 
     pub(crate) fn remove_plugin(&mut self, id: i32) -> bool {
@@ -344,6 +305,7 @@ impl App {
             .active
             .retain(|(instance, _)| *instance != id);
         self.host.destroy_instance(id);
+        self.surge_start_delay.forget(id);
         if let Some(source) = source {
             self.instances
                 .iter_mut()

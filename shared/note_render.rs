@@ -8,6 +8,54 @@ pub struct Render {
 }
 
 impl Render {
+    #[allow(dead_code)] // Source-tick collisions in editor automation.
+    pub fn process_ordered(
+        &mut self,
+        events: &[crate::host::parameters::AutomationEvent],
+        durations: &[u64; 128],
+        out: &mut [f32],
+        channels: usize,
+    ) -> Result<(), i32> {
+        use crate::host::parameters::MAX_AUTOMATION_EVENTS;
+        if channels == 0 || events.len() > MAX_AUTOMATION_EVENTS {
+            return Err(-7);
+        }
+        let mut words = [0u32; MAX_AUTOMATION_EVENTS];
+        let mut count = 0;
+        let mut parameters = false;
+        for event in events {
+            if event.kind == 0 {
+                parameters = true;
+                continue;
+            }
+            let pitch = ((event.midi >> 8) & 127) as usize;
+            let on = (event.midi >> 20) & 15 == 9 && event.midi & 127 != 0;
+            self.held[pitch] = on;
+            self.remaining[pitch] = if on { durations[pitch] } else { 0 };
+            words[count] = event.midi;
+            count += 1;
+        }
+        let frames = (out.len() / channels) as u64;
+        for pitch in 0..128 {
+            if self.held[pitch] && self.remaining[pitch] != u64::MAX {
+                self.remaining[pitch] = self.remaining[pitch].saturating_sub(frames);
+            }
+        }
+        if parameters {
+            self.processor.process_automation(events, out, channels)
+        } else if self.processor.process(&words[..count], out, channels) {
+            Ok(())
+        } else {
+            Err(-1)
+        }
+    }
+    #[allow(dead_code)] // Editor automation uses the shared note renderer.
+    pub fn parameters(
+        &mut self,
+        values: &[crate::host::parameters::ParameterValue],
+    ) -> Result<(), i32> {
+        self.processor.parameters(values)
+    }
     pub fn new(processor: ProcessorRef) -> Self {
         Self {
             processor,
