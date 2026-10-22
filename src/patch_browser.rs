@@ -47,6 +47,7 @@ pub(crate) struct Browser {
     pub count: Option<usize>,
     /// Save the currently loaded instrument on the root UI thread.
     pub favorite_requested: bool,
+    pub main_random: MainRandom,
 }
 
 impl Browser {
@@ -288,10 +289,15 @@ impl App {
                 }
             }
         }
-        if !self.patch_browser.open || self.actions_busy() || self.resident_waiting() {
+        let main_random = self.patch_browser.main_random == MainRandom::Start;
+        if !(self.patch_browser.open || main_random)
+            || self.actions_busy()
+            || self.resident_waiting()
+        {
             return;
         }
         if let Some(mut ticket) = self.patch_browser.requests.next() {
+            self.patch_browser.main_random = MainRandom::Idle;
             let installed = self.plugins.iter().find(|plugin| {
                 plugin.format == ticket.candidate.format
                     && plugin.id == ticket.candidate.plugin_id
@@ -315,3 +321,6 @@ impl App {
 
 #[path = "patch_browser_cursor.rs"]
 mod cursor;
+#[path = "patch_browser_main_random.rs"]
+mod main_random;
+pub(crate) use main_random::MainRandom;

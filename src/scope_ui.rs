@@ -33,9 +33,47 @@ impl ScopeUi {
 
 impl App {
     pub(crate) fn scope_panel(&mut self, ctx: &egui::Context, on_right: bool) {
+        self.scope_shortcuts(ctx);
         if !on_right {
             egui::TopBottomPanel::bottom("audio_analysis_bottom")
                 .show(ctx, |ui| self.analysis_contents(ui, ctx, false));
+        }
+    }
+
+    fn scope_shortcuts(&mut self, ctx: &egui::Context) {
+        let [labels, cycles, trigger, guides, placement] = [
+            egui::Key::A,
+            egui::Key::C,
+            egui::Key::Z,
+            egui::Key::G,
+            egui::Key::P,
+        ]
+        .map(|key| self.main_shortcut(ctx, key));
+        let scope = &mut self.scope_ui;
+        if labels {
+            scope.show_labels = !scope.show_labels;
+        }
+        if cycles {
+            scope.cycles = match scope.cycles {
+                1 => 2,
+                2 => 4,
+                4 => 8,
+                _ => 1,
+            };
+        }
+        if trigger {
+            scope.trigger = match scope.trigger {
+                Trigger::ZeroCross => Trigger::Similarity,
+                Trigger::Similarity => Trigger::ZeroCross,
+            };
+        }
+        if guides {
+            scope.guides = !scope.guides;
+        }
+        // Placement is snapshotted per frame, so the move shows on the next one.
+        if placement {
+            scope.on_right = !scope.on_right;
+            self.save_session();
         }
     }
 
@@ -115,15 +153,15 @@ impl App {
                 ui.colored_label(egui::Color32::LIGHT_BLUE, "R");
             }
             ui.menu_button("☰", |ui| {
-                ui.checkbox(&mut self.scope_ui.show_labels, "Show analysis labels");
-                if ui.checkbox(&mut self.scope_ui.on_right, "On right")
+                ui.checkbox(&mut self.scope_ui.show_labels, "Show analysis labels (A)");
+                if ui.checkbox(&mut self.scope_ui.on_right, "On right (P)")
                     .on_hover_text(
                         "Move spectrum, oscilloscope and Lissajous between the right sidebar and bottom",
                     ).changed() {
                     self.save_session();
                 }
                 ui.separator();
-                ui.label("Display cycles");
+                ui.label("Display cycles (C)");
                 ui.horizontal(|ui| {
                     for cycles in [1, 2, 4, 8] {
                         ui.selectable_value(
@@ -133,7 +171,7 @@ impl App {
                         );
                     }
                 });
-                ui.label("Trigger");
+                ui.label("Trigger (Z)");
                 egui::ComboBox::from_id_salt("scope_trigger")
                     .selected_text(match self.scope_ui.trigger {
                         Trigger::ZeroCross => "Zero cross",
@@ -152,7 +190,7 @@ impl App {
                         );
                     });
                 ui.separator();
-                ui.checkbox(&mut self.scope_ui.guides, "Show red guides");
+                ui.checkbox(&mut self.scope_ui.guides, "Show red guides (G)");
             })
             .response
             .on_hover_text("Analysis display settings");

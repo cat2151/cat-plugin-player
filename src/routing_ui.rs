@@ -14,6 +14,15 @@ impl App {
             .main_shortcut(ctx, egui::Key::B)
             .then_some(!self.effect_bypassed);
         let mut reorder = None;
+        if self.main_shortcut(ctx, egui::Key::U) {
+            if let Some(id) = self.instrument_id() {
+                if self.host.ui_is_visible(id) {
+                    hide = Some(id);
+                } else {
+                    show = Some(id);
+                }
+            }
+        }
         egui::SidePanel::right("instances")
             .min_width(240.0)
             .default_width(320.0)
@@ -141,10 +150,16 @@ impl App {
                                         add_favorite = Some(instance.id);
                                     }
                                     let ui_visible = self.host.ui_is_visible(instance.id);
-                                    if ui
-                                        .button(if ui_visible { "Hide UI" } else { "Show UI" })
-                                        .clicked()
+                                    let toggle =
+                                        ui.button(if ui_visible { "Hide UI" } else { "Show UI" });
+                                    let toggle = if instance.kind
+                                        == crate::plugin_list::PluginKind::Instrument
                                     {
+                                        toggle.on_hover_text("Show / hide instrument UI (U)")
+                                    } else {
+                                        toggle
+                                    };
+                                    if toggle.clicked() {
                                         if ui_visible {
                                             hide = Some(instance.id);
                                         } else {

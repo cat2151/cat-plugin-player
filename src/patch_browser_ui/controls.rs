@@ -83,12 +83,21 @@ impl Browser {
         // Taken before the widgets draw, so a focused Solo/Mute toggle never also sees Enter.
         let mut accept =
             ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, Key::Enter));
+        // As in the original TUI, a letter applies at once: a-z Solo, Shift+A-Z Mute.
+        if let Some(menu) = self.snapshot.as_ref().map(|snapshot| &snapshot.plugin_menu) {
+            if let Some((slug, mode)) = ctx.input_mut(|input| take_plugin_letter(input, menu)) {
+                let draft = self.solo_draft.as_mut().unwrap();
+                *draft = toggle_plugin_term(draft, &slug, mode);
+                accept = true;
+            }
+        }
         let response = egui::Modal::new(egui::Id::new("browser_solo_mute")).show(ctx, |ui| {
             ui.set_width((ctx.screen_rect().width() - 60.0).clamp(240.0, 550.0));
             ui.heading("Instruments: Solo / Mute");
             ui.label(
                 "Click an active mode again to return to normal. OK (Enter) applies all changes.",
             );
+            ui.label("Key: a-z Solo, Shift+A-Z Mute; applies at once.");
             if let Some(snapshot) = &self.snapshot {
                 // Names take only their own width so each mode stays next to its plugin.
                 let font = egui::TextStyle::Body.resolve(ui.style());
@@ -108,7 +117,15 @@ impl Browser {
                     .max_height((ctx.screen_rect().height() - 190.0).max(80.0))
                     .show(ui, |ui| {
                         for name in &snapshot.instrument_names {
+                            let slug = cmrt_patches::plugin_slug(name);
+                            let letter = snapshot
+                                .plugin_menu
+                                .items()
+                                .iter()
+                                .find(|item| item.slug == slug)
+                                .map_or(' ', |item| item.key);
                             ui.horizontal(|ui| {
+                                ui.monospace(letter.to_string());
                                 let width = longest.min(ui.available_width() - 100.0);
                                 ui.allocate_ui_with_layout(
                                     egui::vec2(width, 22.0),
@@ -118,7 +135,6 @@ impl Browser {
                                         ui.add(egui::Label::new(name).truncate());
                                     },
                                 );
-                                let slug = cmrt_patches::plugin_slug(name);
                                 for (label, mode) in
                                     [("Solo", PluginMode::Solo), ("Mute", PluginMode::Mute)]
                                 {
@@ -179,4 +195,43 @@ impl Browser {
             self.condition_menu = false;
         }
     }
+}
+
+/// Takes the first letter that names a listed plugin; other letters stay unread.
+fn take_plugin_letter(
+    input: &mut egui::InputState,
+    menu: &PluginMenu,
+) -> Option<(String, PluginMode)> {
+    let mut chosen = None;
+    input.events.retain(|event| {
+        let egui::Event::Key {
+            key,
+            pressed: true,
+            repeat: false,
+            modifiers,
+            ..
+        } = event
+        else {
+            return true;
+        };
+        let mode = if modifiers.is_none() {
+            PluginMode::Solo
+        } else if *modifiers == egui::Modifiers::SHIFT {
+            PluginMode::Mute
+        } else {
+            return true;
+        };
+        let [letter] = key.name().as_bytes() else {
+            return true;
+        };
+        let letter = letter.to_ascii_lowercase() as char;
+        match menu.items().iter().find(|item| item.key == letter) {
+            Some(item) if chosen.is_none() => {
+                chosen = Some((item.slug.clone(), mode));
+                false
+            }
+            _ => true,
+        }
+    });
+    chosen
 }

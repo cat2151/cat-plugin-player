@@ -77,13 +77,10 @@ impl App {
                         ui.label("Settings");
                         let favorites_tab = self.favorites.show && !self.favorites.show_history;
                         ui.add_enabled_ui(favorites_tab, |ui| {
-                            ui.checkbox(&mut self.favorites.reorder_mode, "Reorder favorites");
+                            ui.checkbox(&mut self.favorites.reorder_mode, "Reorder favorites (O)");
                         });
-                        let can_reorder = favorites_tab && self.filter.is_empty()
-                            && self.favorites.error.is_none() && !self.actions_busy()
-                            && !self.scanning && !self.restoring;
-                        if ui.add_enabled(can_reorder,
-                            egui::Button::new("Sort by plugin name"))
+                        if ui.add_enabled(self.can_sort_favorites(),
+                            egui::Button::new("Sort by plugin name (N)"))
                             .on_hover_text("Sort Favorites once in ascending plugin name order and save. Clear the filter first.")
                             .clicked() {
                             sort_favorites = true;
@@ -91,22 +88,17 @@ impl App {
                         }
                         ui.separator();
                         let mut prefer_clap = self.prefer_clap;
-                        if ui.checkbox(&mut prefer_clap, "Show only CLAP for duplicate plugins")
+                        if ui.checkbox(&mut prefer_clap, "Show only CLAP for duplicate plugins (D)")
                             .on_hover_text("Hide VST3 when CLAP has the same name, vendor and kind. Turn off to show both formats.")
                             .changed()
                         {
-                            let result = self.config_path.as_ref().map_err(Clone::clone)
-                                .and_then(|path| crate::config::save_prefer_clap(path, prefer_clap));
-                            match result {
-                                Ok(()) => self.prefer_clap = prefer_clap,
-                                Err(error) => self.status = format!("Could not save plugin display setting: {error}"),
-                            }
+                            self.set_prefer_clap(prefer_clap);
                         }
                         ui.separator();
                         if ui
                             .add_enabled(
-                                !self.scanning && !self.actions_busy() && !self.restoring,
-                                egui::Button::new("Rescan plugins..."),
+                                self.can_rescan(),
+                                egui::Button::new("Rescan plugins... (Y)"),
                             )
                             .clicked()
                         {
@@ -119,16 +111,7 @@ impl App {
                 });
             });
             if (self.favorites.show, self.favorites.show_history) != previous_tab {
-                // A tab switch during startup must preserve slots still restoring.
-                self.config_error = self.config_path.as_ref().map_err(Clone::clone)
-                    .and_then(|path| {
-                        let mut status = crate::status::Status::load(path)?;
-                        status.show_favorites = Some(self.favorites.show);
-                        status.show_history = self.favorites.show_history;
-                        status.save(path)
-                    })
-                    .err()
-                    .map(|error| format!("Could not save library tab: {error}"));
+                self.save_library_tab();
             }
             ui.horizontal(|ui| {
                 ui.label("Filter:");
@@ -270,7 +253,7 @@ impl App {
                 });
             }
         });
-        self.library_shortcuts(ctx, editing_before);
+        sort_favorites |= self.library_shortcuts(ctx, editing_before);
         if let Some(i) = load_plugin {
             self.load_plugin(i);
         }
@@ -305,6 +288,48 @@ impl App {
         }
         self.favorite_name_dialog(ctx);
         self.rescan_confirmation(ctx);
+    }
+
+    pub(crate) fn save_library_tab(&mut self) {
+        // A tab switch during startup must preserve slots still restoring.
+        self.config_error = self
+            .config_path
+            .as_ref()
+            .map_err(Clone::clone)
+            .and_then(|path| {
+                let mut status = crate::status::Status::load(path)?;
+                status.show_favorites = Some(self.favorites.show);
+                status.show_history = self.favorites.show_history;
+                status.save(path)
+            })
+            .err()
+            .map(|error| format!("Could not save library tab: {error}"));
+    }
+
+    pub(crate) fn can_sort_favorites(&self) -> bool {
+        self.favorites.show
+            && !self.favorites.show_history
+            && self.filter.is_empty()
+            && self.favorites.error.is_none()
+            && !self.actions_busy()
+            && !self.scanning
+            && !self.restoring
+    }
+
+    pub(crate) fn can_rescan(&self) -> bool {
+        !self.scanning && !self.actions_busy() && !self.restoring
+    }
+
+    pub(crate) fn set_prefer_clap(&mut self, prefer_clap: bool) {
+        let result = self
+            .config_path
+            .as_ref()
+            .map_err(Clone::clone)
+            .and_then(|path| crate::config::save_prefer_clap(path, prefer_clap));
+        match result {
+            Ok(()) => self.prefer_clap = prefer_clap,
+            Err(error) => self.status = format!("Could not save plugin display setting: {error}"),
+        }
     }
 
     fn rescan_confirmation(&mut self, ctx: &egui::Context) {

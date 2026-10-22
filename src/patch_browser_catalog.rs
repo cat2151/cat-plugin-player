@@ -1,8 +1,8 @@
 //! An immutable selector snapshot; indices never cross snapshot generations.
 use crate::patch_catalog::Candidate;
 use cmrt_patch_select::{
-    filter_candidates, sort_for_selector, FilterGroup, FilterPreset, PatchCatalogEntry,
-    PreparedPresets,
+    filter_candidates, plugin_menu::PluginMenu, sort_for_selector, FilterGroup, FilterPreset,
+    PatchCatalogEntry, PreparedPresets,
 };
 use cmrt_patches::{PatchRoleIndex, PatchRoleInput, PluginTerm};
 use std::cell::RefCell;
@@ -13,6 +13,8 @@ pub(crate) struct Snapshot {
     pub entries: Vec<PatchCatalogEntry>,
     pub presets: Vec<Vec<FilterPreset>>,
     pub instrument_names: Vec<String>,
+    /// The original TUI's Solo / Mute letters, so both apps share each plugin's key.
+    pub plugin_menu: PluginMenu,
     /// The last listing and its Solo / Mute terms; search typing reuses it.
     listing: RefCell<Option<(String, Listing)>>,
 }
@@ -98,6 +100,7 @@ impl Snapshot {
             .into_iter()
             .collect();
         Ok(Self {
+            plugin_menu: PluginMenu::new(&entries),
             candidates,
             entries,
             presets,

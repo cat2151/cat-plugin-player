@@ -5,6 +5,17 @@ use value_bar::{drag_bar, value_bar};
 
 mod value_bar;
 
+/// The dropdowns' longest label is "MML / Chord"; the arrows take the saved width.
+const CHOICE_WIDTH: f32 = 110.0;
+
+/// Wide arrows beside a narrow dropdown are easy to hit.
+fn arrow(ui: &mut egui::Ui, forward: bool, hover: &str) -> bool {
+    let text = egui::RichText::new(if forward { ">" } else { "<" }).size(18.0);
+    ui.add(egui::Button::new(text).min_size(egui::vec2(44.0, 28.0)))
+        .on_hover_text(hover)
+        .clicked()
+}
+
 /// Selecting a type preserves transport state; Play/Stop changes it explicitly.
 fn selected_state(current: SequencePattern, selected: SequencePattern) -> SequencePattern {
     if current == SequencePattern::Off {
@@ -74,6 +85,9 @@ impl App {
         let has_audio = self.instances.iter().any(|i| i.voice.is_some());
         let shortcut =
             take_transport_shortcut(ui.ctx(), ready && has_audio && !self.mml_input.open);
+        let [next_sequence, next_velocity, next_modulation] =
+            [egui::Key::S, egui::Key::V, egui::Key::W]
+                .map(|key| ready && self.main_shortcut(ui.ctx(), key));
 
         let (velocity_value, modulation_value, macro_values) = self
             .instances
@@ -94,12 +108,12 @@ impl App {
                     open_mml = true;
                 }
                 ui.add_enabled_ui(ready, |ui| {
-                    if ui.button("<").on_hover_text("Previous sequence").clicked() {
+                    if arrow(ui, false, "Previous sequence") {
                         selected = selected.adjacent(false);
                     }
                     egui::ComboBox::from_id_salt("sequence_type")
                         .selected_text(selected.label())
-                        .width(170.0)
+                        .width(CHOICE_WIDTH)
                         .show_ui(ui, |ui| {
                             for &pattern in SequencePattern::TYPES {
                                 ui.selectable_value(&mut selected, pattern, pattern.label());
@@ -112,7 +126,7 @@ impl App {
                                 );
                             }
                         });
-                    if ui.button(">").on_hover_text("Next sequence").clicked() {
+                    if arrow(ui, true, "Next sequence (S)") || next_sequence {
                         selected = selected.adjacent(true);
                     }
                 });
@@ -146,12 +160,12 @@ impl App {
             ui.horizontal_wrapped(|ui| {
                 ui.label("Velocity");
                 ui.add_enabled_ui(ready, |ui| {
-                    if ui.button("<").on_hover_text("Previous velocity").clicked() {
+                    if arrow(ui, false, "Previous velocity") {
                         velocity = velocity.adjacent(false);
                     }
                     egui::ComboBox::from_id_salt("sequence_velocity")
                         .selected_text(velocity.label())
-                        .width(170.0)
+                        .width(CHOICE_WIDTH)
                         .show_ui(ui, |ui| {
                             for &choice in SequenceVelocity::TYPES {
                                 ui.selectable_value(&mut velocity, choice, choice.label());
@@ -159,7 +173,7 @@ impl App {
                         })
                         .response
                         .on_hover_text("Ranges: one phrase up, the next phrase down; repeat");
-                    if ui.button(">").on_hover_text("Next velocity").clicked() {
+                    if arrow(ui, true, "Next velocity (V)") || next_velocity {
                         velocity = velocity.adjacent(true);
                     }
                 });
@@ -179,12 +193,16 @@ impl App {
             ui.horizontal_wrapped(|ui| {
                 ui.label("CC1 modulation");
                 ui.add_enabled_ui(ready, |ui| {
+                    if next_modulation {
+                        modulation = SequenceModulation::adjacent(modulation, true);
+                    }
                     modulation_selector(
                         ui,
                         "sequence_modulation",
                         &mut modulation,
                         "-: not sent; the patch's modulation wheel stays
-sweep: 0 -> 127 in 2 seconds, then 127 -> 0 in 2 seconds; repeat",
+sweep: 0 -> 127 in 2 seconds, then 127 -> 0 in 2 seconds; repeat
+w: next choice",
                     )
                 });
                 let value = shown(modulation, controls.wheel, modulation_value);
@@ -268,16 +286,12 @@ fn modulation_selector(
     choice: &mut Option<SequenceModulation>,
     hover: &str,
 ) {
-    if ui
-        .button("<")
-        .on_hover_text("Previous modulation")
-        .clicked()
-    {
+    if arrow(ui, false, "Previous modulation") {
         *choice = SequenceModulation::adjacent(*choice, false);
     }
     egui::ComboBox::from_id_salt(id)
         .selected_text(SequenceModulation::label(*choice))
-        .width(170.0)
+        .width(CHOICE_WIDTH)
         .show_ui(ui, |ui| {
             for value in SequenceModulation::CHOICES {
                 ui.selectable_value(choice, value, SequenceModulation::label(value));
@@ -285,7 +299,7 @@ fn modulation_selector(
         })
         .response
         .on_hover_text(hover);
-    if ui.button(">").on_hover_text("Next modulation").clicked() {
+    if arrow(ui, true, "Next modulation") {
         *choice = SequenceModulation::adjacent(*choice, true);
     }
 }

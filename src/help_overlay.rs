@@ -23,18 +23,44 @@ const MOVE: Group = &[
     ("数字 → 移動", "回数"),
 ];
 
+const LIBRARY: Group = &[
+    ("L", "Favorites / History / Plugins"),
+    ("O", "お気に入りの並べ替え"),
+    ("N", "お気に入りを plugin 名順に"),
+    ("D", "重複 plugin は CLAP だけ"),
+    ("Y", "plugin 再スキャン"),
+];
+
+const ANALYSIS: Group = &[
+    ("A", "解析ラベル"),
+    ("P", "解析を右 / 下へ"),
+    ("C", "表示周期数"),
+    ("Z", "トリガー"),
+    ("G", "赤ガイド"),
+];
+
 const MAIN: &[Group] = &[
     &[
         ("Space", "再生 / 停止"),
+        ("S", "次の Sequence"),
+        ("V", "次の Velocity"),
+        ("W", "次の CC1 modulation"),
         ("I", "MML"),
         ("M", "Macro 全部 sweep / -"),
     ],
     &[
         ("T", "音色一覧"),
+        ("R", "ランダム（音色一覧の絞り込み内）"),
         ("F", "お気に入りに追加"),
         ("/", "絞り込み"),
     ],
-    &[("E  X", "エフェクト一覧"), ("B", "バイパス")],
+    &[
+        ("E  X", "エフェクト一覧"),
+        ("B", "バイパス"),
+        ("U", "楽器 UI 表示 / 非表示"),
+    ],
+    LIBRARY,
+    ANALYSIS,
 ];
 
 const SMF: &[Group] = &[
@@ -43,7 +69,13 @@ const SMF: &[Group] = &[
         ("F", "お気に入りに追加"),
         ("/", "絞り込み"),
     ],
-    &[("E  X", "エフェクト一覧"), ("B", "バイパス")],
+    &[
+        ("E  X", "エフェクト一覧"),
+        ("B", "バイパス"),
+        ("U", "楽器 UI 表示 / 非表示"),
+    ],
+    LIBRARY,
+    ANALYSIS,
     &[("Esc  Q", "保存して戻る")],
 ];
 
@@ -54,7 +86,10 @@ const PATCH: &[Group] = &[
         ("Space", "重い音色を読む"),
         ("Enter  Esc", "閉じる"),
     ],
-    &[("/", "検索"), ("M", "Solo / Mute")],
+    &[
+        ("/", "検索"),
+        ("M", "Solo / Mute（a-z Solo, Shift+A-Z Mute）"),
+    ],
     &[("F", "お気に入りに追加")],
 ];
 

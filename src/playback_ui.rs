@@ -38,7 +38,8 @@ impl App {
             && ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, key))
     }
 
-    pub(crate) fn library_shortcuts(&mut self, ctx: &egui::Context, editing_before: bool) {
+    /// Returns whether Favorites should be sorted by plugin name.
+    pub(crate) fn library_shortcuts(&mut self, ctx: &egui::Context, editing_before: bool) -> bool {
         let enabled = !editing_before
             && !self.mml_input.open
             && !self.browser_open()
@@ -53,6 +54,28 @@ impl App {
         if enabled && self.main_shortcut(ctx, egui::Key::Slash) {
             ctx.memory_mut(|memory| memory.request_focus(egui::Id::new("library_filter")));
         }
+        let key = |app: &Self, key| enabled && app.main_shortcut(ctx, key);
+        if key(self, egui::Key::L) {
+            // Favorites -> History -> Plugins -> Favorites.
+            let favorites = &mut self.favorites;
+            (favorites.show, favorites.show_history) =
+                match (favorites.show, favorites.show_history) {
+                    (true, false) => (true, true),
+                    (true, true) => (false, false),
+                    _ => (true, false),
+                };
+            self.save_library_tab();
+        }
+        if key(self, egui::Key::O) && self.favorites.show && !self.favorites.show_history {
+            self.favorites.reorder_mode = !self.favorites.reorder_mode;
+        }
+        if key(self, egui::Key::D) {
+            self.set_prefer_clap(!self.prefer_clap);
+        }
+        if key(self, egui::Key::Y) && self.can_rescan() {
+            self.confirm_rescan = true;
+        }
+        key(self, egui::Key::N) && self.can_sort_favorites()
     }
 
     pub(crate) fn playback_controls(&mut self, ui: &mut egui::Ui) {
@@ -63,6 +86,10 @@ impl App {
         if self.main_shortcut(ui.ctx(), egui::Key::E) || self.main_shortcut(ui.ctx(), egui::Key::X)
         {
             self.open_effect_browser();
+            ui.ctx().request_repaint();
+        }
+        if self.selection.is_none() && self.main_shortcut(ui.ctx(), egui::Key::R) {
+            self.request_main_random();
             ui.ctx().request_repaint();
         }
         let spacing = ui.spacing().item_spacing.x;
@@ -93,7 +120,10 @@ impl App {
                     !self.mml_input.open && !self.patch_browser.open,
                     egui::Button::new("Browse patches"),
                 )
-                .on_hover_text("Open patch browser (T)")
+                .on_hover_text(
+                    "Open patch browser (T)
+R: random patch from its filtered results",
+                )
                 .clicked()
             {
                 self.open_patch_browser();

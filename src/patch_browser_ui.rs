@@ -1,7 +1,7 @@
 //! Independent browser viewport. Native work is requested by identity, never by a painted row.
 use crate::{patch_browser::Browser, App};
 use cmrt_patch_select::{
-    plugin_menu::{plugin_mode, toggle_plugin_term, PluginMode},
+    plugin_menu::{plugin_mode, toggle_plugin_term, PluginMenu, PluginMode},
     FilterGroup,
 };
 use eframe::egui::{self, Color32, Key};
@@ -17,6 +17,7 @@ impl App {
             return;
         }
         self.update_browser_snapshot(ctx);
+        self.poll_main_random();
         let browser = &mut self.patch_browser;
         if browser.open && browser.reveal_pending && browser.snapshot.is_some() {
             browser.reveal_pending = false;
@@ -251,7 +252,7 @@ impl Browser {
         }
     }
 
-    fn select_random(&mut self) {
+    pub(crate) fn select_random(&mut self) {
         if self.error.is_some() {
             return;
         }

@@ -249,3 +249,80 @@ fn slash_focuses_search_without_typing_and_overlay_modes_sit_beside_names() {
     let (solo_left, _) = left("Solo");
     assert!(solo_left - name_right < 40.0, "{name_right} .. {solo_left}");
 }
+
+fn shifted(key: Key, modifiers: egui::Modifiers) -> egui::Event {
+    egui::Event::Key {
+        key,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers,
+    }
+}
+
+#[test]
+fn solo_overlay_letters_solo_lower_and_mute_upper_then_apply_at_once() {
+    let ctx = egui::Context::default();
+    let mut browser = browser();
+    frame(&mut browser, &ctx, vec![]);
+    frame(&mut browser, &ctx, vec![key(Key::M)]);
+    // Letters naming no plugin, and Ctrl, leave the overlay open and the draft unchanged.
+    let mut release = shifted(Key::B, egui::Modifiers::CTRL);
+    if let egui::Event::Key { pressed, .. } = &mut release {
+        *pressed = false;
+    }
+    frame(
+        &mut browser,
+        &ctx,
+        vec![key(Key::Q), shifted(Key::B, egui::Modifiers::CTRL), release],
+    );
+    assert_eq!(browser.solo_draft.as_deref(), Some(""));
+    frame(&mut browser, &ctx, vec![key(Key::B)]);
+    assert!(browser.solo_draft.is_none());
+    assert_eq!(browser.query, "plugin:beta");
+    frame(&mut browser, &ctx, vec![key(Key::M)]);
+    frame(
+        &mut browser,
+        &ctx,
+        vec![shifted(Key::A, egui::Modifiers::SHIFT)],
+    );
+    assert!(browser.solo_draft.is_none());
+    assert_eq!(browser.query, "-plugin:alpha");
+}
+
+#[test]
+fn main_random_waits_for_catalog_then_uses_the_filter_or_reports_why_not() {
+    use crate::patch_browser::MainRandom;
+    let mut browser = browser();
+    browser.open = false;
+    let snapshot = browser.snapshot.take();
+    browser.main_random = MainRandom::Catalog;
+    assert_eq!(browser.poll_main_random(), None);
+    assert_eq!(browser.main_random, MainRandom::Catalog);
+    browser.snapshot = snapshot;
+    browser.query = "plugin:alpha".into();
+    browser.filter(false);
+    assert_eq!(browser.poll_main_random(), None);
+    assert_eq!(browser.main_random, MainRandom::Start);
+    assert_eq!(
+        browser.requests.desired.as_ref().unwrap().candidate.display,
+        "Bass"
+    );
+    // A live change that drops the request also ends the closed browser's dispatch.
+    browser.requests.invalidate();
+    assert_eq!(browser.poll_main_random(), None);
+    assert_eq!(browser.main_random, MainRandom::Idle);
+
+    browser.query = "plugin:beta".into();
+    browser.filter(false);
+    browser.main_random = MainRandom::Catalog;
+    let status = browser.poll_main_random().unwrap();
+    assert!(status.contains("press Space"), "{status}");
+    assert_eq!(browser.main_random, MainRandom::Idle);
+
+    browser.query = "nothing-matches".into();
+    browser.filter(false);
+    browser.main_random = MainRandom::Catalog;
+    let status = browser.poll_main_random().unwrap();
+    assert!(status.contains("no patch matches"), "{status}");
+}
