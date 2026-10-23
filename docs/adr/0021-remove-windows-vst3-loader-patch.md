@@ -1,12 +1,12 @@
 # ADR 0021: Windows VST3ローダー補修を撤去し、カテゴリ取得の本体選択だけshimに残す
 
-- 状態: 採用。`patches/uapmd/windows-vst3-loader/` を撤去済み。
+- 状態: 採用
 - 関連: [ADR 0003](0003-build-local-dependency-patches.md)（補修の置き方と撤去条件）
 
 ## 決定
 
 - UAPMD `a4a96938eb31ddcb70209d62caf0dcc6ea9d3abe`（[Issue #66](https://github.com/atsushieno/uapmd/issues/66) の修正）以降を使い、
-  Windows VST3ローダーのローカル補修を撤去する。古いUAPMDはサポートしない。
+  Windows VST3ローダーのローカル補修（`patches/uapmd/windows-vst3-loader/`）を撤去する。古いUAPMDはサポートしない。
 - カテゴリ取得（[plugin_catalog.cpp](../../shim/plugin_catalog.cpp)）が使うVST3本体の選択関数は、
   補修から [shim/windows_vst3_binary.h](../../shim/windows_vst3_binary.h) へ移して残す。
 

@@ -1,4 +1,5 @@
-//! Tolerate measured MSEG serialization/recalculation drift, retaining full snapshots.
+//! Tolerate measured MSEG serialization/recalculation drift and Custom modulator values,
+//! retaining full snapshots.
 use crate::config::PluginKey;
 use quick_xml::{events::Event, Reader};
 
@@ -62,15 +63,18 @@ fn close(left: &[u8], right: &[u8], key: &[u8]) -> bool {
     }
 }
 
+/// `PARAM` ids of Custom modulator 1-4, saved over 0-100.
+fn custom_modulator(id: &[u8]) -> bool {
+    matches!(
+        id,
+        b"m_fCustomModulator1"
+            | b"m_fCustomModulator2"
+            | b"m_fCustomModulator3"
+            | b"m_fCustomModulator4"
+    )
+}
+
 pub(crate) fn same_sound(plugin: &PluginKey, left: &[u8], right: &[u8]) -> bool {
-    compare(plugin, left, right, false)
-}
-
-pub(crate) fn same_sweep_sound(plugin: &PluginKey, left: &[u8], right: &[u8]) -> bool {
-    compare(plugin, left, right, true)
-}
-
-fn compare(plugin: &PluginKey, left: &[u8], right: &[u8], sweep_cc1: bool) -> bool {
     if plugin.format != "CLAP" || plugin.id != "com.vastdynamics.VAST2" {
         return false;
     }
@@ -100,16 +104,17 @@ fn compare(plugin: &PluginKey, left: &[u8], right: &[u8], sweep_cc1: bool) -> bo
                 if aa.len() != bb.len() {
                     return false;
                 }
-                let cc1_macro = sweep_cc1
-                    && path.len() == 1
+                let id = |attributes: &[quick_xml::events::attributes::Attribute]| {
+                    attributes
+                        .iter()
+                        .find(|attr| attr.key.as_ref() == b"id")
+                        .map(|attr| attr.value.to_vec())
+                };
+                let macro_value = path.len() == 1
                     && path[0] == b"VASTvaporizer2"
                     && tag.as_ref() == b"PARAM"
-                    && aa.iter().any(|attr| {
-                        attr.key.as_ref() == b"id" && attr.value.as_ref() == b"m_fCustomModulator1"
-                    })
-                    && bb.iter().any(|attr| {
-                        attr.key.as_ref() == b"id" && attr.value.as_ref() == b"m_fCustomModulator1"
-                    });
+                    && id(&aa).is_some_and(|id| custom_modulator(&id))
+                    && id(&aa) == id(&bb);
                 if path.is_empty() {
                     if root_seen
                         || tag.as_ref() != b"VASTvaporizer2"
@@ -126,7 +131,7 @@ fn compare(plugin: &PluginKey, left: &[u8], right: &[u8], sweep_cc1: bool) -> bo
                         || (a.value != b.value
                             && !(drift_field(&path, tag.as_ref(), a.key.as_ref())
                                 && close(&a.value, &b.value, a.key.as_ref()))
-                            && !(cc1_macro
+                            && !(macro_value
                                 && a.key.as_ref() == b"text"
                                 && valid_macro(&a.value)
                                 && valid_macro(&b.value)))

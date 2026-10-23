@@ -9,7 +9,7 @@
 
 旧判定の絶対差`1e-9`は、今回のMSEG差を扱えなかった。時間の最大差は`0.000105000030000135` ms（Decay 0との比較）、座標の最大差は約`9.61795e-7`。Attackでは約`1.03812e-6` ms、別MSEGのAttack/Decayでは約`7.65090e-7` msの差もある。
 
-既存の対象属性だけ、時間の有限値の絶対差を`0.00011` ms以下、正規化座標`xVal`を`0.000001`以下へ変更する。相対誤差やMSEG全体の除外は導入しない。PARAM、`yVal`、カーブ、ループ、対象外の点・属性は比較に残す。Macro 1の差はADR 0009のsweep由来が確認できる場合だけ除外する。保存・復元する元stateは加工しない。
+既存の対象属性だけ、時間の有限値の絶対差を`0.00011` ms以下、正規化座標`xVal`を`0.000001`以下へ変更する。相対誤差やMSEG全体の除外は導入しない。PARAM、`yVal`、カーブ、ループ、対象外の点・属性は比較に残す。Custom modulator 1〜4の値の差は常に除外する（[ADR 0039](0039-parameter-macro-sweep.md)）。保存・復元する元stateは加工しない。
 
 対象は引き続きCLAP ID `com.vastdynamics.VAST2`、`VC2!`ラッパー、`VASTVaporizerParamsV2.20000`、`chunkData/msegData0`〜`msegData4`のAttack/Decay/Release時間と直下の`msegPoint1`・`msegPoint2`の`xVal`に限定する。未知形式・対象位置・不正データはバイト完全一致へ戻す。
 

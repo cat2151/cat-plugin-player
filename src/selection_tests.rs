@@ -303,7 +303,6 @@ fn native_selection_patch_effect_favorite_keep_position_and_pending_exit_saves_f
             crate::favorites_store::FavoriteCapture {
                 preset_name: Some("Favorite tone".into()),
                 sequence_pattern: crate::SequencePattern::Custom,
-                sweep_cc1: false,
                 selected_sequence: Some(crate::SequencePattern::Custom),
                 mml: Some("invalid MML must not replace the SMF".into()),
             },

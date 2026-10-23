@@ -1,7 +1,7 @@
 # ADR 0028: Surge XT Effectsのpresetは、事前に作ったstateを`.srgfx`のhashで引く
 
 - 状態: 採用
-- 決定者: user。preset単位のstateをhashで引くこと、cat-music-patternsに置いて人間がcommit・pushすること、生成をcatの開発者用exampleにすること、表に無いpresetを候補から外すことを承認
+- 決定者: user（preset単位のstateをhashで引くこと、cat-music-patternsに置いて人間がcommit・pushすること、生成をcatの開発者用exampleにすること、表に無いpresetを候補から外すこと）
 
 ## 決定
 
@@ -11,6 +11,7 @@
   取得や検査に失敗したら前回のファイルを使う（[ADR 0025](0025-surge-xt-patch-catalog-without-cmrt.md)と同じ `surge_patch_catalog::refresh`）。
 - 表に無いpresetはeffect catalogの候補から外し、外した件数をstatusとerror.logに出す。表そのものが無ければ、Surge XT Effectsのpresetをすべて外す。
 - 表は `cargo run --release --example export_surge_fx_states -- <output.json>` で作る。stateを作る関数は、他のeffectの準備と同じ `surge_fx_states::prepare_state` を使う。
+- 生成した表はcat-music-patternsに置き、そのcommit・pushは人間が行う。
 
 ## 理由
 

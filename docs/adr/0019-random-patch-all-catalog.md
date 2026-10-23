@@ -1,8 +1,8 @@
 # 0019: Random patch を既存 cmrt カタログの7音源へ拡張する
 
-状態: 実装済み。7音源の機械検証は通過。release版の人間による聴取・操作確認は未確認。
+状態: 採用
 
-Random patch ボタンは撤去した（下の「ボタンの撤去」）。候補と準備・適用は Browse patches が使う。
+Random patch ボタンは撤去する（下の「ボタンの撤去」）。候補と準備・適用は Browse patches が使う。
 
 ## ボタンの撤去
 

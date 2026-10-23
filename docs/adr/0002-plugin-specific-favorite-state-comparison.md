@@ -1,7 +1,7 @@
 # ADR 0002: プラグイン固有処理を集約し、Favorite重複判定を限定対応する
 
-- 状態: 採用（実装済み。圧縮部分の設定差を区別できない制限あり）
-- 確認: userは「同じ音色なら重複をまとめ、違う音色は履歴として残す」を選択。固有処理をできるだけ少なくし、その有無を可視化するよう指示。
+- 状態: 採用（圧縮部分の設定差を区別できない制限あり）
+- 決定者: user（同じ音色なら重複をまとめ、違う音色は履歴として残す方針と、固有処理をできるだけ少なくしその有無を可視化すること）
 
 ## 何の話か
 
@@ -11,6 +11,9 @@ Auto FavoでTyrellN6の同じ音色が繰り返し追加される。
 
 ## 決定
 
+Favoritesは同じ音色なら重複をまとめ、違う音色は履歴として残す。
+固有処理はできるだけ少なくし、その有無を本ADRの一覧で可視化する。
+
 製品名・plugin IDに依存する本番処理は `src/plugin_specific/` に集約する。
 ネイティブのウィンドウ検査が必要な固有処理は `shim/plugin_specific/` に集約する
 （[ADR 0004: Shu GUI](0004-shu-clap-editor-show-compatibility.md)）。
@@ -18,19 +21,21 @@ Auto FavoでTyrellN6の同じ音色が繰り返し追加される。
 固有処理の追加・撤去はADRに記録し、本ADRを置き換える場合は後続ADRへの参照を残す。
 新しい例外を増やす前に、プラグイン形式の標準APIで解決できるか確認する。
 
-## 現在の本番処理：10件
+## 現在の本番処理：12件
 
 | 対象 | 処理・場所 | 必要な理由 | 適用範囲・撤去条件 |
 | --- | --- | --- | --- |
 | Shu CLAP (`audio.mikey.Shu`) | GUI表示：[shu_ui.h](../../shim/plugin_specific/shu_ui.h) | 埋め込み成功後も `gui.show()` が `false` を返し、ホストが親を隠す | Windows CLAPで可視かつ非ゼロサイズの子GUIがある場合だけ成功扱い。標準APIで正常表示できれば撤去。詳細はADR 0004 |
 | TyrellN6 CLAP (`com.u-he.TyrellN6`) | Favoritesの重複判定：[tyrell_n6.rs](../../src/plugin_specific/tyrell_n6.rs) | ノート・CC1の受信だけでstate末尾の圧縮データが変わり、バイト完全一致では同じ設定が増殖する | 実機確認済みのbuild 16976 / `#Vers=10010` / little endian / `$$$$1924`形式のみ。標準APIで安定した音色stateを取得できるようになれば撤去を検討 |
-| Vaporizer2 CLAP (`com.vastdynamics.VAST2`) | Favoritesの重複判定：[vaporizer2.rs](../../src/plugin_specific/vaporizer2.rs) | stateの読み込み・保存でMSEGの時間・座標に微小な数値差が生じ、同じ設定が増殖する | `VC2!`ラッパーと`VASTVaporizerParamsV2.20000`の確認済み形式のみ。安定したstateが取得できるようになれば撤去を検討 |
-| Floe CLAP (`com.floe-audio.floe`) | sweep中のFavorite重複判定：[floe.rs](../../src/plugin_specific/floe.rs) | 自動CC1がMacro 1とpreset変更フラグに保存される | Floe 2.0.2 / state schema 30、CC1→Macro 1だけの割り当てを確認。詳細は[ADR 0009](0009-sweep-cc1-favorite-comparison.md)。Vaporizer2のsweep対応も同ADR参照 |
+| Vaporizer2 CLAP (`com.vastdynamics.VAST2`) | Favoritesの重複判定：[vaporizer2.rs](../../src/plugin_specific/vaporizer2.rs) | stateの読み込み・保存でMSEGの時間・座標に微小な数値差が生じ、同じ設定が増殖する。Macro欄で動かすCustom modulator 1〜4の値もstateに残る | `VC2!`ラッパーと`VASTVaporizerParamsV2.20000`の確認済み形式のみ。MSEGは安定したstateが取得できるようになれば撤去を検討。Custom modulatorの値は[ADR 0039](0039-parameter-macro-sweep.md) |
+| Floe CLAP (`com.floe-audio.floe`) | Favoritesの重複判定：[floe.rs](../../src/plugin_specific/floe.rs) | CC1やMacro欄で動かしたMacro 1〜4の値とpreset変更フラグがstateに保存される | Floe 2.0.2 / state schema 30のみ。詳細は[ADR 0039](0039-parameter-macro-sweep.md)（[ADR 0009](0009-sweep-cc1-favorite-comparison.md)を置き換え） |
+| Six Sines CLAP (`org.baconpaul.six-sines`) | Favoritesの重複判定：[six_sines.rs](../../src/plugin_specific/six_sines.rs) | Macro欄で動かした`Macro N Level`の値がstateに保存される | `<patch id="org.baconpaul.six-sines">`のXMLで、`Macro N Level`の-1〜1の値だけを除外。詳細は[ADR 0039](0039-parameter-macro-sweep.md) |
 | sforzando CLAP (`com.Plogue Art et Technologie, Inc.sforzando`) | Favoritesの重複判定：[sforzando.rs](../../src/plugin_specific/sforzando.rs) | 保存だけで`sc`が増え、ノート・CC1の演奏値もstateに残る | `CEGP`とARIA schema 1982/1014の確認済み形式のみ。CC1と最後のvelocityは別音色としない。詳細と撤去条件は[ADR 0006](0006-sforzando-favorite-state-comparison.md) |
 | Surge XT CLAP / VST3 | Favoritesの重複判定：[surge_xt.rs](../../src/plugin_specific/surge_xt.rs) | editor拡大率と演奏中のCC1値がstateに残る | `sub3` / patch revision 24、実機確認済み1.3.4。詳細と撤去条件は[ADR 0007](0007-surge-xt-favorite-state-comparison.md) |
 | Surge XT CLAP / VST3 | 初音待ちとcatalog別の省略：[surge_start_delay.rs](../../src/plugin_specific/surge_start_delay.rs) | 冒頭音の欠落への暫定待ちが音色変更・起動のUXを遅らせる | 未判定は100ms、判定表で許可したCLAP catalog音色は0ms。計測とユーザーが引き受けたリスクは[ADR 0008](0008-surge-xt-automatic-note-start-delay.md) |
 | Surge XT CLAP / VST3 | Macro 1行の表示とCC番号：[surge_xt_macro.rs](../../src/plugin_specific/surge_xt_macro.rs) | Macroの有無とCC割り当てがpatch・MIDI learnごとに異なる | `sub3` stateでMacro 1のroutingとCC割り当てを確認した場合のみ。TyrellN6はADR 0038。詳細は[ADR 0036](0036-surge-xt-macro-sweep.md) |
 | TyrellN6 CLAP (`com.u-he.TyrellN6`) | Control A / B行の表示とCC番号：[tyrell_n6_control.rs](../../src/plugin_specific/tyrell_n6_control.rs) | Control A / Bの使用とCC割り当てがpatchごとに異なり、patch変更の通知が無い | `#AM=TyrellN6`のstateで、確認済みのsource項目がCtrlA / CtrlBを指す場合のみ。詳細は[ADR 0038](0038-tyrell-n6-control-ab-sweep.md) |
+| Vaporizer2 / Six Sines / Floe CLAP | Macro行の表示とparameter送信：[parameter_macro_controls.rs](../../src/plugin_specific/parameter_macro_controls.rs)、[instrument_macros.rs](../../shared/instrument_macros.rs) | 使用中のMacroがpatchごとに異なり、既定のCC割り当てが無い | 確認済みのstate形式で使用中と判定したMacroだけ。FloeのCC1で動くMacroは除く。詳細は[ADR 0039](0039-parameter-macro-sweep.md) |
 | Six Sines / TyrellN6 CLAP | state復元後のnote開始待ち：[patch_settling.rs](../../src/plugin_specific/patch_settling.rs) | Six Sinesは反映blockのnote-onを捨て、TyrellN6は反映に複数blockが必要 | Six Sinesは最大1block分、TyrellN6は4096frames・最低4blocks。sample rateに応じて既存sequencerで待つ。空回しなしで冒頭音・選択音色が安定すれば撤去を検討。詳細は[ADR 0019](0019-random-patch-all-catalog.md) |
 
 ### Vaporizer2の判定と制限

@@ -1,7 +1,7 @@
 # ADR 0009: 自動sweepによるCC1の変更をFavorite重複判定から除外する
 
-- 状態: 採用
-- 確認: userは「重複判定から除外」「Vaporizer2のCC1との対応」「TyrellN6のUI_op確認」を承認。演奏パターンが違う音色は別Favoriteとして保存する。
+- 状態: 置き換え済み。Floe・Vaporizer2のFavorite重複判定と自動CC1の由来の追跡は[ADR 0039](0039-parameter-macro-sweep.md)へ置き換えた（sweep中かどうかを問わずMacroの値を無視する）。「TyrellN6 UI_opの調査」の節は[ADR 0011](0011-tyrell-n6-ui-operation-favorite-comparison.md)の前提として有効
+- 決定者: user（Macro 1の差を重複判定から除外すること、Vaporizer2のCC1との対応、TyrellN6のUI_op確認）
 
 ## 問題と決定
 
@@ -54,6 +54,6 @@ pause時はstreamを停止してcallbackの完了を待ち、その由来を楽�
 - 保存済みFloe 11件を一時ライブラリで2件（演奏パターンごと）にまとめる。
 - Vaporizer2実機: 保存済み7件を一時ライブラリで1件にまとめ、CC1各値でも増殖しない。Master Tune 440→432は別Favoriteになる。
 - ユーザーのconfig、Favorite indexとsnapshotは読み取りのみ。実機probeは`tests/native_auto_favo_probe.py`。`--ui`は新規のテストinstanceのeditor表示・非表示を測定する任意のオプション。
-- 初回の実機回帰で、最新snapshotの再保存が完全一致となり、以前の「必ずdriftが出る」というテスト前提が失敗した。安定済みsnapshotも正常として扱い、MSEG差のunit regressionと保存済みsnapshotの比較は維持した。
+- 最新snapshotの再保存は完全一致になる場合がある。安定済みsnapshotも正常として扱い、MSEG差のunit regressionと保存済みsnapshotの比較は維持する。
 - 通常テスト86件成功（実機依存12件は通常実行で除外）。Floeの保存済みsnapshot回帰とVaporizer2実機回帰を個別実行して成功。native probeで両pluginのCC1各値もassertして成功。`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo build --release`成功。
 - 既定の既存target/shimキャッシュを使用し、新規環境でのビルド再現性確認は含まない。試行用ビルド設定の変更はなく、失敗した実機テストの一時ライブラリは除去済み。

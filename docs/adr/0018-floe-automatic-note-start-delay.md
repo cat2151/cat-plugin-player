@@ -26,4 +26,4 @@ exact CLAP IDの識別と他identityの除外を回帰テストする。
 
 同じstate／サンプルlibrary／デバイスで冒頭音を繰り返し観察する。
 Floe側の対応または待機不要という再現結果が得られたら、待機値の短縮・撤去を検討する。
-依存checkoutの変更や新規patchは行わない。外部への報告は未送信。
+依存checkoutの変更や新規patchは行わない。

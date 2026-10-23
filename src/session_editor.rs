@@ -143,7 +143,6 @@ impl App {
         let rebuild = self.editor_rebuild.take()?;
         let instance = self.instances.iter_mut().find(|i| i.id == id)?;
         if rebuild.matches(&instance.plugin) {
-            instance.sweep_cc1 = rebuild.previous.sweep_cc1;
             instance.preset_name = rebuild.previous.preset_name;
             for (active, _) in &mut self.favorites.active {
                 if *active == rebuild.previous.id {

@@ -1,7 +1,7 @@
 # ADR 0020: C++ のビルドを Visual Studio 2026 に統一する
 
-- 状態: 採用。build.rs の既定 generator を `Visual Studio 18 2026` に変更済み。
-- 決定者: user。ローカルと release 用 CI の両方で VS 2026 を使うことを承認。
+- 状態: 採用
+- 決定者: user（ローカルと release 用 CI の両方で VS 2026 を使うこと）
 
 ## 決定
 

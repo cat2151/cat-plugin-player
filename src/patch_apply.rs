@@ -13,7 +13,6 @@ use crate::{
 pub(crate) struct Replacement {
     prepared: Prepared,
     old_pattern: SequencePattern,
-    old_sweeps: Vec<(i32, bool)>,
     old_state: Option<(PluginKey, Vec<u8>)>,
 }
 
@@ -70,7 +69,6 @@ impl App {
         self.pause_audio();
         self.patch_changing();
         let old_pattern = self.sequence_pattern;
-        let old_sweeps: Vec<_> = self.instances.iter().map(|i| (i.id, i.sweep_cc1)).collect();
         let old_state = match self
             .instrument_id()
             .map(|id| {
@@ -91,11 +89,7 @@ impl App {
         {
             Ok(state) => state,
             Err(error) => {
-                self.patch_failed(
-                    old_pattern,
-                    &old_sweeps,
-                    format!("Browse patch failed: {error}"),
-                );
+                self.patch_failed(old_pattern, format!("Browse patch failed: {error}"));
                 return;
             }
         };
@@ -103,7 +97,6 @@ impl App {
         let replacement = Replacement {
             prepared,
             old_pattern,
-            old_sweeps,
             old_state,
         };
         let existing = self
@@ -159,7 +152,6 @@ impl App {
             Ok(voice) => {
                 let instance = self.instances.iter_mut().find(|i| i.id == id).unwrap();
                 instance.voice = voice;
-                instance.sweep_cc1 = false;
                 self.unsafe_state.remove(&id);
                 self.patch_succeeded(id, replacement);
             }
@@ -174,7 +166,6 @@ impl App {
                 }
                 self.patch_failed(
                     replacement.old_pattern,
-                    &replacement.old_sweeps,
                     format!(
                         "Browse patch failed: {error}{}",
                         rollback.err().map_or(String::new(), |error| format!(
@@ -199,7 +190,6 @@ impl App {
             }
             self.patch_failed(
                 replacement.old_pattern,
-                &replacement.old_sweeps,
                 format!("Browse patch failed: {error}"),
             );
             return;
@@ -224,7 +214,6 @@ impl App {
                 self.host.destroy_instance(id);
                 self.patch_failed(
                     replacement.old_pattern,
-                    &replacement.old_sweeps,
                     format!("Browse patch failed: {error}"),
                 );
                 return;
@@ -244,7 +233,6 @@ impl App {
                 plugin: key.clone(),
                 kind: PluginKind::Instrument,
                 voice,
-                sweep_cc1: false,
                 minimal_data_home: false,
                 preset_name: None,
             },
@@ -253,14 +241,9 @@ impl App {
         self.patch_succeeded(id, replacement);
     }
 
-    fn patch_failed(&mut self, pattern: SequencePattern, sweeps: &[(i32, bool)], message: String) {
+    fn patch_failed(&mut self, pattern: SequencePattern, message: String) {
         self.patch_browser.requests.finish(false);
         self.sequence_pattern = pattern;
-        for &(id, sweep) in sweeps {
-            if let Some(instance) = self.instances.iter_mut().find(|i| i.id == id) {
-                instance.sweep_cc1 = sweep;
-            }
-        }
         let resumed = self.patch_operation(Operation::Resume, |app| app.resume_audio());
         self.status = format!(
             "{message}{}",

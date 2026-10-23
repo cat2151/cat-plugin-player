@@ -111,6 +111,14 @@ impl App {
                 )
             })
             .unwrap_or_default();
+        // Every audio renderer is stopped here, as preparing parameters requires.
+        let macro_parameters = match instrument_plugin {
+            Some(plugin) if !self.selecting_master() => {
+                crate::macro_parameters::bind(&self.host, &processor, instrument, plugin)
+                    .map_err(|error| format!("Macro parameters: {error}"))?
+            }
+            _ => Default::default(),
+        };
         audio::Voice::start(
             self.output.as_ref().unwrap(),
             processor,
@@ -118,6 +126,7 @@ impl App {
             self.sequence_velocity,
             self.sequence_modulation,
             &self.macro_lane.active(),
+            macro_parameters,
             start_delay,
             self.mml_input.phrase.clone(),
             self.effect_swap_fade,
@@ -144,11 +153,8 @@ impl App {
 
     pub(crate) fn pause_audio(&mut self) {
         for instance in &mut self.instances {
-            if let Some(mut voice) = instance.voice.take() {
+            if let Some(voice) = instance.voice.take() {
                 self.sequence_pattern = voice.sequence_pattern();
-                if let Some(sweep) = voice.stop_and_capture_sweep() {
-                    instance.sweep_cc1 = sweep;
-                }
             }
         }
     }

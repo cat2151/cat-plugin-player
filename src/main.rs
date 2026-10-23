@@ -58,6 +58,13 @@ mod patch_reference;
 #[path = "../shared/patch_roots.rs"]
 mod patch_roots;
 mod patch_roots_request;
+#[allow(dead_code)]
+#[path = "../shared/surge_macros.rs"]
+mod surge_macros;
+// Shared with the editor's macro edit; the player's macro rows and Floe comparison read it.
+#[allow(dead_code)]
+#[path = "../shared/instrument_macros.rs"]
+mod instrument_macros;
 mod plugin_cache;
 mod plugin_icons;
 mod plugin_list;
@@ -90,6 +97,7 @@ mod selection_exchange;
 mod state_request;
 use chain as selection_host;
 mod macro_lane;
+mod macro_parameters;
 mod selection_ui;
 mod seq;
 mod sequence_modulation;
@@ -186,8 +194,6 @@ struct Instance {
     kind: plugin_list::PluginKind,
     /// Only the instrument owns the chain audio stream.
     voice: Option<audio::Voice>,
-    /// Whether the most recently delivered automatic CC1 came from sweep.
-    sweep_cc1: bool,
     /// Created with Surge XT's minimal data home; its editor menus are nearly empty.
     minimal_data_home: bool,
     /// Last preset applied by a browser; plugin GUI edits are not observable.

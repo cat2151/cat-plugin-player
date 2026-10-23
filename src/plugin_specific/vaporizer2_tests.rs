@@ -118,19 +118,52 @@ fn unknown_identity_and_malformed_layout_do_not_match() {
 }
 
 #[test]
-fn sweep_excludes_only_valid_macro_one_at_the_root() {
-    let state = |macro1: &str, macro2: &str| {
+fn only_valid_custom_modulator_values_at_the_root_are_excluded() {
+    let state = |macros: [&str; 4], tune: &str| {
+        let params: String = macros
+            .iter()
+            .enumerate()
+            .map(|(i, v)| format!("<PARAM id=\"m_fCustomModulator{}\" text=\"{v}\"/>", i + 1))
+            .collect();
         wrap(&format!(
-        "<VASTvaporizer2 PatchVersion=\"VASTVaporizerParamsV2.20000\"><PARAM id=\"m_fCustomModulator1\" text=\"{macro1}\"/><PARAM id=\"m_fCustomModulator2\" text=\"{macro2}\"/></VASTvaporizer2>"))
+            "<VASTvaporizer2 PatchVersion=\"VASTVaporizerParamsV2.20000\">{params}<PARAM id=\"m_fMasterTune\" text=\"{tune}\"/></VASTvaporizer2>"
+        ))
     };
-    let a = state("0", "50");
-    let b = state("100", "50");
-    assert!(same_sweep_sound(&plugin(), &a, &b));
-    assert!(!same_sound(&plugin(), &a, &b));
-    assert!(!same_sweep_sound(&plugin(), &a, &state("100", "60")));
+    let a = state(["0", "50", "25", "100"], "440");
+    let b = state(["100", "0", "75.5", "12.25"], "440");
+    assert!(same_sound(&plugin(), &a, &b));
+    assert!(crate::plugin_specific::same_favorite_state(
+        &plugin(),
+        &a,
+        &b
+    ));
+    assert!(!same_sound(
+        &plugin(),
+        &a,
+        &state(["0", "50", "25", "100"], "432")
+    ));
     for value in ["NaN", "inf", "-1", "101"] {
-        assert!(!same_sweep_sound(&plugin(), &a, &state(value, "50")));
+        assert!(!same_sound(
+            &plugin(),
+            &a,
+            &state([value, "50", "25", "100"], "440")
+        ));
+        assert!(!same_sound(
+            &plugin(),
+            &a,
+            &state(["0", "50", "25", value], "440")
+        ));
     }
+    let text = std::str::from_utf8(xml(&a).unwrap()).unwrap().to_owned();
+    // Another parameter with a macro-like value is still compared.
+    let renamed = |state: &[u8]| {
+        wrap(
+            &std::str::from_utf8(xml(state).unwrap())
+                .unwrap()
+                .replace("m_fCustomModulator4", "m_fCustomModulator5"),
+        )
+    };
+    assert!(!same_sound(&plugin(), &renamed(&a), &renamed(&b)));
     let nested = |state: &[u8]| {
         wrap(
             &std::str::from_utf8(xml(state).unwrap())
@@ -139,7 +172,10 @@ fn sweep_excludes_only_valid_macro_one_at_the_root() {
                 .replace("/>", "/></other>"),
         )
     };
-    assert!(!same_sweep_sound(&plugin(), &nested(&a), &nested(&b)));
+    assert!(!same_sound(&plugin(), &nested(&a), &nested(&b)));
+    // The ids themselves must match pairwise.
+    let swapped = wrap(&text.replacen("m_fCustomModulator1", "m_fCustomModulator2", 1));
+    assert!(!same_sound(&plugin(), &a, &swapped));
 }
 
 #[test]
@@ -191,7 +227,6 @@ fn native_vaporizer_round_trip_deduplicates_and_tuning_edits_survive() {
                 crate::favorites_store::FavoriteCapture {
                     preset_name: None,
                     sequence_pattern: entry.sequence_pattern,
-                    sweep_cc1: true,
                     selected_sequence: None,
                     mml: None,
                 },
@@ -201,7 +236,7 @@ fn native_vaporizer_round_trip_deduplicates_and_tuning_edits_survive() {
     assert_eq!(
         library.entries.len(),
         1,
-        "existing drift and CC1 snapshots should merge"
+        "existing drift and macro-value snapshots should merge"
     );
     let host = unsafe { ffi::Host::new(wake, std::ptr::null_mut()) }.unwrap();
     let info = host
@@ -260,7 +295,7 @@ fn native_vaporizer_round_trip_deduplicates_and_tuning_edits_survive() {
         let played = host.save_state(id).unwrap();
         let text = std::str::from_utf8(xml(&played).unwrap()).unwrap();
         assert!(text.contains(&format!("id=\"m_fCustomModulator1\" text=\"{expected}\"")));
-        assert!(same_sweep_sound(&plugin(), &round_trip, &played));
+        assert!(same_sound(&plugin(), &round_trip, &played));
         let reused = library
             .add_automatic(
                 &temporary_config,
@@ -270,7 +305,6 @@ fn native_vaporizer_round_trip_deduplicates_and_tuning_edits_survive() {
                 crate::favorites_store::FavoriteCapture {
                     preset_name: None,
                     sequence_pattern: pattern,
-                    sweep_cc1: true,
                     selected_sequence: None,
                     mml: None,
                 },
@@ -281,7 +315,7 @@ fn native_vaporizer_round_trip_deduplicates_and_tuning_edits_survive() {
         assert!(library.state(&temporary_config, &favorite.id).unwrap() == retained);
     }
     let played = host.save_state(id).unwrap();
-    assert!(same_sweep_sound(&plugin(), &round_trip, &played));
+    assert!(same_sound(&plugin(), &round_trip, &played));
     let text = std::str::from_utf8(xml(&played).unwrap()).unwrap();
     let before = "id=\"m_fMasterTune\" text=\"440\"";
     assert!(text.contains(before));

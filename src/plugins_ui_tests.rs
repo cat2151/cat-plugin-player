@@ -19,7 +19,6 @@ fn instance(id: i32, plugin: &PluginInfo) -> Instance {
         plugin: PluginKey::from_plugin(plugin),
         kind: plugin.kind,
         voice: None,
-        sweep_cc1: false,
         minimal_data_home: false,
         preset_name: None,
     }

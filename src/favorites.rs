@@ -78,7 +78,6 @@ impl App {
                 FavoriteCapture {
                     preset_name: instance.preset_name.clone(),
                     sequence_pattern: self.sequence_pattern,
-                    sweep_cc1: instance.sweep_cc1,
                     selected_sequence: Some(
                         self.sequence_pattern.selection(self.selected_sequence),
                     ),
@@ -161,7 +160,6 @@ impl App {
             FavoriteCapture {
                 preset_name: instance.preset_name.clone(),
                 sequence_pattern: self.sequence_pattern,
-                sweep_cc1: instance.sweep_cc1,
                 selected_sequence: Some(self.sequence_pattern.selection(self.selected_sequence)),
                 mml: Some(self.mml_input.confirmed.clone()),
             },
@@ -260,22 +258,11 @@ impl App {
         let old_sequence = self.sequence_pattern;
         let old_selected = self.selected_sequence;
         let old_input = self.mml_input.clone();
-        let old_sweep = self
-            .instances
-            .iter()
-            .find(|i| i.id == id)
-            .unwrap()
-            .sweep_cc1;
         let mut backup = None;
         let old_permit = self.surge_start_delay.replace(id, None);
         let result = (|| {
             backup = Some(self.host.save_state(id)?);
             self.host.load_state(id, state)?;
-            self.instances
-                .iter_mut()
-                .find(|i| i.id == id)
-                .unwrap()
-                .sweep_cc1 = false;
             self.apply_playback(playback);
             self.resume_audio()
         })();
@@ -285,11 +272,6 @@ impl App {
             self.sequence_pattern = old_sequence;
             self.selected_sequence = old_selected;
             self.mml_input = old_input;
-            self.instances
-                .iter_mut()
-                .find(|i| i.id == id)
-                .unwrap()
-                .sweep_cc1 = old_sweep;
             let rollback = backup
                 .as_ref()
                 .map(|data| self.host.load_state(id, data))

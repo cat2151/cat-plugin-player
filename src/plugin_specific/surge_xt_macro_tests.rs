@@ -98,7 +98,7 @@ fn current_wheel_and_macro_positions_read_on_the_cc_scale() {
             None
         ]
     );
-    assert_eq!(controls.ccs, [None; MACROS]);
+    assert_eq!(controls.ccs(), [None; MACROS]);
 }
 
 #[test]

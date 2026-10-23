@@ -118,7 +118,7 @@ impl Sequencer {
         self.modulation.cc1.select(modulation);
     }
 
-    /// ADR 0036: per macro (controller, choice); `None` sends nothing.
+    /// ADR 0036: per macro (target, choice); `None` sends nothing.
     pub fn set_macro_modulation(&mut self, modulation: &MacroLanes) {
         self.modulation.select_macros(modulation);
     }
@@ -127,6 +127,11 @@ impl Sequencer {
     pub fn current_values(&self) -> (u8, u8, [u8; MACROS]) {
         let (cc1, macro_cc) = self.modulation.values();
         (self.current_velocity, cc1, macro_cc)
+    }
+
+    /// Per macro, the value to send to a parameter lane's parameter before the next block.
+    pub fn macro_parameters(&self) -> [Option<u8>; MACROS] {
+        self.modulation.parameters()
     }
 
     /// Restart even an unchanged pattern at the next block; preserve Off.

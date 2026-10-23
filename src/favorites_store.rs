@@ -107,7 +107,6 @@ pub struct Library {
 pub(crate) struct FavoriteCapture {
     pub preset_name: Option<String>,
     pub sequence_pattern: SequencePattern,
-    pub sweep_cc1: bool,
     pub selected_sequence: Option<SequencePattern>,
     pub mml: Option<String>,
 }
@@ -117,7 +116,6 @@ impl From<SequencePattern> for FavoriteCapture {
         Self {
             preset_name: None,
             sequence_pattern,
-            sweep_cc1: false,
             selected_sequence: None,
             mml: None,
         }
@@ -195,7 +193,6 @@ impl Library {
                 },
             },
             state,
-            capture.sweep_cc1,
             false,
         )
     }
@@ -234,7 +231,6 @@ impl Library {
                 },
             },
             state,
-            capture.sweep_cc1,
             true,
         )
     }
@@ -244,7 +240,6 @@ impl Library {
         config: &Path,
         mut favorite: Favorite,
         state: &[u8],
-        sweep_cc1: bool,
         automatic: bool,
     ) -> Result<Favorite, String> {
         for entry in &self.entries {
@@ -269,11 +264,10 @@ impl Library {
                     || (automatic
                         && (entry.sequence_pattern == SequencePattern::Off
                             || favorite.sequence_pattern == SequencePattern::Off)))
-                && crate::plugin_specific::same_favorite_state_with_sweep(
+                && crate::plugin_specific::same_favorite_state(
                     &favorite.plugin,
                     &self.state(config, &entry.id)?,
                     state,
-                    sweep_cc1 && !favorite.effect,
                 )
             {
                 // Reuse the immutable snapshot, including a user-assigned name.

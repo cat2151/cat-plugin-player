@@ -25,7 +25,6 @@ fn native_favorite_mml_restore_and_rejection() {
             sequence_pattern: SequencePattern::Off,
             selected_sequence: Some(SequencePattern::Custom),
             mml: Some(text.into()),
-            sweep_cc1: false,
         };
         let first = app
             .favorites
@@ -119,7 +118,6 @@ fn native_favorite_mml_restore_and_rejection() {
                 plugin: other.clone(),
                 kind: PluginKind::Effect,
                 voice: None,
-                sweep_cc1: false,
                 minimal_data_home: false,
                 preset_name: None,
             });

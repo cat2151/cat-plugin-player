@@ -1,10 +1,11 @@
 # ADR 0038: TyrellN6のControl A / BをCCで自動変化させる
 
 - 状態: 採用
-- 確認: userは、TyrellN6にはSurge XTのMacro 1〜8に似たControl A / Bがあり、preset patchによってはmodulation sourceがModWheelだけでなくControl A / Bになっている可能性があるため、まずfactory presetを調査し、使っているpatchがあればSurge XTのMacroの表示やsweepを参考に同様にすることを依頼。
+- 決定者: user（Control A / Bを使うpatchがあれば、Surge XTのMacroの表示やsweepと同様にすること）
 
 ## 決定
 
+TyrellN6にはSurge XTのMacro 1〜8に似たControl A / Bがあり、patchによってはmodulation sourceがModWheelではなくControl A / Bになっているため、これも自動変化の対象にする。
 [ADR 0036](0036-surge-xt-macro-sweep.md)のMacro欄の仕組みをそのまま使い、TyrellN6のControl AをMacro欄の1番目、Control Bを2番目に載せる。
 見出しは「CC*n* Control A」「CC*n* Control B」。選択肢・ドラッグ・sweepの周期（Control Aが2.9秒、Control Bが3.7秒）・`M`キー・session保存・patch変更時に固定値を「-」へ戻す動作は、Surge XTのMacroと共通。
 patchのUsage欄に`Ctrl A = bass dominator`のような説明があれば、見出しをその説明にする。

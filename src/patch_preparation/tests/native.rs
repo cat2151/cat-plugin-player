@@ -162,11 +162,6 @@ fn transaction_cases() {
         app.sequence_modulation = Some(crate::SequenceModulation::Sweep);
         let velocity = app.sequence_velocity;
         let modulation = app.sequence_modulation;
-        app.instances
-            .iter_mut()
-            .find(|i| i.id == id)
-            .unwrap()
-            .sweep_cc1 = true;
         app.favorites.active = vec![
             (id, "instrument-selection".into()),
             (effects[0], "effect-selection".into()),
@@ -230,7 +225,6 @@ fn transaction_cases() {
             assert_eq!(app.sequence_pattern, pattern);
             assert_eq!(app.favorites.active, favorites);
             assert_eq!(files(path.parent().unwrap()), before);
-            assert!(app.instances.iter().find(|i| i.id == id).unwrap().sweep_cc1);
             if case == "rollback" {
                 assert!(app.status.contains("rollback failed"));
                 assert!(app.save_plugin_state(id).is_err());

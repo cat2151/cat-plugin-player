@@ -157,7 +157,6 @@ impl App {
             plugin: key.clone(),
             kind: PluginKind::Effect,
             voice: None,
-            sweep_cc1: false,
             minimal_data_home: false,
             preset_name: Some(prepared.candidate.preset.display.clone()),
         };

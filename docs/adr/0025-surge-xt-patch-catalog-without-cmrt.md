@@ -1,8 +1,7 @@
 # ADR 0025: cmrt の catalog が無い環境では Surge XT 用 catalog を取得して使う
 
 - 状態: 採用。
-- 決定者: user。切り替え条件（cmrt の catalog ファイルが存在しないとき）、毎起動の取得、取得失敗時に前回のファイルを使うこと、
-  catalog を cat-music-patterns に置くこと、切り出し script を `scripts/` に置くことを承認。
+- 決定者: user（切り替え条件（cmrt の catalog ファイルが存在しないとき）、毎起動の取得、取得失敗時に前回のファイルを使うこと、catalog を cat-music-patterns に置くこと、切り出し script を `scripts/` に置くこと）
 
 ## 決定
 

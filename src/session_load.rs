@@ -228,7 +228,6 @@ impl App {
             plugin: key.clone(),
             kind,
             voice: None,
-            sweep_cc1: false,
             minimal_data_home,
             preset_name: self.selection.as_ref().map_or_else(
                 || {

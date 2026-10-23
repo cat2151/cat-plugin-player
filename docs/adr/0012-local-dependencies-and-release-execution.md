@@ -1,7 +1,7 @@
 # ADR 0012: 3つの依存repoを常時ローカル参照し、target/releaseから運用する
 
-- 状態: 採用。UAPMDの既存ローカル参照を維持し、TUI・play-serverのCargo参照を実装済み。
-- 決定者: user。常時ローカル依存と、cargo installを使わずtarget/releaseから運用することを明示承認。
+- 状態: 採用
+- 決定者: user（常時ローカル依存と、cargo installを使わずtarget/releaseから運用すること）
 
 ## 背景
 
@@ -12,7 +12,6 @@ patch変換APIも使う。3repoを横断して変更・検証する際、catの�
 
 TUIにはplay-serverのGit依存をローカルへ切り替える既存scriptがあるが、
 catはUAPMDと同じ常時ローカル連携を採る。切替状態とCargo.lockの復元を運用へ追加しない。
-userは実行元もcargo install先から既定target/releaseへ変更した。
 
 ## 決定
 

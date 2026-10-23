@@ -30,7 +30,7 @@ fn each_used_control_reports_its_assigned_cc() {
     let both = controls(&plugin(), &state("", "PWSrc=3\nARMod=4", CCS));
     let mut expected = [None; MACROS];
     expected[..2].copy_from_slice(&[Some(2), Some(11)]);
-    assert_eq!(both.ccs, expected);
+    assert_eq!(both.ccs(), expected);
     assert_eq!(&both.labels[..2], ["Control A", "Control B"]);
     for (section, key) in [
         ("PCore", "MMVS2"),
@@ -40,7 +40,7 @@ fn each_used_control_reports_its_assigned_cc() {
     ] {
         let routing = format!("#cm={section}\n{key}=3");
         let only_a = controls(&plugin(), &state("", &routing, CCS));
-        assert_eq!(only_a.ccs[..2], [Some(2), None], "{section}:{key}");
+        assert_eq!(only_a.ccs()[..2], [Some(2), None], "{section}:{key}");
     }
 }
 
@@ -49,23 +49,23 @@ fn unused_unassigned_and_other_plugins_are_hidden() {
     let hidden = [None; MACROS];
     // ModWhl, a non-source key holding 3, and the same key in another section.
     for routing in ["PWSrc=1", "Sync=3", "#cm=LFO1\nPWSrc=3"] {
-        assert_eq!(controls(&plugin(), &state("", routing, CCS)).ccs, hidden);
+        assert_eq!(controls(&plugin(), &state("", routing, CCS)).ccs(), hidden);
     }
-    assert_eq!(controls(&plugin(), &state("", "PWSrc=3", "")).ccs, hidden);
+    assert_eq!(controls(&plugin(), &state("", "PWSrc=3", "")).ccs(), hidden);
     let out_of_range = "CtrlA=128\nCtrlB=11\n";
     assert_eq!(
-        controls(&plugin(), &state("", "PWSrc=3", out_of_range)).ccs,
+        controls(&plugin(), &state("", "PWSrc=3", out_of_range)).ccs(),
         hidden
     );
     let other = PluginKey {
         format: "VST3".into(),
         ..plugin()
     };
-    assert_eq!(controls(&other, &state("", "PWSrc=3", CCS)).ccs, hidden);
+    assert_eq!(controls(&other, &state("", "PWSrc=3", CCS)).ccs(), hidden);
     let unknown = String::from_utf8(state("", "PWSrc=3", CCS))
         .unwrap()
         .replace("#AM=TyrellN6", "#AM=Diva");
-    assert_eq!(controls(&plugin(), unknown.as_bytes()).ccs, hidden);
+    assert_eq!(controls(&plugin(), unknown.as_bytes()).ccs(), hidden);
 }
 
 #[test]
@@ -201,7 +201,7 @@ fn native_controls_follow_their_saved_ccs() {
         let read = controls(&key, &saved);
         let mut expected = [None; MACROS];
         expected[slot] = Some(moving);
-        assert_eq!(read.ccs, expected);
+        assert_eq!(read.ccs(), expected);
         let processor = host.create_chain(id, &[], false, 48000, 256).unwrap();
         let mut render = unsafe { processor.audio_ref() };
         let closed = level(&mut render, &quiet);

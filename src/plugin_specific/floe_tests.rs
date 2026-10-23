@@ -14,7 +14,8 @@ fn plugin() -> PluginKey {
     }
 }
 
-fn fixture(macro_value: f32, volume: f32, dirty: u8, mapping: u32) -> Vec<u8> {
+/// `macros` are the values of parameters 101-104; parameter 0 is the volume.
+fn fixture(macros: [f32; 4], volume: f32, dirty: u8, mapping: u32) -> Vec<u8> {
     let mut b = Vec::new();
     b.extend_from_slice(&0x2a491f93u32.to_le_bytes());
     b.extend_from_slice(&30u16.to_le_bytes());
@@ -25,8 +26,9 @@ fn fixture(macro_value: f32, volume: f32, dirty: u8, mapping: u32) -> Vec<u8> {
     }
     b.push(0); // Tags.
     b.extend_from_slice(&[0; 6]); // Author, description, instance ID strings.
-    b.extend_from_slice(&2u16.to_le_bytes());
-    for (id, value) in [(0u32, volume), (101, macro_value)] {
+    b.extend_from_slice(&5u16.to_le_bytes());
+    let values = [(0u32, volume)].into_iter().chain((101..).zip(macros));
+    for (id, value) in values {
         b.extend_from_slice(&id.to_le_bytes());
         b.extend_from_slice(&value.to_le_bytes());
     }
@@ -42,52 +44,57 @@ fn fixture(macro_value: f32, volume: f32, dirty: u8, mapping: u32) -> Vec<u8> {
     b
 }
 
+const MACROS: [f32; 4] = [1.0, 0.0, 0.5, 0.25];
+
 #[test]
-fn only_mapped_sweep_macro_and_dirty_flag_are_excluded() {
-    let a = fixture(1.0, 0.8, 0, 101);
-    let b = fixture(0.4, 0.8, 1, 101);
-    assert!(same_sweep_sound(&plugin(), &a, &b));
-    assert!(!crate::plugin_specific::same_favorite_state(
+fn only_macro_values_and_dirty_flag_are_excluded() {
+    let a = fixture(MACROS, 0.8, 0, 101);
+    let b = fixture([0.4, 1.0, 0.0, 0.75], 0.8, 1, 101);
+    assert!(same_sound(&plugin(), &a, &b));
+    assert!(crate::plugin_specific::same_favorite_state(
         &plugin(),
         &a,
         &b
     ));
-    for state in [
-        fixture(0.4, 0.7, 1, 101),
-        fixture(f32::NAN, 0.8, 1, 101),
-        fixture(1.1, 0.8, 1, 101),
-        fixture(0.4, 0.8, 2, 101),
-    ] {
-        assert!(!same_sweep_sound(&plugin(), &a, &state));
-    }
+    // The CC mapping does not decide which macro values are excluded.
     for mapping in [0, 102] {
-        assert!(!same_sweep_sound(
+        assert!(same_sound(
             &plugin(),
-            &fixture(1.0, 0.8, 0, mapping),
-            &fixture(0.4, 0.8, 1, mapping)
+            &fixture(MACROS, 0.8, 0, mapping),
+            &fixture([0.4; 4], 0.8, 1, mapping)
         ));
+    }
+    for state in [
+        fixture(MACROS, 0.7, 0, 101),
+        fixture(MACROS, 0.8, 0, 102),
+        fixture([1.0, 0.0, 0.5, f32::NAN], 0.8, 1, 101),
+        fixture([1.0, 0.0, 1.1, 0.25], 0.8, 1, 101),
+        fixture([1.0, -0.1, 0.5, 0.25], 0.8, 1, 101),
+        fixture(MACROS, 0.8, 2, 101),
+    ] {
+        assert!(!same_sound(&plugin(), &a, &state));
     }
     for offset in [0, 4, 6] {
         let mut other = b.clone();
         other[offset] ^= 1;
-        assert!(!same_sweep_sound(&plugin(), &a, &other));
+        assert!(!same_sound(&plugin(), &a, &other));
     }
     let mut trailing = b.clone();
     trailing.push(0);
-    assert!(!same_sweep_sound(&plugin(), &a, &trailing));
-    assert!(!same_sweep_sound(&plugin(), &a, &b[..b.len() - 1]));
+    assert!(!same_sound(&plugin(), &a, &trailing));
+    assert!(!same_sound(&plugin(), &a, &b[..b.len() - 1]));
     let mut other = plugin();
     other.format = "VST3".into();
-    assert!(!same_sweep_sound(&other, &a, &b));
+    assert!(!same_sound(&other, &a, &b));
     other = plugin();
     other.id = "other".into();
-    assert!(!same_sweep_sound(&other, &a, &b));
+    assert!(!same_sound(&other, &a, &b));
 }
 
 #[test]
-fn sweep_deduplicates_without_changing_state_name_or_pattern_identity() {
+fn macro_values_deduplicate_without_changing_state_name_or_pattern_identity() {
     let directory = std::env::temp_dir().join(format!(
-        "cat-floe-sweep-{}-{}",
+        "cat-floe-macros-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -95,8 +102,8 @@ fn sweep_deduplicates_without_changing_state_name_or_pattern_identity() {
             .as_nanos()
     ));
     let config = directory.join("config.toml");
-    let original = fixture(1.0, 0.8, 0, 101);
-    let played = fixture(0.4, 0.8, 1, 101);
+    let original = fixture(MACROS, 0.8, 0, 101);
+    let played = fixture([0.4, 0.3, 0.2, 0.1], 0.8, 1, 101);
     let mut library = Library::default();
     let first = library
         .add(&config, plugin(), false, &original, SequencePattern::Steps)
@@ -105,7 +112,6 @@ fn sweep_deduplicates_without_changing_state_name_or_pattern_identity() {
     let capture = FavoriteCapture {
         preset_name: None,
         sequence_pattern: SequencePattern::Steps,
-        sweep_cc1: true,
         selected_sequence: None,
         mml: None,
     };
@@ -134,7 +140,7 @@ fn sweep_deduplicates_without_changing_state_name_or_pattern_identity() {
             &config,
             plugin(),
             false,
-            &fixture(0.6, 0.8, 1, 101),
+            &fixture(MACROS, 0.7, 1, 101),
             SequencePattern::Steps,
         )
         .unwrap();
@@ -145,7 +151,7 @@ fn sweep_deduplicates_without_changing_state_name_or_pattern_identity() {
 
 #[test]
 #[ignore = "requires saved Floe CLAP snapshots; reads user files only"]
-fn saved_floe_sweep_snapshots_keep_two_patterns() {
+fn saved_floe_snapshots_keep_two_patterns() {
     let config = crate::config::path().unwrap();
     let library: Library = toml::from_str(
         &std::fs::read_to_string(config.parent().unwrap().join("favorites/index.toml")).unwrap(),
@@ -171,7 +177,7 @@ fn saved_floe_sweep_snapshots_keep_two_patterns() {
     let mut patterns = std::collections::BTreeSet::new();
     for entry in entries {
         let state = library.state(&config, &entry.id).unwrap();
-        assert!(same_sweep_sound(&entry.plugin, &first, &state));
+        assert!(same_sound(&entry.plugin, &first, &state));
         patterns.insert(entry.sequence_pattern as u8);
         deduplicated
             .add_automatic(
@@ -182,7 +188,6 @@ fn saved_floe_sweep_snapshots_keep_two_patterns() {
                 FavoriteCapture {
                     preset_name: None,
                     sequence_pattern: entry.sequence_pattern,
-                    sweep_cc1: true,
                     selected_sequence: None,
                     mml: None,
                 },

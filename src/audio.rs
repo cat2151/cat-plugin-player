@@ -1,13 +1,14 @@
 //! Audio output for one instrument and its serial effects: a cpal stream whose callback pulls
 //! audio from the shim and the sequencer that plays the selected phrase.
 
+use crate::macro_parameters::{self, Bindings};
 use crate::seq::{EventBuf, Sequencer};
-use crate::sequence_modulation::{MacroLanes, SequenceModulation, MACROS};
+use crate::sequence_modulation::{MacroLanes, MacroTarget, SequenceModulation, MACROS};
 use crate::sequence_velocity::SequenceVelocity;
 use crate::startup::{self, Stage};
 use crate::{ffi, sequence_pattern::SequencePattern};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU16, AtomicU64, AtomicU8, Ordering};
 use std::sync::Arc;
 
 use crate::seq::note_off;
@@ -61,10 +62,11 @@ pub struct Voice {
     sequence_modulation: Arc<AtomicU8>,
     current_velocity: Arc<AtomicU8>,
     current_modulation: Arc<AtomicU8>,
-    /// ADR 0036, per macro: high byte controller, low byte choice; `NO_MACRO` sends nothing.
+    /// ADR 0036, per macro: high byte target, low byte choice; `u16::MAX` sends nothing.
     macro_modulation: Arc<[AtomicU16; MACROS]>,
+    /// The shim's code for a rejected macro parameter batch; 0 while none.
+    parameter_failure: Arc<AtomicI32>,
     current_macro: Arc<[AtomicU8; MACROS]>,
-    cc1_source: Arc<AtomicU8>,
     rendered: Arc<AtomicBool>,
     scope: crate::scope::Scope,
     preview: Arc<crate::preview::Mailbox>,
@@ -87,6 +89,7 @@ impl Voice {
         velocity: SequenceVelocity,
         modulation: Option<SequenceModulation>,
         macro_modulation: &MacroLanes,
+        macro_parameters: Bindings,
         start_delay: std::time::Duration,
         phrase: Option<Arc<crate::timed_sequence::Phrase>>,
         fade_in: bool,
@@ -120,9 +123,10 @@ impl Voice {
         let macro_flag = Arc::clone(&macro_modulation);
         let current_macro = Arc::new([const { AtomicU8::new(0) }; MACROS]);
         let macro_meter = Arc::clone(&current_macro);
-        // 0: no CC1 delivered, 1: fixed modulation, 2: sweep.
-        let cc1_source = Arc::new(AtomicU8::new(0));
-        let cc1_source_flag = Arc::clone(&cc1_source);
+        let parameter_failure = Arc::new(AtomicI32::new(0));
+        let failure_flag = Arc::clone(&parameter_failure);
+        let mut parameters_failed = false;
+        let mut parameter_batch = [Default::default(); MACROS];
         let velocity_meter = Arc::clone(&current_velocity);
         let modulation_meter = Arc::clone(&current_modulation);
         let mut sequencer = Sequencer::new(output.sample_rate());
@@ -199,6 +203,18 @@ impl Voice {
                             selected.words.as_slice()
                         } else {
                             sequencer.render(pattern, velocity, chunk.len() / channels, &mut ump);
+                            // The preview source is another instrument; the bindings are not its.
+                            if preview_render.is_none() && !parameters_failed {
+                                if let Err(code) = macro_parameters::send(
+                                    &mut render,
+                                    &macro_parameters,
+                                    sequencer.macro_parameters(),
+                                    &mut parameter_batch,
+                                ) {
+                                    parameters_failed = true;
+                                    failure_flag.store(code, Ordering::Release);
+                                }
+                            }
                             ump.as_slice()
                         };
                         let rendered = if let Some(source) = &mut preview_render {
@@ -213,9 +229,6 @@ impl Voice {
                             }
                         }
                         fade.apply(chunk, channels, fading_out);
-                        if let Some(source) = delivered_cc1_source(events, modulation, rendered) {
-                            cc1_source_flag.store(source, Ordering::Release);
-                        }
                         let (velocity, modulation, macro_value) = sequencer.current_values();
                         velocity_meter.store(velocity, Ordering::Relaxed);
                         modulation_meter.store(modulation, Ordering::Relaxed);
@@ -256,8 +269,8 @@ impl Voice {
             current_velocity,
             current_modulation,
             macro_modulation,
+            parameter_failure,
             current_macro,
-            cc1_source,
             rendered,
             scope,
             preview,
@@ -286,16 +299,6 @@ impl Voice {
         SequencePattern::from_u8(self.sequence_pattern.load(Ordering::Acquire) as u8)
     }
 
-    /// Join the callback before capturing the origin of its last delivered CC1.
-    pub(crate) fn stop_and_capture_sweep(&mut self) -> Option<bool> {
-        self._stream = None;
-        match self.cc1_source.load(Ordering::Acquire) {
-            1 => Some(false),
-            2 => Some(true),
-            _ => None,
-        }
-    }
-
     /// Last delivered (velocity, CC1, each macro CC).
     pub fn current_values(&self) -> (u8, u8, [u8; MACROS]) {
         (
@@ -305,6 +308,12 @@ impl Voice {
                 .each_ref()
                 .map(|value| value.load(Ordering::Relaxed)),
         )
+    }
+
+    /// The shim's code once a macro parameter batch was rejected; the voice then stops
+    /// sending macro parameters and keeps playing.
+    pub fn take_parameter_failure(&self) -> Option<i32> {
+        Some(self.parameter_failure.swap(0, Ordering::Acquire)).filter(|code| *code != 0)
     }
 
     pub fn scope(&self) -> &crate::scope::Scope {
@@ -370,68 +379,30 @@ fn shutdown_events() -> [u32; 2064] {
     })
 }
 
-fn encode_macro(lane: Option<(u8, SequenceModulation)>) -> u16 {
-    lane.map_or(u16::MAX, |(controller, choice)| {
-        u16::from(controller) << 8 | u16::from(SequenceModulation::to_u8(Some(choice)))
+/// High byte: the CC number, or `PARAMETER` above the CC range.
+const PARAMETER: u8 = 0x80;
+
+fn encode_macro(lane: Option<(MacroTarget, SequenceModulation)>) -> u16 {
+    lane.map_or(u16::MAX, |(target, choice)| {
+        let target = match target {
+            MacroTarget::Cc(controller) => controller & 0x7F,
+            MacroTarget::Parameter => PARAMETER,
+        };
+        u16::from(target) << 8 | u16::from(SequenceModulation::to_u8(Some(choice)))
     })
 }
 
-fn decode_macro(word: u16) -> Option<(u8, SequenceModulation)> {
-    SequenceModulation::from_u8(word as u8).map(|choice| ((word >> 8) as u8, choice))
-}
-
-fn delivered_cc1_source(
-    events: &[u32],
-    modulation: Option<SequenceModulation>,
-    rendered: bool,
-) -> Option<u8> {
-    (rendered
-        && events
-            .iter()
-            .any(|event| event & 0xffff_ff00 == 0x20b0_0100))
-    .then_some(if modulation == Some(SequenceModulation::Sweep) {
-        2
-    } else {
-        1
-    })
+fn decode_macro(word: u16) -> Option<(MacroTarget, SequenceModulation)> {
+    let target = match (word >> 8) as u8 {
+        PARAMETER => MacroTarget::Parameter,
+        controller => MacroTarget::Cc(controller),
+    };
+    SequenceModulation::from_u8(word as u8).map(|choice| (target, choice))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn only_successfully_delivered_cc1_changes_automation_origin() {
-        let events = [
-            0x0020_0001,
-            0x2090_3064,
-            crate::sequence_modulation::cc1(64),
-        ];
-        assert_eq!(
-            delivered_cc1_source(&events, Some(SequenceModulation::Sweep), true),
-            Some(2)
-        );
-        assert_eq!(
-            delivered_cc1_source(&events, Some(SequenceModulation::Fixed(127)), true),
-            Some(1)
-        );
-        assert_eq!(
-            delivered_cc1_source(&events, Some(SequenceModulation::Fixed(0)), true),
-            Some(1)
-        );
-        assert_eq!(
-            delivered_cc1_source(&events, Some(SequenceModulation::Sweep), false),
-            None
-        );
-        assert_eq!(
-            delivered_cc1_source(&events[..2], Some(SequenceModulation::Sweep), true),
-            None
-        );
-        assert_eq!(
-            delivered_cc1_source(&[0x20b0_027f], Some(SequenceModulation::Sweep), true),
-            None
-        );
-    }
 
     #[test]
     fn rebuilding_stream_releases_notes_without_requiring_cc_support() {
@@ -441,5 +412,20 @@ mod tests {
         }
         assert_eq!(events[2048], 0x20B0_7800);
         assert_eq!(events[2063], 0x20BF_7800);
+    }
+
+    #[test]
+    fn macro_targets_survive_the_atomic_word() {
+        for target in [
+            MacroTarget::Cc(0),
+            MacroTarget::Cc(127),
+            MacroTarget::Parameter,
+        ] {
+            for choice in SequenceModulation::CHOICES.into_iter().flatten() {
+                let lane = Some((target, choice));
+                assert_eq!(decode_macro(encode_macro(lane)), lane);
+            }
+        }
+        assert_eq!(decode_macro(encode_macro(None)), None);
     }
 }

@@ -1,7 +1,7 @@
 # ADR 0027: Surge XT Effectsの切り替えをフェードで挟む
 
 - 状態: 採用（50msは暫定値）
-- 決定者: user。fadeoutとfadeinの両方を入れ、Surge XT Effectsが関わるeffect切り替えだけに限定することを承認
+- 決定者: user（fadeoutとfadeinの両方を入れ、Surge XT Effectsが関わるeffect切り替えだけに限定すること）
 
 ## 決定
 

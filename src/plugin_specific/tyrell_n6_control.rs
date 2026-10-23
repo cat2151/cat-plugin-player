@@ -72,7 +72,9 @@ fn parse(state: &[u8]) -> Option<Controls> {
     known.then_some(())?;
     let mut controls = Controls::default();
     for (i, control) in CONTROLS.iter().enumerate() {
-        controls.ccs[i] = ccs[i].filter(|_| routed[i]);
+        controls.targets[i] = ccs[i]
+            .filter(|_| routed[i])
+            .map(crate::sequence_modulation::MacroTarget::Cc);
         controls.labels[i] = control.3;
         controls.names[i] = usage.and_then(|usage| name(usage, control.2));
     }

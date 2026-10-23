@@ -1,4 +1,5 @@
 //! Sequence controls independent of their containing panel and placement.
+use crate::sequence_modulation::MacroTarget;
 use crate::{App, SequenceModulation, SequencePattern, SequenceVelocity};
 use eframe::egui;
 use value_bar::{drag_bar, value_bar};
@@ -185,10 +186,10 @@ impl App {
             };
             let controls = self.macro_lane.controls.clone();
             if ready
-                && controls.ccs.iter().any(Option::is_some)
+                && controls.targets.iter().any(Option::is_some)
                 && self.main_shortcut(ui.ctx(), egui::Key::M)
             {
-                SequenceModulation::toggle_sweep(&mut macro_choices, &controls.ccs);
+                SequenceModulation::toggle_sweep(&mut macro_choices, &controls.targets);
             }
             ui.horizontal_wrapped(|ui| {
                 ui.label("CC1 modulation");
@@ -209,10 +210,19 @@ w: next choice",
                 let drag = ui.add_enabled_ui(ready, |ui| drag_bar(ui, value)).inner;
                 drag.apply(&mut modulation, &mut dragging, &mut dropped);
             });
-            for (index, cc) in controls.ccs.iter().enumerate() {
-                let Some(cc) = cc else { continue };
+            for (index, target) in controls.targets.iter().enumerate() {
+                let Some(target) = target else { continue };
                 ui.horizontal_wrapped(|ui| {
-                    let number = format!("CC{cc} {}", controls.labels[index]);
+                    let (number, sent) = match target {
+                        MacroTarget::Cc(cc) => (
+                            format!("CC{cc} {}", controls.labels[index]),
+                            "sent as MIDI CC",
+                        ),
+                        MacroTarget::Parameter => (
+                            controls.labels[index].to_string(),
+                            "sent as the plugin's parameter",
+                        ),
+                    };
                     match &controls.names[index] {
                         Some(name) => ui.label(name).on_hover_text(number),
                         None => ui.label(number),
@@ -222,10 +232,12 @@ w: next choice",
                             ui,
                             ("sequence_macro_modulation", index),
                             &mut macro_choices[index],
-                            "This macro of the patch, sent as MIDI CC
+                            &format!(
+                                "This macro of the patch, {sent}
 -: not sent; the patch's macro value stays
 sweep: 0 -> 127 in 4 seconds, then 127 -> 0 in 4 seconds; repeat
-m: every macro to sweep, or back to - once all sweep",
+m: every macro to sweep, or back to - once all sweep"
+                            ),
                         )
                     });
                     let own = controls.macros[index];

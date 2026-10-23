@@ -3,11 +3,9 @@ use super::Controls;
 use crate::config::PluginKey;
 #[cfg(test)]
 use crate::sequence_modulation::MACROS;
+use crate::surge_macros as shared;
 #[cfg(test)]
 use shared::parts;
-#[path = "../../shared/surge_macros.rs"]
-#[allow(dead_code)]
-mod shared;
 #[cfg(test)]
 #[path = "surge_xt_macro_tests.rs"]
 mod tests;
@@ -22,7 +20,9 @@ pub(super) fn controls(plugin: &PluginKey, state: &[u8]) -> Controls {
         return Controls::default();
     };
     Controls {
-        ccs: c.ccs,
+        targets: c
+            .ccs
+            .map(|cc| cc.map(crate::sequence_modulation::MacroTarget::Cc)),
         labels: c.labels,
         wheel: c.wheel,
         macros: c.macros,
@@ -31,5 +31,5 @@ pub(super) fn controls(plugin: &PluginKey, state: &[u8]) -> Controls {
 }
 #[cfg(test)]
 fn macro_ccs(plugin: &PluginKey, state: &[u8]) -> [Option<u8>; MACROS] {
-    controls(plugin, state).ccs
+    controls(plugin, state).ccs()
 }

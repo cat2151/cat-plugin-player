@@ -1,13 +1,14 @@
 # ADR 0036: Surge XTのMacro 1〜8をCCで自動変化させる
 
 - 状態: 採用
-- 確認: userは、Organ 1でMacro 1にもCC1と別の大きな音色変化が割り当てられているため、Macro 1もCC1とは違う周期でsweepしたいと依頼。小さく始めるため、Surge XTのMacro 1だけを対象にCC1の2倍の周期で動かすことを指定。CLAP Note形式補修で全CCをMIDI対応portへ転送することを選択。のちに、全Macroが同じ周期で音が画一的になったため、CC1の周期を軸にMacroごとに周期を変えることを依頼。
+- 決定者: user（MacroをCC1と違う周期でsweepすること、CLAP Note形式補修で全CCをMIDI対応portへ転送すること、Macroごとに周期を変えること）
 
 ## 決定
 
 左上欄のCC1 modulationの下に、Macro 1〜8ごとに「CC*n* Macro *m*」の行を出す。
 行は、現在の音源stateがそのMacroをどこかへmodulation routingしていて、そのMacroのCCが判明した場合だけ表示する。
 選択肢はCC1と同じ0 / 127 / sweepで、sweepは0→127→0を繰り返す。片道の時間はCC1が2.0秒、Macro 1〜8が2.9 / 3.7 / 4.3 / 5.3 / 6.1 / 7.1 / 7.9 / 8.9秒。
+Organ 1のように、MacroにもCC1と別の大きな音色変化が割り当てられたpatchがあるため、MacroはCC1とは違う周期でsweepする。
 Macroごとに周期を変えるのは、全Macroを同じ周期にすると同時に同じ向きへ動き、音色の変化が画一的になったため。値は素数×100msで、CC1（20×100ms）とも互いとも短い時間では揃わない。
 patchがMacroに名前（`customcontroller/entry/@label`）を付けていれば、行の見出しを「CC*n* Macro *m*」の代わりにその名前にする。Surgeは未命名を`-`で保存するので、`-`と空は未命名として扱う。
 
@@ -17,11 +18,11 @@ CC1とMacroの値表示バーを横にドラッグすると、0〜127の任意�
 メインウィンドウの`M`キーで、Macro 1〜8をまとめてsweepと「-」の間で切り替える。表示中のMacroが全部sweepなら全部を「-」に、それ以外なら全部をsweepにする。欄ごとに選ぶ操作だけでは、全Macroを止める・動かすのに8回の操作が要ったため。非表示のMacroも同じ値にし、次のpatchで現れたMacroも直前の一括操作に揃える。Macro欄が1つも無いときは何もしない。
 ドラッグ中は毎フレーム値が変わるため、sessionの保存はドラッグを離したときにまとめて行う。
 
-Surge XT以外のプラグインにも類似の仕組み（Macroや割り当て可能なCC）がある。TyrellN6のControl A / Bは[ADR 0038](0038-tyrell-n6-control-ab-sweep.md)で同じ欄に載せた。
+Surge XT以外のプラグインにも類似の仕組み（Macroや割り当て可能なCC）がある。TyrellN6のControl A / Bは[ADR 0038](0038-tyrell-n6-control-ab-sweep.md)、Vaporizer2・Six Sines・FloeのMacroは[ADR 0039](0039-parameter-macro-sweep.md)で同じ欄に載せた。
 
 Surge XTのMacro 1〜Macro 8は、1つの操作で複数のパラメータに同時に影響を与える仕組みと認識している。
 そのため、分解能が128段階しかないデメリットをあえて許容し、Control Changeを使っての制御でUXを検証すると決めた。
-プラグインパラメータを直接動かす方式は採らない。
+プラグインパラメータを直接動かす方式は採らない。これはSurge XT（既定のCCでMacroが動く）についての決定で、既定のCC割り当てが無いVaporizer2・Six Sines・Floeはparameterを直接動かす（[ADR 0039](0039-parameter-macro-sweep.md)）。
 
 ## MacroとCCの判定
 

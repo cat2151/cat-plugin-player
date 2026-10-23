@@ -1,5 +1,5 @@
 use crate::seq::{note_on, EventBuf, Sequencer, NOTES};
-use crate::sequence_modulation::{cc, cc1, MacroLanes, MACROS, MACRO_HALF_PERIOD_MS};
+use crate::sequence_modulation::{cc, cc1, MacroLanes, MacroTarget, MACROS, MACRO_HALF_PERIOD_MS};
 use crate::{SequenceModulation as M, SequencePattern as P, SequenceVelocity as V};
 
 fn render(seq: &mut Sequencer, pattern: P, total: usize, block: usize) -> Vec<(usize, u32)> {
@@ -120,7 +120,7 @@ fn controller(events: &[(usize, u32)], cc: u32) -> Vec<(usize, u32)> {
 fn macros(lanes: &[(usize, u8, M)]) -> MacroLanes {
     let mut macros = [None; MACROS];
     for &(index, controller, choice) in lanes {
-        macros[index] = Some((controller, choice));
+        macros[index] = Some((MacroTarget::Cc(controller), choice));
     }
     macros
 }
@@ -210,8 +210,8 @@ fn dash_sends_nothing_and_a_patch_change_releases_only_fixed_values() {
 #[test]
 fn macro_toggle_sweeps_all_unless_every_shown_macro_already_sweeps() {
     let mut shown = [None; MACROS];
-    shown[0] = Some(41);
-    shown[2] = Some(43);
+    shown[0] = Some(MacroTarget::Cc(41));
+    shown[2] = Some(MacroTarget::Parameter);
     let mut choices = [None; MACROS];
     choices[0] = Some(M::Sweep);
     choices[1] = Some(M::Fixed(64));
@@ -221,4 +221,47 @@ fn macro_toggle_sweeps_all_unless_every_shown_macro_already_sweeps() {
     choices[5] = None;
     M::toggle_sweep(&mut choices, &shown);
     assert_eq!(choices, [None; MACROS]);
+}
+
+#[test]
+fn parameter_lanes_send_no_cc_and_report_the_value_each_block_holds() {
+    let rate = 1270;
+    let mut seq = Sequencer::new(rate);
+    let mut lanes = macros(&[(0, 41, M::Sweep)]);
+    lanes[1] = Some((MacroTarget::Parameter, M::Sweep));
+    lanes[2] = Some((MacroTarget::Parameter, M::Fixed(100)));
+    seq.set_macro_modulation(&lanes);
+    // Not taken before the first block; CC lanes never report a parameter value.
+    assert_eq!(seq.macro_parameters(), [None; MACROS]);
+    let half_period_ms = MACRO_HALF_PERIOD_MS[1];
+    let mut rendered = 0;
+    let mut cc_events = Vec::new();
+    for _ in 0..200 {
+        let block = 64;
+        for (at, word) in render(&mut seq, P::Steps, block, 64) {
+            cc_events.push((rendered + at, word));
+        }
+        rendered += block;
+        // The last sweep step due within the rendered samples.
+        let steps = (0u64..)
+            .take_while(|step| {
+                (step * half_period_ms * u64::from(rate)).div_ceil(127_000) < rendered as u64
+            })
+            .count() as u64;
+        let phase = (steps - 1) % 254;
+        let value = if phase <= 127 { phase } else { 254 - phase } as u8;
+        let mut expected = [None; MACROS];
+        expected[1] = Some(value);
+        expected[2] = Some(100);
+        assert_eq!(seq.macro_parameters(), expected, "after {rendered} samples");
+    }
+    let words: Vec<_> = cc_events
+        .iter()
+        .filter(|(_, w)| w & 0xFFF0_0000 == 0x20B0_0000)
+        .map(|(_, w)| (w >> 8) & 0x7F)
+        .collect();
+    assert!(words.contains(&41));
+    assert!(words.iter().all(|cc| *cc == 41), "{words:?}");
+    let (_, _, values) = seq.current_values();
+    assert_eq!(values[2], 100);
 }

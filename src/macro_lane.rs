@@ -1,7 +1,7 @@
 //! ADR 0036: automatic controllers for the instrument's macros, shown only when found.
 use crate::plugin_specific::Controls;
 use crate::sequence_modulation::{MacroLanes, MACROS};
-use crate::{plugin_list::PluginKind, App, SequenceModulation};
+use crate::{audio, plugin_list::PluginKind, App, SequenceModulation};
 #[derive(Default)]
 pub(crate) struct MacroLane {
     /// What the current instrument state reports; macro rows follow its CCs.
@@ -25,7 +25,7 @@ impl MacroLane {
     }
 
     pub fn active(&self) -> MacroLanes {
-        std::array::from_fn(|i| self.controls.ccs[i].zip(self.choices[i]))
+        std::array::from_fn(|i| self.controls.targets[i].zip(self.choices[i]))
     }
 }
 
@@ -34,6 +34,14 @@ impl App {
     /// list, which follows every patch change, even one in its editor: reading
     /// a Surge XT state blocks the UI thread for 6-12 ms.
     pub(crate) fn poll_macro_lane(&mut self) {
+        if let Some(code) = self
+            .instances
+            .iter()
+            .filter_map(|i| i.voice.as_ref())
+            .find_map(audio::Voice::take_parameter_failure)
+        {
+            self.status = format!("Sending macro parameters failed ({code}); macros stopped");
+        }
         let Some(instrument) = self
             .instances
             .iter()
@@ -61,10 +69,7 @@ impl App {
             self.set_controls(Controls::default());
             return;
         };
-        let changed =
-            self.macro_lane.state.as_ref().is_some_and(|old| {
-                !crate::plugin_specific::same_favorite_state(&plugin, old, &state)
-            });
+        let changed = patch_changed(&plugin, self.macro_lane.state.as_deref(), &state);
         self.set_controls(crate::plugin_specific::controls(&plugin, &state));
         self.macro_lane.state = Some(state);
         if changed && self.release_fixed_controls() {
@@ -73,7 +78,7 @@ impl App {
     }
 
     fn set_controls(&mut self, controls: Controls) {
-        let rerouted = controls.ccs != self.macro_lane.controls.ccs;
+        let rerouted = controls.targets != self.macro_lane.controls.targets;
         self.macro_lane.controls = controls;
         if rerouted {
             self.apply_macro_lane();
@@ -87,8 +92,8 @@ impl App {
         }
     }
 
-    /// Call before playing a patch the app loads.
-    /// TyrellN6 never rescans its parameter list, so read the new patch's state anyway.
+    /// Call before playing a patch the app loads. TyrellN6, Vaporizer2, Six Sines and
+    /// Floe never rescan their parameter lists, so read the new patch's state anyway.
     pub(crate) fn patch_changing(&mut self) {
         self.macro_lane.state = None;
         self.macro_lane.reread = true;
@@ -110,4 +115,14 @@ impl App {
         }
         released
     }
+}
+
+/// The favorite comparison ignores the macro values the rows move, so moving them is
+/// no patch change.
+pub(crate) fn patch_changed(
+    plugin: &crate::config::PluginKey,
+    old: Option<&[u8]>,
+    state: &[u8],
+) -> bool {
+    old.is_some_and(|old| !crate::plugin_specific::same_favorite_state(plugin, old, state))
 }

@@ -46,11 +46,14 @@ impl SequenceModulation {
 
     /// One key sets every macro to "-" once each shown macro sweeps, else to sweep.
     /// Hidden macros follow too, so a later patch's macros match the choice.
-    pub fn toggle_sweep(choices: &mut [Option<Self>; MACROS], shown: &[Option<u8>; MACROS]) {
+    pub fn toggle_sweep(
+        choices: &mut [Option<Self>; MACROS],
+        shown: &[Option<MacroTarget>; MACROS],
+    ) {
         let sweeping = choices
             .iter()
             .zip(shown)
-            .all(|(choice, cc)| cc.is_none() || *choice == Some(Self::Sweep));
+            .all(|(choice, target)| target.is_none() || *choice == Some(Self::Sweep));
         *choices = [if sweeping { None } else { Some(Self::Sweep) }; MACROS];
     }
 
@@ -80,9 +83,17 @@ pub(crate) fn cc1(value: u8) -> u32 {
     cc(1, value)
 }
 
+/// Where a macro row's values go.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum MacroTarget {
+    Cc(u8),
+    /// The instrument's own parameter for that macro, sent at the start of each block.
+    Parameter,
+}
+
 /// One controller's choice; sweep takes `half_period_ms` each way.
 pub(crate) struct Modulation {
-    controller: u8,
+    target: MacroTarget,
     half_period_ms: u64,
     selected: Option<SequenceModulation>,
     pending: bool,
@@ -92,9 +103,9 @@ pub(crate) struct Modulation {
 }
 
 impl Modulation {
-    const fn new(controller: u8, half_period_ms: u64) -> Self {
+    const fn new(target: MacroTarget, half_period_ms: u64) -> Self {
         Self {
-            controller,
+            target,
             half_period_ms,
             selected: None,
             pending: false,
@@ -112,9 +123,9 @@ impl Modulation {
         }
     }
 
-    fn set_controller(&mut self, controller: u8) {
-        if self.controller != controller {
-            self.controller = controller;
+    fn set_target(&mut self, target: MacroTarget) {
+        if self.target != target {
+            self.target = target;
             self.restart();
         }
     }
@@ -167,8 +178,8 @@ impl Modulation {
 /// The instrument's macro count (Surge XT: Macro 1-8), one lane each.
 pub(crate) const MACROS: usize = 8;
 
-/// Per macro: (controller, choice); `None` sends nothing.
-pub(crate) type MacroLanes = [Option<(u8, SequenceModulation)>; MACROS];
+/// Per macro: (target, choice); `None` sends nothing.
+pub(crate) type MacroLanes = [Option<(MacroTarget, SequenceModulation)>; MACROS];
 
 const CC1_HALF_PERIOD_MS: u64 = 2000;
 
@@ -186,8 +197,8 @@ pub(crate) struct Lanes {
 impl Default for Lanes {
     fn default() -> Self {
         Self {
-            cc1: Modulation::new(1, CC1_HALF_PERIOD_MS),
-            macros: MACRO_HALF_PERIOD_MS.map(|ms| Modulation::new(0, ms)),
+            cc1: Modulation::new(MacroTarget::Cc(1), CC1_HALF_PERIOD_MS),
+            macros: MACRO_HALF_PERIOD_MS.map(|ms| Modulation::new(MacroTarget::Cc(0), ms)),
         }
     }
 }
@@ -196,8 +207,8 @@ impl Lanes {
     pub fn select_macros(&mut self, lanes: &MacroLanes) {
         for (lane, selected) in self.macros.iter_mut().zip(lanes) {
             match *selected {
-                Some((controller, selected)) => {
-                    lane.set_controller(controller);
+                Some((target, selected)) => {
+                    lane.set_target(target);
                     lane.select(Some(selected));
                 }
                 None => lane.select(None),
@@ -222,16 +233,28 @@ impl Lanes {
     }
 
     /// Pushes every controller event due at `at`; false when `out` is full.
+    /// A parameter lane only takes its new value, which [`Self::parameters`] reports.
     pub fn push_due(&mut self, at: usize, rate: u32, playing: bool, out: &mut EventBuf) -> bool {
         for lane in self.all() {
             if lane.next(rate, playing) == Some(at) {
-                if !out.push(cc(lane.controller, lane.value())) {
-                    return false;
+                if let MacroTarget::Cc(controller) = lane.target {
+                    if !out.push(cc(controller, lane.value())) {
+                        return false;
+                    }
                 }
                 lane.sent();
             }
         }
         true
+    }
+
+    /// Per macro, the value a parameter lane holds now; `None` for CC lanes, unselected
+    /// lanes and lanes whose new choice has not been taken yet.
+    pub fn parameters(&self) -> [Option<u8>; MACROS] {
+        self.macros.each_ref().map(|lane| {
+            (lane.target == MacroTarget::Parameter && lane.selected.is_some() && !lane.pending)
+                .then_some(lane.current)
+        })
     }
 
     pub fn advance(&mut self, frames: usize, playing: bool) {

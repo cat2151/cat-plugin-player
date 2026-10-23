@@ -17,7 +17,6 @@ fn different_mml_snapshots_survive_stop_dedup_and_effects_omit_playback() {
         sequence_pattern: pattern,
         selected_sequence: Some(SequencePattern::Custom),
         mml: Some(text.into()),
-        sweep_cc1: false,
     };
     let first = library
         .add(
