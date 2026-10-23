@@ -73,7 +73,20 @@ impl App {
                     self.favorites.show_history = false;
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.menu_button("☰", |ui| {
+                    crate::main_menu::Menu::Settings.button(ui, |ui| {
+                        use crate::main_menu::Menu::Settings;
+                        if self.favorites.show && !self.favorites.show_history
+                            && Settings.take(ui.ctx(), egui::Key::O) {
+                            self.favorites.reorder_mode = !self.favorites.reorder_mode;
+                        }
+                        if Settings.take(ui.ctx(), egui::Key::D) {
+                            self.set_prefer_clap(!self.prefer_clap);
+                        }
+                        sort_favorites |= self.can_sort_favorites()
+                            && Settings.take(ui.ctx(), egui::Key::N);
+                        if self.can_rescan() && Settings.take(ui.ctx(), egui::Key::Y) {
+                            self.confirm_rescan = true;
+                        }
                         ui.label("Settings");
                         let favorites_tab = self.favorites.show && !self.favorites.show_history;
                         ui.add_enabled_ui(favorites_tab, |ui| {
@@ -84,7 +97,7 @@ impl App {
                             .on_hover_text("Sort Favorites once in ascending plugin name order and save. Clear the filter first.")
                             .clicked() {
                             sort_favorites = true;
-                            ui.close_menu();
+                            ui.memory_mut(|m| m.close_popup());
                         }
                         ui.separator();
                         let mut prefer_clap = self.prefer_clap;
@@ -103,11 +116,9 @@ impl App {
                             .clicked()
                         {
                             self.confirm_rescan = true;
-                            ui.close_menu();
+                            ui.memory_mut(|m| m.close_popup());
                         }
-                    })
-                    .response
-                    .on_hover_text("Settings");
+                    });
                 });
             });
             if (self.favorites.show, self.favorites.show_history) != previous_tab {
@@ -253,7 +264,7 @@ impl App {
                 });
             }
         });
-        sort_favorites |= self.library_shortcuts(ctx, editing_before);
+        self.library_shortcuts(ctx, editing_before);
         if let Some(i) = load_plugin {
             self.load_plugin(i);
         }

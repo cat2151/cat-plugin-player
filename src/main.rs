@@ -27,6 +27,7 @@ mod first_instrument_install;
 mod help_overlay;
 mod history;
 mod host_ui;
+mod main_menu;
 use plugin_specific::surge_start_delay;
 mod surge_start_delay_app;
 use ffi as host;
@@ -278,6 +279,14 @@ impl eframe::App for App {
             help_overlay::Page::Main
         };
         help_overlay::show(ctx, help);
+        main_menu::keyboard(
+            ctx,
+            !self.mml_input.open
+                && !self.browser_open()
+                && self.favorites.rename.is_none()
+                && !self.confirm_rescan
+                && !self.first_instrument.dialog_open(),
+        );
         if let Some(unsaved) = self.selection.as_mut().filter(|s| !s.saved) {
             if selection::exit_key(ctx) {
                 ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);

@@ -38,8 +38,7 @@ impl App {
             && ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, key))
     }
 
-    /// Returns whether Favorites should be sorted by plugin name.
-    pub(crate) fn library_shortcuts(&mut self, ctx: &egui::Context, editing_before: bool) -> bool {
+    pub(crate) fn library_shortcuts(&mut self, ctx: &egui::Context, editing_before: bool) {
         let enabled = !editing_before
             && !self.mml_input.open
             && !self.browser_open()
@@ -66,16 +65,6 @@ impl App {
                 };
             self.save_library_tab();
         }
-        if key(self, egui::Key::O) && self.favorites.show && !self.favorites.show_history {
-            self.favorites.reorder_mode = !self.favorites.reorder_mode;
-        }
-        if key(self, egui::Key::D) {
-            self.set_prefer_clap(!self.prefer_clap);
-        }
-        if key(self, egui::Key::Y) && self.can_rescan() {
-            self.confirm_rescan = true;
-        }
-        key(self, egui::Key::N) && self.can_sort_favorites()
     }
 
     pub(crate) fn playback_controls(&mut self, ui: &mut egui::Ui) {

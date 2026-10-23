@@ -33,14 +33,13 @@ impl ScopeUi {
 
 impl App {
     pub(crate) fn scope_panel(&mut self, ctx: &egui::Context, on_right: bool) {
-        self.scope_shortcuts(ctx);
         if !on_right {
             egui::TopBottomPanel::bottom("audio_analysis_bottom")
                 .show(ctx, |ui| self.analysis_contents(ui, ctx, false));
         }
     }
 
-    fn scope_shortcuts(&mut self, ctx: &egui::Context) {
+    fn scope_menu_keys(&mut self, ctx: &egui::Context) {
         let [labels, cycles, trigger, guides, placement] = [
             egui::Key::A,
             egui::Key::C,
@@ -48,7 +47,7 @@ impl App {
             egui::Key::G,
             egui::Key::P,
         ]
-        .map(|key| self.main_shortcut(ctx, key));
+        .map(|key| crate::main_menu::Menu::Analysis.take(ctx, key));
         let scope = &mut self.scope_ui;
         if labels {
             scope.show_labels = !scope.show_labels;
@@ -152,7 +151,8 @@ impl App {
                 ui.colored_label(egui::Color32::LIGHT_GREEN, "L");
                 ui.colored_label(egui::Color32::LIGHT_BLUE, "R");
             }
-            ui.menu_button("☰", |ui| {
+            crate::main_menu::Menu::Analysis.button(ui, |ui| {
+                self.scope_menu_keys(ctx);
                 ui.checkbox(&mut self.scope_ui.show_labels, "Show analysis labels (A)");
                 if ui.checkbox(&mut self.scope_ui.on_right, "On right (P)")
                     .on_hover_text(
@@ -172,28 +172,21 @@ impl App {
                     }
                 });
                 ui.label("Trigger (Z)");
-                egui::ComboBox::from_id_salt("scope_trigger")
-                    .selected_text(match self.scope_ui.trigger {
-                        Trigger::ZeroCross => "Zero cross",
-                        Trigger::Similarity => "Similarity",
-                    })
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(
-                            &mut self.scope_ui.trigger,
-                            Trigger::ZeroCross,
-                            "Zero cross",
-                        );
-                        ui.selectable_value(
-                            &mut self.scope_ui.trigger,
-                            Trigger::Similarity,
-                            "Similarity",
-                        );
-                    });
+                ui.horizontal(|ui| {
+                    ui.selectable_value(
+                        &mut self.scope_ui.trigger,
+                        Trigger::ZeroCross,
+                        "Zero cross",
+                    );
+                    ui.selectable_value(
+                        &mut self.scope_ui.trigger,
+                        Trigger::Similarity,
+                        "Similarity",
+                    );
+                });
                 ui.separator();
                 ui.checkbox(&mut self.scope_ui.guides, "Show red guides (G)");
-            })
-            .response
-            .on_hover_text("Analysis display settings");
+            });
         });
         let scope = self
             .instances

@@ -10,8 +10,8 @@ const CHOICE_WIDTH: f32 = 110.0;
 
 /// Wide arrows beside a narrow dropdown are easy to hit.
 fn arrow(ui: &mut egui::Ui, forward: bool, hover: &str) -> bool {
-    let text = egui::RichText::new(if forward { ">" } else { "<" }).size(18.0);
-    ui.add(egui::Button::new(text).min_size(egui::vec2(44.0, 28.0)))
+    let text = if forward { ">" } else { "<" };
+    ui.add(egui::Button::new(text).min_size(egui::vec2(44.0, 0.0)))
         .on_hover_text(hover)
         .clicked()
 }

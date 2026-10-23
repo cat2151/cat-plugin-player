@@ -12,6 +12,8 @@ pub(crate) enum Page {
     Smf,
     Patch,
     Effect,
+    Settings,
+    Analysis,
 }
 
 /// A function's binds share one color; the colors alone mark the groups.
@@ -25,18 +27,29 @@ const MOVE: Group = &[
 
 const LIBRARY: Group = &[
     ("L", "Favorites / History / Plugins"),
-    ("O", "お気に入りの並べ替え"),
-    ("N", "お気に入りを plugin 名順に"),
-    ("D", "重複 plugin は CLAP だけ"),
-    ("Y", "plugin 再スキャン"),
+    ("D", "Settings メニュー"),
+    ("A", "解析表示メニュー"),
 ];
 
-const ANALYSIS: Group = &[
-    ("A", "解析ラベル"),
-    ("P", "解析を右 / 下へ"),
-    ("C", "表示周期数"),
-    ("Z", "トリガー"),
-    ("G", "赤ガイド"),
+const SETTINGS: &[Group] = &[
+    &[
+        ("O", "お気に入りの並べ替え"),
+        ("N", "お気に入りを plugin 名順に"),
+        ("D", "重複 plugin は CLAP だけ"),
+        ("Y", "plugin 再スキャン"),
+    ],
+    &[("Esc", "メニューを閉じる")],
+];
+
+const ANALYSIS: &[Group] = &[
+    &[
+        ("A", "解析ラベル"),
+        ("P", "解析を右 / 下へ"),
+        ("C", "表示周期数"),
+        ("Z", "トリガー"),
+        ("G", "赤ガイド"),
+    ],
+    &[("Esc", "メニューを閉じる")],
 ];
 
 const MAIN: &[Group] = &[
@@ -60,7 +73,6 @@ const MAIN: &[Group] = &[
         ("U", "楽器 UI 表示 / 非表示"),
     ],
     LIBRARY,
-    ANALYSIS,
 ];
 
 const SMF: &[Group] = &[
@@ -75,7 +87,6 @@ const SMF: &[Group] = &[
         ("U", "楽器 UI 表示 / 非表示"),
     ],
     LIBRARY,
-    ANALYSIS,
     &[("Esc  Q", "保存して戻る")],
 ];
 
@@ -100,12 +111,34 @@ const EFFECT: &[Group] = &[
     &[("F", "お気に入りに追加")],
 ];
 
+fn id(ctx: &egui::Context) -> egui::Id {
+    egui::Id::new("help_overlay").with(ctx.viewport_id())
+}
+
+pub(crate) fn open(ctx: &egui::Context, page: Page) {
+    let id = id(ctx);
+    ctx.data_mut(|data| {
+        data.insert_temp(id, true);
+        data.insert_temp(id.with("page"), page);
+    });
+    ctx.request_repaint();
+}
+
 /// Call before the window's other key handling, so Esc and every other key go to the overlay.
 pub(crate) fn show(ctx: &egui::Context, page: Page) {
-    let id = egui::Id::new("help_overlay").with(ctx.viewport_id());
+    let menu = if matches!(page, Page::Main | Page::Smf) {
+        crate::main_menu::Menu::current(ctx)
+    } else {
+        None
+    };
+    let page = menu.map_or(page, |menu| menu.help_page());
+    let id = id(ctx);
     let mut open = ctx.data(|data| data.get_temp::<bool>(id)).unwrap_or(false);
-    if (open || !editing_text(ctx)) && ctx.input_mut(take_toggle) {
+    if (open || menu.is_some() || !editing_text(ctx)) && ctx.input_mut(take_toggle) {
         open = !open;
+        if open {
+            ctx.data_mut(|data| data.insert_temp(id.with("page"), page));
+        }
     }
     if !open {
         ctx.data_mut(|data| data.insert_temp(id, false));
@@ -122,11 +155,16 @@ pub(crate) fn show(ctx: &egui::Context, page: Page) {
         return;
     }
     crate::japanese_font::add(ctx);
+    let page = ctx
+        .data(|data| data.get_temp::<Page>(id.with("page")))
+        .unwrap_or(page);
     let groups = match page {
         Page::Main => MAIN,
         Page::Smf => SMF,
         Page::Patch => PATCH,
         Page::Effect => EFFECT,
+        Page::Settings => SETTINGS,
+        Page::Analysis => ANALYSIS,
     };
     let dark = ctx.style().visuals.dark_mode;
     egui::Area::new(id)
@@ -134,6 +172,15 @@ pub(crate) fn show(ctx: &egui::Context, page: Page) {
         .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
         .show(ctx, |ui| {
             egui::Frame::popup(ui.style()).show(ui, |ui| {
+                match page {
+                    Page::Settings => {
+                        ui.heading("Settings");
+                    }
+                    Page::Analysis => {
+                        ui.heading("Analysis display settings");
+                    }
+                    _ => {}
+                }
                 egui::Grid::new(id.with("grid"))
                     .spacing([16.0, 4.0])
                     .show(ui, |ui| {

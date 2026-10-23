@@ -1,6 +1,27 @@
 //! Opt-in UI parameter discovery and allocation-free resolved audio batches.
 use super::{Host, Processor, ProcessorRef, UhHost, UhProcessor};
 use std::ffi::{c_char, CStr};
+#[path = "parameter_domain.rs"]
+pub mod domain;
+
+impl Parameter {
+    pub fn domain(&self) -> Result<domain::Domain, String> {
+        domain::Domain::new(
+            if self.normalized {
+                domain::ValueSpace::Normalized
+            } else {
+                domain::ValueSpace::Plain
+            },
+            self.minimum,
+            self.maximum,
+        )
+    }
+    pub fn checked_current(&self) -> Result<domain::ApiValue, String> {
+        self.domain()?
+            .value(self.current)
+            .map_err(|e| format!("{}: {e}", self.name))
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Parameter {

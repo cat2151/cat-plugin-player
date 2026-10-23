@@ -119,6 +119,7 @@ fn native_main_letters_cycle_controls_and_toggle_library_and_analysis() {
             ..Default::default()
         };
         let _ = ctx.run(input, |ctx| {
+            crate::main_menu::keyboard(ctx, true);
             egui::TopBottomPanel::top("sequence_controls").show(ctx, |ui| {
                 app.playback_controls(ui);
             });
@@ -151,12 +152,20 @@ fn native_main_letters_cycle_controls_and_toggle_library_and_analysis() {
     let saved = crate::status::Status::load(&config).unwrap();
     assert_eq!(saved.show_favorites, Some(true));
     press(&mut app, egui::Key::O);
+    assert!(!app.favorites.reorder_mode);
+    press(&mut app, egui::Key::D);
+    press(&mut app, egui::Key::O);
     assert!(app.favorites.reorder_mode);
     let prefer_clap = app.prefer_clap;
+    press(&mut app, egui::Key::D);
+    assert_eq!(app.prefer_clap, prefer_clap);
     press(&mut app, egui::Key::D);
     assert_eq!(app.prefer_clap, !prefer_clap);
 
     let on_right = app.scope_ui.on_right;
+    press(&mut app, egui::Key::P);
+    assert_eq!(app.scope_ui.on_right, on_right);
+    press(&mut app, egui::Key::A);
     press(&mut app, egui::Key::P);
     assert_eq!(app.scope_ui.on_right, !on_right);
 
