@@ -63,6 +63,11 @@ public:
             wake(user);
     }
 
+    bool hasPendingTasks() {
+        std::lock_guard lock(mutex_);
+        return !tasks_.empty();
+    }
+
     void drain() {
         std::queue<std::function<void()>> tasks;
         {
@@ -250,6 +255,14 @@ void uh_destroy(UhHost* host) {
     if (g_loop)
         g_loop->setWake(nullptr, nullptr);
     delete host;
+}
+
+int32_t uh_main_thread_work_pending() {
+    try {
+        return g_loop && g_loop->hasPendingTasks() ? 1 : 0;
+    } catch (...) {
+        return 1;
+    }
 }
 
 void uh_pump(UhHost* host) {

@@ -190,6 +190,14 @@ impl Chain {
         self.host.pump();
     }
 
+    /// Metadata revision of the first plugin; zero for an empty chain.
+    #[allow(dead_code)] // Used by the editor's running automation bindings.
+    pub fn parameter_list_changes(&self) -> u64 {
+        self.ids
+            .first()
+            .map_or(0, |id| self.host.parameter_list_changes(*id))
+    }
+
     /// Instrument parameters only; effects and host controls are excluded.
     #[allow(dead_code)] // Used by the editor.
     pub fn parameters(&self) -> Result<Vec<host::parameters::Parameter>, String> {

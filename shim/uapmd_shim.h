@@ -61,6 +61,10 @@ UH_API void uh_destroy(UhHost* host);
 
 /* Runs the tasks uapmd queued for the main thread, then delivers callbacks. */
 UH_API void uh_pump(UhHost* host);
+/* Snapshot of the shared task queue. If empty, defer pumping all hosts until the
+ * next poll: tasks posted after this check must not be drained without the
+ * caller's audio exclusion boundary. Does not cover native window messages. */
+UH_API int32_t uh_main_thread_work_pending(void);
 /* Before the GUI event loop starts: also dispatch native Windows messages. */
 UH_API void uh_pump_startup(UhHost* host);
 

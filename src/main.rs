@@ -366,6 +366,7 @@ impl eframe::App for App {
         self.routing_panel(ctx, analysis_on_right);
         self.library_panel(ctx);
         self.first_instrument_dialog(ctx);
+        self.patch_browser.show_main_random_overlay(ctx);
         self.log_status_error(&previous_status);
     }
 }

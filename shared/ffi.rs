@@ -13,6 +13,8 @@ pub use identity::{PluginKey, PluginKind};
 #[path = "native_test_trace.rs"]
 pub(crate) mod trace;
 
+#[path = "host_pump.rs"]
+mod host_pump;
 #[path = "parameters.rs"]
 #[allow(dead_code)] // Shared editor API; the player has no automation editor.
 pub mod parameters;
@@ -48,8 +50,6 @@ pub const UH_OK: i32 = 0;
 unsafe extern "C" {
     fn uh_create(wake: Option<UhWakeFn>, wake_user: *mut c_void) -> *mut UhHost;
     fn uh_destroy(host: *mut UhHost);
-    fn uh_pump(host: *mut UhHost);
-    fn uh_pump_startup(host: *mut UhHost);
     fn uh_restore_plugin(
         host: *mut UhHost,
         format: *const c_char,
@@ -172,16 +172,6 @@ impl Host {
     /// Native window registration is owned by each app's UI adapter.
     pub fn set_main_window(&self, hwnd: isize) {
         unsafe { uh_ui_set_main_window(self.raw, hwnd as *mut c_void) };
-    }
-
-    /// Call once per UI frame. Callbacks are delivered from inside this call.
-    pub fn pump(&self) {
-        unsafe { uh_pump(self.raw) }
-    }
-
-    /// Before eframe starts, also dispatch native messages for plugin windows.
-    pub fn pump_startup(&self) {
-        unsafe { uh_pump_startup(self.raw) }
     }
 
     pub fn restore_plugin(&self, key: &PluginKey) -> Option<PluginInfo> {

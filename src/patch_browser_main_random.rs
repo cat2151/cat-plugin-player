@@ -13,10 +13,9 @@ pub(crate) enum MainRandom {
 }
 
 impl App {
-    pub(crate) fn request_main_random(&mut self) {
+    pub(crate) fn request_main_random(&mut self, ctx: &eframe::egui::Context) {
         if !self.patch_browser.open {
-            self.patch_browser.main_random = MainRandom::Catalog;
-            self.poll_main_random();
+            self.patch_browser.begin_main_random(ctx);
         }
     }
 
@@ -29,6 +28,50 @@ impl App {
 }
 
 impl Browser {
+    pub(crate) fn begin_main_random(&mut self, ctx: &eframe::egui::Context) {
+        self.main_random_overlay = true;
+        self.main_random = MainRandom::Catalog;
+        // Selection can be slow. Let the keypress frame paint before starting it.
+        self.main_random_paint_pass = frame_start_pass(ctx);
+    }
+
+    pub(crate) fn main_random_waiting_for_paint(&self, ctx: &eframe::egui::Context) -> bool {
+        self.main_random_overlay && self.main_random_paint_pass == frame_start_pass(ctx)
+    }
+
+    pub(crate) fn show_main_random_overlay(&mut self, ctx: &eframe::egui::Context) {
+        use eframe::egui::{self, Color32, FontId, Id, LayerId, Order};
+        if !self.main_random_overlay {
+            return;
+        }
+        let requests = &self.requests;
+        if self.main_random == MainRandom::Idle
+            && requests.desired.is_none()
+            && requests.preparing.is_none()
+            && requests.applying.is_none()
+            && !self.preparation.busy()
+        {
+            self.main_random_overlay = false;
+            return;
+        }
+        // Paint directly: an Area's initial sizing pass could hide the first frame.
+        // This also stays on screen while native state application blocks update().
+        let painter = ctx.layer_painter(LayerId::new(
+            Order::Tooltip,
+            Id::new("random_patch_overlay"),
+        ));
+        let center = ctx.screen_rect().center();
+        let text = painter.layout_no_wrap(
+            "Changing patch...".into(),
+            FontId::proportional(24.0),
+            Color32::WHITE,
+        );
+        let rect = egui::Rect::from_center_size(center, text.size() + egui::vec2(56.0, 40.0));
+        painter.rect_filled(rect, 12.0, Color32::from_rgb(30, 30, 38));
+        painter.galley(center - text.size() / 2.0, text, Color32::WHITE);
+        ctx.request_repaint_after(std::time::Duration::from_millis(50));
+    }
+
     /// Returns the status to show when no sound will start.
     pub(crate) fn poll_main_random(&mut self) -> Option<String> {
         if self.main_random == MainRandom::Start && self.requests.desired.is_none() {
@@ -74,4 +117,10 @@ impl Browser {
             )
         })
     }
+}
+
+// A discarded sizing pass runs update again without presenting its drawing.
+// All passes in one rendered frame must defer the newly requested random work.
+fn frame_start_pass(ctx: &eframe::egui::Context) -> u64 {
+    ctx.cumulative_pass_nr() - ctx.output(|output| output.num_completed_passes as u64)
 }

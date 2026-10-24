@@ -48,6 +48,8 @@ pub(crate) struct Browser {
     /// Save the currently loaded instrument on the root UI thread.
     pub favorite_requested: bool,
     pub main_random: MainRandom,
+    pub main_random_overlay: bool,
+    pub main_random_paint_pass: u64,
 }
 
 impl Browser {

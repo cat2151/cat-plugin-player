@@ -326,3 +326,93 @@ fn main_random_waits_for_catalog_then_uses_the_filter_or_reports_why_not() {
     let status = browser.poll_main_random().unwrap();
     assert!(status.contains("no patch matches"), "{status}");
 }
+
+#[test]
+fn main_random_overlay_paints_before_selection_and_lasts_through_apply() {
+    use crate::patch_browser::MainRandom;
+    let mut browser = browser();
+    browser.open = false;
+    browser.query = "plugin:alpha".into();
+    browser.filter(false);
+    let ctx = egui::Context::default();
+    browser.begin_main_random(&ctx);
+    assert!(
+        browser.requests.desired.is_none(),
+        "selection must wait for paint"
+    );
+    let output = ctx.run(egui::RawInput::default(), |ctx| {
+        browser.show_main_random_overlay(ctx);
+    });
+    assert!(
+        output.shapes.iter().any(|shape| matches!(
+            &shape.shape,
+            egui::epaint::Shape::Text(text) if text.galley.job.text == "Changing patch..."
+        )),
+        "the very first frame must contain the overlay text"
+    );
+    assert_eq!(browser.main_random, MainRandom::Catalog);
+    assert_eq!(browser.poll_main_random(), None);
+    browser.requests.next().unwrap();
+    browser.main_random = MainRandom::Idle;
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        browser.show_main_random_overlay(ctx);
+    });
+    assert!(browser.main_random_overlay);
+    browser.requests.ready().unwrap();
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        browser.show_main_random_overlay(ctx);
+    });
+    assert!(browser.main_random_overlay);
+    browser.requests.finish(true);
+    let output = ctx.run(egui::RawInput::default(), |ctx| {
+        browser.show_main_random_overlay(ctx);
+    });
+    assert!(!browser.main_random_overlay);
+    assert!(output.shapes.is_empty());
+}
+
+#[test]
+fn main_random_overlay_closes_when_no_patch_loads_or_preparation_fails() {
+    let ctx = egui::Context::default();
+    for query in ["nothing-matches", "[", "plugin:beta", "plugin:alpha"] {
+        let mut browser = browser();
+        browser.query = query.into();
+        browser.filter(false);
+        browser.begin_main_random(&ctx);
+        browser.poll_main_random();
+        if query == "plugin:alpha" {
+            browser.requests.next().unwrap();
+            browser.main_random = crate::patch_browser::MainRandom::Idle;
+            assert!(browser.requests.failed_preparation());
+        }
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            browser.show_main_random_overlay(ctx);
+        });
+        assert!(!browser.main_random_overlay, "{query}");
+    }
+}
+
+#[test]
+fn main_random_waits_for_presented_frame_even_when_sizing_discards_a_pass() {
+    let ctx = egui::Context::default();
+    let mut browser = browser();
+    browser.query = "plugin:alpha".into();
+    browser.filter(false);
+    let mut passes = 0;
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        if passes == 0 {
+            browser.begin_main_random(ctx);
+            ctx.request_discard("test sizing pass");
+        }
+        passes += 1;
+        assert!(browser.main_random_waiting_for_paint(ctx));
+        assert!(browser.requests.desired.is_none());
+        browser.show_main_random_overlay(ctx);
+    });
+    assert_eq!(passes, 2);
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        assert!(!browser.main_random_waiting_for_paint(ctx));
+        browser.poll_main_random();
+        assert!(browser.requests.desired.is_some());
+    });
+}

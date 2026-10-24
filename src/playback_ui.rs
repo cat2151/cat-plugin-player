@@ -78,7 +78,7 @@ impl App {
             ui.ctx().request_repaint();
         }
         if self.selection.is_none() && self.main_shortcut(ui.ctx(), egui::Key::R) {
-            self.request_main_random();
+            self.request_main_random(ui.ctx());
             ui.ctx().request_repaint();
         }
         let spacing = ui.spacing().item_spacing.x;

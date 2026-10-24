@@ -16,6 +16,9 @@ impl App {
             self.patch_browser.open = false;
             return;
         }
+        if self.patch_browser.main_random_waiting_for_paint(ctx) {
+            return;
+        }
         self.update_browser_snapshot(ctx);
         self.poll_main_random();
         let browser = &mut self.patch_browser;
