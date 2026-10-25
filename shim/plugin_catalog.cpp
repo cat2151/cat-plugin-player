@@ -143,7 +143,8 @@ void vstKinds(const std::filesystem::path& bundle, PluginKinds& kinds) {
             bool instrument = false, effect = false;
             size_t start = 0;
             do {
-                const auto end = categories.find('|', start);
+                // FluidSynthPlugin uses nonstandard '/' separators; see ADR 0041.
+                const auto end = categories.find_first_of("|/", start);
                 const auto token = categories.substr(start, end - start);
                 instrument |= token == "Instrument";
                 effect |= token == "Fx";
