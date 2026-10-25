@@ -23,9 +23,9 @@ fn painted(browser: &mut Browser, ctx: &egui::Context) -> Vec<String> {
         .collect()
 }
 
-fn bass_only() -> Browser {
+fn kick_only() -> Browser {
     let snapshot =
-        Snapshot::build(vec![candidate("a", "Alpha", "Sub Bass", Some("Bass"))], &[]).unwrap();
+        Snapshot::build(vec![candidate("a", "Alpha", "Kick 1", Some("Drum"))], &[]).unwrap();
     Browser {
         open: true,
         snapshot: Some(snapshot),
@@ -36,12 +36,12 @@ fn bass_only() -> Browser {
 #[test]
 fn empty_roles_and_builtin_presets_are_not_painted() {
     let ctx = egui::Context::default();
-    let mut browser = bass_only();
-    let bass = FilterGroup::ALL
+    let mut browser = kick_only();
+    let drum = FilterGroup::ALL
         .iter()
-        .position(|group| group.role() == Some(cmrt_patches::PatchRole::Bass))
+        .position(|group| group.role() == Some(cmrt_patches::PatchRole::Drum))
         .unwrap();
-    browser.role = bass;
+    browser.role = drum;
     browser.filter(false);
     let texts = painted(&mut browser, &ctx);
     let snapshot = browser.snapshot.as_ref().unwrap();
@@ -57,11 +57,11 @@ fn empty_roles_and_builtin_presets_are_not_painted() {
         );
     }
     assert!(hidden_roles > 0, "fixture must contain an empty role");
-    let presets = &snapshot.presets[bass];
+    let presets = &snapshot.presets[drum];
     let mut hidden_presets = 0;
     for (index, preset) in presets.iter().enumerate().skip(1) {
         let listed = !preset.matches.is_empty();
-        assert_eq!(browser.listing.preset(bass, index), listed);
+        assert_eq!(browser.listing.preset(drum, index), listed);
         hidden_presets += usize::from(!listed);
         assert_eq!(texts.contains(&preset.label), listed, "{}", preset.label);
     }
@@ -70,7 +70,7 @@ fn empty_roles_and_builtin_presets_are_not_painted() {
 
 #[test]
 fn restored_empty_role_or_preset_falls_back_to_a_listed_one() {
-    let mut browser = bass_only();
+    let mut browser = kick_only();
     let lead = FilterGroup::ALL
         .iter()
         .position(|group| group.role() == Some(cmrt_patches::PatchRole::Lead))
@@ -81,18 +81,18 @@ fn restored_empty_role_or_preset_falls_back_to_a_listed_one() {
     assert_eq!((browser.role, browser.preset), (0, 0));
     assert_eq!(browser.results.len(), 1);
 
-    let bass = FilterGroup::ALL
+    let drum = FilterGroup::ALL
         .iter()
-        .position(|group| group.role() == Some(cmrt_patches::PatchRole::Bass))
+        .position(|group| group.role() == Some(cmrt_patches::PatchRole::Drum))
         .unwrap();
-    let empty = browser.snapshot.as_ref().unwrap().presets[bass]
+    let empty = browser.snapshot.as_ref().unwrap().presets[drum]
         .iter()
         .position(|preset| preset.matches.is_empty())
         .unwrap();
-    browser.role = bass;
+    browser.role = drum;
     browser.preset = empty;
     browser.filter(false);
-    assert_eq!((browser.role, browser.preset), (bass, 0));
+    assert_eq!((browser.role, browser.preset), (drum, 0));
     assert_eq!(browser.results.len(), 1);
 }
 
@@ -120,38 +120,38 @@ fn user_preset_without_patches_stays_listed_for_delete() {
 fn solo_hides_presets_of_other_plugins_and_leaves_a_hidden_choice() {
     let snapshot = Snapshot::build(
         vec![
-            candidate("dexed", "Dexed", "BASS 1", None),
-            candidate("surge", "Surge XT", "Sub Bass", None),
+            candidate("dexed", "Dexed", "01 KICK", None),
+            candidate("surge", "Surge XT", "Snare 1", None),
         ],
         &[],
     )
     .unwrap();
-    let bass = FilterGroup::ALL
+    let drum = FilterGroup::ALL
         .iter()
-        .position(|group| group.role() == Some(cmrt_patches::PatchRole::Bass))
+        .position(|group| group.role() == Some(cmrt_patches::PatchRole::Drum))
         .unwrap();
-    let fm = snapshot.presets[bass]
+    let snare = snapshot.presets[drum]
         .iter()
-        .position(|preset| preset.label == "FM Bass")
+        .position(|preset| preset.label == "snare")
         .unwrap();
-    assert!(snapshot.listing("").preset(bass, fm));
+    assert!(snapshot.listing("").preset(drum, snare));
     assert!(
-        snapshot.listing("bass").preset(bass, fm),
+        snapshot.listing("snare").preset(drum, snare),
         "free text is ignored"
     );
-    assert!(!snapshot.listing("plugin:surgext").preset(bass, fm));
-    assert!(!snapshot.listing("-plugin:dexed").preset(bass, fm));
+    assert!(!snapshot.listing("plugin:dexed").preset(drum, snare));
+    assert!(!snapshot.listing("-plugin:surgext").preset(drum, snare));
     let mut browser = Browser {
         open: true,
         snapshot: Some(snapshot),
-        role: bass,
-        preset: fm,
+        role: drum,
+        preset: snare,
         ..Default::default()
     };
     browser.filter(false);
-    assert_eq!(browser.preset, fm);
-    browser.query = "plugin:surgext".into();
+    assert_eq!(browser.preset, snare);
+    browser.query = "plugin:dexed".into();
     browser.filter(true);
-    assert_eq!((browser.role, browser.preset), (bass, 0));
+    assert_eq!((browser.role, browser.preset), (drum, 0));
     assert_eq!(browser.results.len(), 1);
 }

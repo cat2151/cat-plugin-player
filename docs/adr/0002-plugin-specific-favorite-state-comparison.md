@@ -21,7 +21,7 @@ Favoritesは同じ音色なら重複をまとめ、違う音色は履歴とし�
 固有処理の追加・撤去はADRに記録し、本ADRを置き換える場合は後続ADRへの参照を残す。
 新しい例外を増やす前に、プラグイン形式の標準APIで解決できるか確認する。
 
-## 現在の本番処理：12件
+## 現在の本番処理：13件
 
 | 対象 | 処理・場所 | 必要な理由 | 適用範囲・撤去条件 |
 | --- | --- | --- | --- |
@@ -37,6 +37,7 @@ Favoritesは同じ音色なら重複をまとめ、違う音色は履歴とし�
 | TyrellN6 CLAP (`com.u-he.TyrellN6`) | Control A / B行の表示とCC番号：[tyrell_n6_control.rs](../../src/plugin_specific/tyrell_n6_control.rs) | Control A / Bの使用とCC割り当てがpatchごとに異なり、patch変更の通知が無い | `#AM=TyrellN6`のstateで、確認済みのsource項目がCtrlA / CtrlBを指す場合のみ。詳細は[ADR 0038](0038-tyrell-n6-control-ab-sweep.md) |
 | Vaporizer2 / Six Sines / Floe CLAP | Macro行の表示とparameter送信：[parameter_macro_controls.rs](../../src/plugin_specific/parameter_macro_controls.rs)、[instrument_macros.rs](../../shared/instrument_macros.rs) | 使用中のMacroがpatchごとに異なり、既定のCC割り当てが無い | 確認済みのstate形式で使用中と判定したMacroだけ。FloeのCC1で動くMacroは除く。詳細は[ADR 0039](0039-parameter-macro-sweep.md) |
 | Six Sines / TyrellN6 CLAP | state復元後のnote開始待ち：[patch_settling.rs](../../src/plugin_specific/patch_settling.rs) | Six Sinesは反映blockのnote-onを捨て、TyrellN6は反映に複数blockが必要 | Six Sinesは最大1block分、TyrellN6は4096frames・最低4blocks。sample rateに応じて既存sequencerで待つ。空回しなしで冒頭音・選択音色が安定すれば撤去を検討。詳細は[ADR 0019](0019-random-patch-all-catalog.md) |
+| drum/percussion行の全plugin | 音高が鍵盤に追従する音色の分類：[pitch_tracking.rs](../../src/plugin_specific/pitch_tracking.rs) | マレット系や`PERCSYN`などの旋律用音色が、名前でclap等と同じ分類になる | 元のpercussion分類で、共有表の`tracks_keyboard`がtrueの音色だけ。標準APIで用途が得られれば置換を検討。詳細は[ADR 0040](0040-measured-pitched-percussion-categories.md) |
 
 ### Vaporizer2の判定と制限
 

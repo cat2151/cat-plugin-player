@@ -386,6 +386,7 @@ use chain as shared_chain;
 #[cfg(test)]
 mod shared_host_tests;
 #[cfg(test)]
+#[allow(dead_code)] // cat-smf-editor 用の API を含む共有ファイルを、テストで部分的に使うため
 #[path = "../shared/note_render.rs"]
 mod shared_note_render;
 

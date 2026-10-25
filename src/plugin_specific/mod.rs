@@ -11,6 +11,7 @@ mod macro_parameter_lane_native_tests;
 mod macro_value_native_tests;
 mod parameter_macro_controls;
 mod patch_settling;
+mod pitch_tracking;
 mod sforzando;
 mod six_sines;
 pub(crate) mod surge_start_delay;
@@ -21,6 +22,10 @@ mod tyrell_n6_control;
 mod vaporizer2;
 
 pub(crate) use surge_xt::StartupDataHome;
+
+pub(crate) fn apply_measured_patch_categories(candidates: &mut [crate::patch_catalog::Candidate]) {
+    pitch_tracking::apply(candidates);
+}
 
 /// Surge XT scans its browser trees per instance; the restored one skips them.
 pub(crate) fn startup_data_home(

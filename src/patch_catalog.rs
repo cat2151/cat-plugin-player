@@ -147,7 +147,9 @@ fn loaded() -> Result<cmrt_tui_core::patch_catalog_cache::LoadedPatchCatalogCach
 }
 
 pub(crate) fn load() -> LoadResult {
-    candidates(loaded()?)
+    let mut candidates = candidates(loaded()?)?;
+    crate::plugin_specific::apply_measured_patch_categories(&mut candidates);
+    Ok(candidates)
 }
 
 /// The directories each plugin's candidate paths are built from, by plugin ID.
