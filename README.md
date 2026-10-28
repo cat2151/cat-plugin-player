@@ -1,346 +1,114 @@
 # cat-plugin-player
 
-A lightweight app that makes it easy to play audio plugins. It utilizes [UAPMD](https://github.com/atsushieno/uapmd) and is written in Rust.
+A lightweight application that allows you to easily play audio plugins. It utilizes [UAPMD](https://github.com/atsushieno/uapmd) and is written in Rust.
 
-# Past Challenges and What This App Solves
-- Audio plugin timbres sound amazing!
-- To play them, it often requires launching a DAW and performing preliminary setup for performance.
-- Lightweight apps for easy playback sometimes required account registration to obtain, or their operational feel was not for me.
-- In modern times, if you want a certain UX, you can achieve it with vibe coding.
-- So, I decided to do just that.
+## Past Challenges and What This App Solves
+- Audio plugins sound great!
+- To play them, you often need to launch a DAW and perform preparatory steps.
+- Lightweight apps for easy playing sometimes required account registration to obtain, or their operation felt "not for me."
+- Nowadays, if you have a desired UX, you can achieve it through "vibe coding."
+- That's what I decided to do.
 
-# Download
+## Download
 
 [Download Windows version](https://github.com/cat2151/cat-plugin-player/releases/download/v0.1.0/cat-plugin-player-0.1.0-windows-x64.zip)
 
-# Demo Video
+## Demo Video
 
-If you haven't installed an audio plugin, the app will automatically install [Surge XT](https://surge-synthesizer.github.io/) as shown here. Easy!
+If you haven't installed any audio plugins, the app will automatically install [Surge XT](https://surge-synthesizer.github.io/) for you, as shown here. Easy!
 
 https://github.com/user-attachments/assets/c4a7cec0-ebfd-4cea-bc21-bbfc4dd8e92d
 
-# Features
+## Features
 - Automatic Installation
-  - If you haven't installed an audio plugin, the app will automatically install [Surge XT](https://surge-synthesizer.github.io/) as described above.
+  - If you haven't installed any audio plugins, the app will automatically install [Surge XT](https://surge-synthesizer.github.io/) as described above.
 - Detection
   - Upon launch, it automatically detects installed plugins.
 - Playback
-  - Clicking a plugin loads it and automatically starts playback.
-  - It can play chord progressions like `F-G-Em-Am` and MML (Music Macro Language) like `cde`.
+  - Clicking a plugin automatically starts playback after the plugin loads.
+  - It can also play chord progressions like `F-G-Em-Am` and MML (Music Macro Language) like `cde`.
 - GUI
-  - Pressing the `Show UI` button displays the plugin's GUI, allowing you to edit timbres and effects.
-- Patches
-  - Each plugin has a wide variety of preset patches. You can easily select them using a unique patch browser (supported for some plugins only).
-  - For plugins not supported by the patch browser, you can select patches using the plugin's GUI as usual.
+  - Pressing the `Show UI` button displays the plugin's GUI, allowing you to edit sounds and effects.
+- Sounds
+  - Each plugin has a variety of preset sounds. You can easily select them using its own sound browser (supported by some plugins only).
+  - For plugins not supported by the sound browser, you can simply select sounds using the plugin's GUI.
 - Effects
-  - Each plugin has a wide variety of preset effects. You can easily select them using a unique effect browser (supported for some plugins only).
-  - For plugins not supported by the effect browser, you can select effects using the plugin's GUI as usual.
+  - Each plugin has a variety of preset effects. You can easily select them using its own effect browser (supported by some plugins only).
+  - For plugins not supported by the effect browser, you can simply select effects using the plugin's GUI.
 
-※↑This section is written by humans. AI is prohibited from writing here.
-
-# AI-Edited Section
-
-It's hard to read, so I'll fix it later. Folding it for now.
-
-<details><summary>Detailed Features, etc.</summary>
-
-## Features (Detailed by AI)
-
-Oscilloscope display method and constraints are recorded in [ADR 0001](docs/adr/0001-scope-follows-waveform-position.md).
-
-- Detection
-  - For normal startup and editor integration, the full plugin list and instrument/effect classification are first restored from `%LOCALAPPDATA%\cat-plugin-player\plugin-list-cache.json`. If the cache is missing or unreadable on the first launch, it detects and creates it. After startup, if there is no loading or timbre change operation for 2 seconds, it rescans in the background. The cache and patch list are updated only if there are changes; otherwise, the display is maintained. If rescan fails, the existing cache is retained.
-  - FluidSynthPlugin VST3 is classified as an instrument due to compatibility with non-standard category notation. The list previously marked "unknown" will be updated after rescanning. Refer to [ADR 0041](docs/adr/0041-fluidsynth-vst3-category-separator.md) for the scope and reasons.
-  - If plugin detection is successful but no instruments are found, it displays a guide to install the free Surge XT via winget. It also displays this if only effects are present. If Windows display language is Japanese, it shows in Japanese; otherwise, in English. Even if you choose `Later`, it will show on every launch as long as no instrument is present.
-  - `View Terms of Use` opens the Surge XT terms of use (GPLv3) in a browser. Pressing `Agree to Terms and Install` executes winget and displays the stages "1/4 Preparing", "2/4 Downloading", "3/4 Installing", "4/4 Loading" with elapsed time. If Windows confirmation (User Account Control) appears at 3/4, select "Yes". Upon success, it automatically rescans the plugin list, loads Surge XT (CLAP), and starts playback as with `Load`. In this case, previous instrument/effect restoration is not performed. Even if you close the guide, installation continues, and upon completion, rescan and loading occur.
-  - If winget is missing or installation fails, it displays the winget message and manual download location, and logs it to `error.log`. Only Surge XT is included, and download progress is not shown. The reasons for selection are in [ADR 0024](docs/adr/0024-offer-surge-xt-via-winget.md).
-- GUI
-  - When the GUI is opened for the first time, it waits 2 seconds for rendering, automatically takes a screenshot, and scales it down to a PNG with an aspect ratio preserved size matching the list display frame and screen magnification. It's saved to `%LOCALAPPDATA%\cat-plugin-player\plugin-icons\`, and plugins with matching name + vendor (ignoring leading/trailing spaces, case) share the same image across VST3 / CLAP. If name/vendor are insufficient, they are distinguished by format + ID.
-  - Previously saved format-specific images are automatically migrated and used as shared images based on list/favorite identification. Patch state and favorite load destinations are distinguished by format + ID as before.
-  - Plugin images are displayed in Plugins / Favorites / Routing. Within the row, they are displayed small, preserving aspect ratio, fitting within the button height. Hovering over the image allows viewing it at the saved size. Plugins with no GUI displayed show a temporary icon of the same height.
-  - The GUI prioritizes placement next to the main window, aligned with the top edge, fitting within the screen's working area. If it doesn't fit, it's placed in the bottom-right of the working area of the screen where the main window is. It's positioned on display and GUI resizing, but does not constantly follow main window movement. The GUI is not scaled down; if wider than the screen, its left edge aligns with the working area; if taller, its top edge aligns.
-  - For blank images or failed captures, it retries at 1-second intervals for up to 20 seconds from GUI display. Saved blank images are treated as not captured, and opening the GUI replaces them with a valid image. No re-capture after success.
-  - If capture fails after retries, an error is displayed. Reopening the GUI retries. GUIs not supporting capture will remain with temporary icons. If you want to re-capture or if the saved PNG is corrupted, delete the shared PNG and any remaining old format-specific PNGs for that plugin, restart the app, and open the GUI (old PNGs are kept during migration).
-  - `?` or `F1` overlays a list of key operations for that window (main, Browse patches, Browse effects). Functions are color-coded. The main help includes menu entry points for `d` / `a`, and each item key opens the corresponding menu and displays `?` / `F1` or the `Help (? / F1)` button. Pressing `?` / `F1` or `Esc` again closes only the help, returning to the original menu. Other key operations are disabled while help is shown. `?` during text input is entered as a character.
-  - Single-letter key operations (described in each feature) on the main window do not work while the MML input screen, Browse patches / Browse effects, or text input is active. The `u` key toggles the instrument GUI display, similar to `Show UI` / `Hide UI` for instruments in Routing (effect GUIs are operated by buttons).
-- Playback
-  - Surge XT usually waits 100ms for the first phrase to start when audio processing is rebuilt. For CLAP catalog patches, those permitted by the distribution judgment table are set to 0ms and linked to their state for retention on next launch. The table is fetched from GitHub in the background and stored in `%LOCALAPPDATA%\cat-plugin-player\patch-catalog\surge-xt-start-delay.json`. It's not bundled; on first use, if not listed, or if there's a mismatch, 100ms is used; on communication failure, the saved table is used. Editing is untracked when the plugin GUI is open, so permission is revoked. Re-selecting a known patch from the browser after closing the GUI re-evaluates. 0ms prioritizes UX, and actual measurement conditions and limitations are in [ADR 0008](docs/adr/0008-surge-xt-automatic-note-start-delay.md).
-  - The last played instrument, connected effects, Bypass state, and playback pattern are saved to `%LOCALAPPDATA%\cat-plugin-player\status.json` and restored on the next launch. Stopped playback pattern selection, and confirmed MML/chord body are also restored. If there's only one instrument candidate in the Plugins list at startup, and it's not loaded, it's automatically loaded and playback starts with the selected pattern, even if previously stopped. If multiple candidates exist, the stopped state is restored. If manually stopped after startup, it remains stopped. Unconfirmed edits are not saved.
-  - CLAP Note On/Off is sent according to the plugin's supported input format. sforzando CLAP, which only accepts MIDI, is also targeted. The scope of repair and verification records are in [CLAP Note Format Description](patches/uapmd/clap-note-dialect/README.md).
-  - In the top-left `Sequence` pane, you can select the playback type using left/right arrows or the dropdown. Arrows cycle at the ends of the types; "stop" is not included in the types. The `s` key on the main window also cycles to the next type. Switching during playback releases all notes in the current phrase and starts the new phrase from the beginning. When stopped, selecting a type does not start playback; use `Play` to start and `Stop` to stop. The `Space` key on the main window also toggles start/stop (except during text input). Playback pattern selection including MML/chords and stop state are restored on next launch. However, when only one instrument candidate is available at startup, it automatically plays from the stopped state.
-  - To preview MML/chord progressions, open the input screen with the `i` key or the `Chord` button in `Sequence` (hover to see shortcuts and input methods). Example for single notes: `t120 c8r8d4e4r4`; for chord progression: `C F G C`. Both are accepted in the same input field, attempting chord notation conversion first. Capital `C` becomes a chord, lowercase `ceg` becomes MML.
-  - Input is confirmed with `Enter` / `Confirm` and canceled with `Esc` / `Cancel`. Cancellation or conversion errors retain the previous valid phrase. `Space` or `i` within the input screen are used for text input, and `Space` for play/stop does not work.
-  - Confirmed phrases loop playback with `Play` / `Stop`. Rests, note lengths, tempo changes, chords, and trailing rests are preserved. Opening the input screen pauses overall normal playback. If playback was active just before opening, after confirming, the new phrase plays; after canceling, the original playback pattern restarts from the beginning. If opened while stopped, it remains stopped after confirming/canceling, and `Play` starts overall playback. You can also switch to normal playback patterns. The body, selection, and playback state are saved immediately after confirmation; the restored playback state is also saved upon cancellation. These are restored on next launch or from instrument favorites/History. Unconfirmed body is not saved; cancellation or conversion failure retains the previous confirmed body.
-  - Moving the cursor or changing input plays a single note/chord at that position once. This also applies to mid-edit or pasting. Moving or redrawing within the same pronunciation unit does not re-trigger sound. It reflects previous tempo, octave, and note length, and does not sound at rest or command positions. Normal playback stops when editing is opened, and overall playback does not resume after the preview sound ends. The preview sound is released on the next pronunciation unit, cancellation, confirmation, or instrument change. Preview does not alter the confirmed body or normal selection.
-  - For MML loop playback, the Velocity setting in the `Velocity` field takes precedence over any in-input specifications. CC1 can also be manipulated from the `CC1 modulation` field. If the playback event capacity is reached due to a very dense phrase, sounding notes are released, and playback stops. You can restart with `Stop` → `Play`.
-  - When calling from Favorites/History in normal startup, or changing patches via Browse patches/Browse effects, the stopped/playing state is maintained. During playback, it plays from the start of the phrase, not carrying over any mid-phrase waits from before the change. MML-specified leading rests are preserved. While the patch browser or effect browser is displayed, `Space` for play/stop and MML input start in the background are suppressed. Patch changes within the plugin's own GUI are not detected.
-  - In SMF selection mode (`--select-smf`), input tracks loop playback with tempo, duration, and velocity. For bulk patch assignment, all tracks are previewed with the selected patch and the master track's effect. Normal session patches, effects, and MML are not restored; only sound snapshots are used in favorites. Patch/effect/favorite/connection changes do not revert to the beginning; playback continues from the stopped position after a brief silence during the swap. MML/normal pattern operation fields are not used in this mode.
-  - In SMF selection mode with `--master-effects`, the current track's patch/effect are retained for preview, and only master effects are edited/returned. The patch browser is not used. Master effects are saved in SMF format 1's conductor-specific meta and their application result across all tracks is confirmed back in the editor. Master support for format 0/2 is not added. Refer to [ADR 0030](docs/adr/0030-master-effects-selection.md).
-  - `cat-smf-editor` uses `--resident <name>` to keep one player resident, bringing the patch/effect browser to the foreground on each `t`/`x` command. The resident player does not load the selected patch/effect itself; it sends the state to the editor, which then plays it with its own sound source. `Esc`, `q`, close `×`, or `Enter` to close the effect browser only hides the browser; the player terminates when the editor exits. The previous patch is not restored, and the player's normal `status.json` is not updated. Role/Preset, Category/Kind, and search strings (including Solo/Mute, exclusion conditions) are saved per song/track/patch/effect to the editor's `status.json`; master effects are saved/restored independently per song. Saving occurs even if no patch is selected when closing. Patch list selections are also saved per song/track to the editor's `status.json` with patch name and instrument/original patch identification, and restored after restart. Patch restoration does not reapply the patch.
-  - For Six Sines / TyrellN6 CLAP, when audio processing is rebuilt (e.g., on load, state restore, connection change), to preserve initial notes, it waits for the first phrase to start while continuing normal audio processing. The wait at 48kHz is approx. 21ms for Six Sines, approx. 85ms for TyrellN6. Leading MML rests are added on top. Refer to [ADR 0019](docs/adr/0019-random-patch-all-catalog.md) for application conditions and real-device verification.
-  - In the `Velocity` field below the playback pattern, you can select `100`, `127`, `40-100`, `80-127` using the left/right arrows or dropdown. The initial value is 100. The `v` key cycles to the next option. Range specification increases values in Note On order within a phrase and decreases them in the next loop, repeating this action. Changes are reflected from the next note without restarting the phrase and are restored on next launch.
-  - In the `CC1 modulation` field, you can select `-`, `0`, `127`, `sweep` using left/right arrows or dropdown. The `w` key cycles to the next option. The initial value `-` sends nothing and does not change the instrument's modulation wheel value. `sweep` repeatedly changes from 0 to 127 in 2 seconds, then 127 to 0 in the next 2 seconds. Dragging the value display bar to the right sends a value from 0-127, incrementing/decrementing from the drag start value (moves 0-127 across the bar's width. If `sweep` is active, it stops, and the field takes that value. Clicking alone does not change it). The selection and dragged value are restored on next launch.
-  - For Surge XT, for each Macro (Macro 1-8) that the current patch uses for modulation and whose CC number is known, a field like `CC41 Macro 1` appears below the `CC1 modulation` field (the number is Surge's assignment; default Macro 1-8 are 41-48). If the patch has named a Macro like `LFO Speed`, that name appears instead of `CC41 Macro 1` (hovering over the name shows `CC41 Macro 1`). Options and dragging the value display bar are the same as CC1; `sweep` for each Macro repeats at a different period from CC1 and each other (one way from 0 to 127 is 2.9 / 3.7 / 4.3 / 5.3 / 6.1 / 7.1 / 7.9 / 8.9 seconds for Macro 1-8 respectively. CC1 is 2 seconds). The initial value `-` sends nothing and does not change the Macro value saved in the patch. For Surge XT, when `-` is selected, the displayed value is the patch value re-read when changing patches or changing the selection to `-` (moving knobs in Surge XT's GUI does not change the display). Changing patches via Browse patches, Favorites, History, or Surge XT's GUI resets CC1 and Macro `0`, `127`, and dragged values to `-`, playing with the values saved in the new patch (`sweep` continues). The `M` key sets Macro 1-8 to `sweep` collectively, and pressing it again when all displayed Macros are `sweep` resets them all to `-`. Selections are saved like CC1 and carried over to the next launch. Favorite duplication judgment ignores Macro value differences, same as CC1. When the patch is changed in Surge XT's GUI, the field display/hide immediately toggles. Refer to [ADR 0036](docs/adr/0036-surge-xt-macro-sweep.md) for details.
-  - For TyrellN6 (CLAP), when the current patch uses Control A or Control B for modulation, a field like `CC2 Control A` appears in the same location (the number is the Control A/B assignment saved in the patch). If the patch's Usage field has a description like `Ctrl A = bass dominator`, the heading uses that description. Options, dragging, `M` key, saving, and behavior during patch changes are the same as Surge XT's Macros, with a one-way `sweep` of 2.9 seconds for Control A and 3.7 seconds for Control B. When `-` is selected, the displayed value is the sent value, and the patch value cannot be displayed. The field does not toggle when the patch is changed in TyrellN6's GUI; it toggles when the patch is changed via Browse patches, Favorites, or History. Refer to [ADR 0038](docs/adr/0038-tyrell-n6-control-ab-sweep.md) for details.
-  - For Vaporizer2, Six Sines, and Floe (CLAP), a field appears in the same location for each Macro that the current patch uses for modulation (Custom modulator 1-4 for Vaporizer2, Macro 1-6 for Six Sines, Macro 1-4 for Floe). The heading is the name the patch assigned to the Macro; if no name, it appears as `Custom modulator 1` or `Macro 1` (no CC number as it's not sent via CC). These three instruments directly control the instrument's parameters instead of CC, mapping the field's 0-127 to the instrument's value range (Six Sines: -1 to 1, others: 0 to 1). Options, dragging, `sweep` period, `M` key, saving, and behavior during patch changes are the same as Surge XT's Macros. When `-` is selected, the displayed value is the patch value re-read when changing patches or changing the selection to `-`. For Floe, Macros assigned to CC1 (Macro 1 by default) do not appear in this field but are controlled by the `CC1 modulation` field (to prevent two fields from competing for the same Macro). When the patch is changed in the instrument's GUI, the fields may not toggle; they toggle when the patch is changed via Browse patches, Favorites, or History. Favorite duplication judgment ignores Macro value differences. Macros for plugins other than those listed above are not supported. Refer to [ADR 0039](docs/adr/0039-parameter-macro-sweep.md) for details.
-  - Guitar open strings send MIDI note numbers 40, 45, 50, 55, 59, 64 (E, A, D, G, B, E) sequentially at 125ms intervals for Note On. 2 seconds after the last Note On, all 6 notes are simultaneously Note Off, repeating after 0.5 seconds.
-  - On successful `Load`, the `Sequence` type selection, start, and stop states are memorized. The memory persists even after stopping or `Remove`. Older history/favorites restore with the traditional 4-note pattern.
-  - On normal startup termination and `Remove`, the binary state of patches/parameters exposed by the plugin via UAPMD's state API is saved per plugin to `%LOCALAPPDATA%\cat-plugin-player\states\`. On next launch or re-loading the same plugin, it's restored before playback starts.
-  - `Load` for an instrument replaces only the instrument, maintaining connected effects and settings. The state of the plugin being replaced is saved, and it switches after successfully generating, restoring, and connecting the new plugin. If it fails, the original configuration is maintained, and an error is displayed. Only when reloading the minimal Surge XT configuration at startup with the same instrument, the same preservation, regeneration, and recovery path as `Show UI` below is used.
-  - The scope of state saving depends on the plugin and UAPMD's format-specific implementation. UI state is also requested, but the current UAPMD VST3 implementation only retrieves component state. It does not include replication of external samples or saving upon forced termination.
-  - At startup, it loads the saved full plugin list, directly loads the previous instrument and effects, restores their states, and begins playback. After that, it initializes the GUI and rescans the list in the background once operations settle. On the first launch without a full list cache, it detects after the GUI is displayed.
-  - If the previous instrument was Surge XT (CLAP / VST3), only this one instance at startup is created with a configuration that omits patch, wavetable, and FX preset lists for faster playback. Since Surge's GUI menu would be almost empty in this configuration, pressing `Show UI` for that Surge rebuilds it with a normal configuration, preserving the latest patch, edits, Favorite selection, playback settings, and connected effects, then opens the GUI. Audio stops briefly during this process. If it cannot be saved, it does not rebuild, retaining the original instrument. If generation, restoration, or connection fails, it recovers once from the saved content and displays an error. If recovery also fails, it stops, retaining the saved content, so please retry with `Load`. Repeated presses do not increase rebuilds. Surge XT created via `Load`, patch browser, favorites, history, or effects uses the normal configuration. This can be disabled with environment variable `CMRT_SURGE_MINIMAL_DATA_HOME=0`. Refer to [ADR 0034](docs/adr/0034-surge-xt-startup-minimal-data-home.md) for reasons, actual measurement of waiting time, and verification scope.
-  - If direct loading is not possible due to old history or file movement, it restores from the scan results after GUI display. Old history is updated once played.
-  - If the main instrument is CLAP Floe, when audio processing is rebuilt (e.g., on load or patch restoration), the start of the first phrase is delayed by 100ms. Leading MML rests are added on top. This is a temporary measure for observing symptoms of initial notes being cut off, and actual device resolution is unconfirmed. Refer to [ADR 0018](docs/adr/0018-floe-automatic-note-start-delay.md) for application conditions and review policy.
-  - For the history of startup speedup, issues that occurred with Show UI, and changes in disposal order, see [ADR 0034](docs/adr/0034-surge-xt-startup-minimal-data-home.md) and for measurement methods, see [Developer's Guide](#起動時間の計測).
-- Effect Routing
-  - Opening `Browse effects` / `E` / `X` automatically loads a CLAP effect candidate if there's only one, making that slot the target for preset changes. If already connected, it reuses that slot without reloading. If no instrument is loaded and there's only one instrument candidate, it first loads the instrument and starts playback. If multiple instrument candidates exist, please select an instrument first. The candidate count judgment follows the CLAP priority setting in the Plugins list and does not reduce candidate count based on search strings.
-  - Serial connection: one instrument → multiple effects → output. After loading the instrument, press `Load` for the first effect, then `Add` to append to the end. For connected effects, `Remove` detaches only that one. You cannot connect duplicate effects with the same format + ID.
-  - Changing effects in Browse effects requires an instrument. Candidates are obtained from default effect/preset locations explored by the play-server shared core, and no VST3 fallback is performed. During preparation, current playback continues, and loading, scanning, and timbre operations are disabled. In normal startup, it remains stopped if stopped, or restarts the current phrase from the beginning if playing, maintaining overall MML/Velocity/CC1 selection and other effect order/settings/Bypass. On generation/application/connection failure, it reverts to the original configuration. On success, the applied state and connection are saved for the next launch, and Favorites/History are not added. Save failure is displayed as applied.
-  - The `Browse effects` button next to `Sequence` or the `E` / `X` keys open an independent, maximized effect browser window where you can select presets from a list. It cannot be opened while MML is being edited. Narrow down using Category → Kind on the left and search. Search is case-insensitive regular expression, space-AND, `-condition` exclusion, applying to preset name, Category, Kind, or effect name (e.g., `hall -plate`, `dragonfly`). Invalid regular expressions during input display an error, retaining the previous list. `Search`, target slot, `Random` are arranged in the top row; `/` within the browser moves input to the search field; `R` selects randomly from filtered results; `W` toggles column width between fitting all preset names and default. Multi-column display, navigation with arrow keys / `h` / `j` / `k` / `l` / number of times, `PageUp` / `PageDown`, and `Enter` / `Esc` to close are the same as Browse patches. In results with mixed effects, effect names are appended per effect, and preset names are color-coded per Kind if Kinds differ. Names not fitting in a cell always retain the end of the preset name (part excluding folder), shortening the folder name/effect name to 1st char + `...` on the left, displaying more of the preset name. Full names are visible on hover.
-  - The target slot is chosen from `Add new effect` or `Replace n` of a connected effect. When opened, it defaults to the slot previously written in this browser, then the last effect, or `Add new effect` if no effects. Applying `Add new effect` makes the added effect the target, and subsequent selections replace that slot, so the number of effects does not increase by continuous selection. If the target slot is removed, the last effect becomes the target. Presets of effects connected to slots other than the target are shown in gray; selecting them displays a reason and does not change them. Presets put into the target slot by this browser are marked `▶`, and opening makes them selected (not reapplied).
-  - Clicking/key navigation or narrowing down selects another candidate, immediately requesting application. Opening alone does not change effects. You can select the next even during preparation; uninitiated selections are replaced by the latest one and canceled upon closing. Category, Kind, search string, list selection position, and target slot are saved on exit and restored on next launch. Key navigation starts from the restored selection. Category/Kind are restored by name; if missing, they revert to `ALL` for that field. Selection is restored by preset; if missing from the catalog, it becomes unselected, and key navigation starts from the beginning. The target slot is restored by its position in the chain; if no effect is at that position, it defaults to the initial slot when opened.
-  - If the effect before or after replacement in Browse effects is CLAP Surge XT Effects, the sound just before switching fades out over approx. 50ms, and the sound after switching fades in over approx. 50ms. This is a temporary measure to suppress a loud "pop" that occurs when lingering instrument sound passes through new effects (especially Distortion types). Switching is delayed by that amount (max approx. 70ms), and lingering sound may be faintly audible during fade-in. No fading occurs for switches between other effects or changes in patches/instruments. Refer to [ADR 0027](docs/adr/0027-surge-xt-effect-swap-fade.md) for reasons and scope.
-  - Presets for CLAP Surge XT Effects use a table of prepared states obtained from [cat-music-patterns](https://github.com/cat2151/cat-music-patterns) on each launch (saved in `%LOCALAPPDATA%\cat-plugin-player\patch-catalog\surge-xt-fx-states.json`), instead of temporarily launching the plugin. This avoids a bug where the app crashes if you continuously select presets. If the table cannot be obtained, it uses the previously saved table; if that's also missing, Surge XT Effects presets do not appear as candidates in the effect browser, and a reason is displayed. The table is created from Surge XT 1.3.4 presets; presets with different contents (e.g., different Surge XT versions) are excluded from candidates, and the number of excluded items is shown. Refer to [ADR 0028](docs/adr/0028-surge-xt-fx-prepared-states.md) for reasons.
-  - `Routing` displays the connection order. You can change the order by dragging the `↕` button of an effect up or down. During dragging, the moving effect's name and insertion line are displayed. Instruments are not reorderable. `Show UI` for each plugin allows editing patches and effects. `Instrument` / `Effect` are displayed with the same type color as the left list.
-  - Removing all effects reverts to a direct connection from instrument to output. `Bypass effect` targets the entire chain, allowing sound to pass through while retaining the instance and settings. It can also be toggled with the `b` key (does not work while MML input screen, Browse patches / Browse effects, or text input is active). While bypassed, connected effects in Routing are displayed in gray with "Bypassed" appended.
-  - `Sequence` is for instruments. Even if Sequence is stopped, audio processing continues to allow effect decay.
-  - On next launch, it restores the instrument, all effect order, their respective states, and Bypass status before playing. History of one old-format effect can also be loaded. If effect restoration fails, an error is displayed, reverting to a direct instrument connection, while retaining the saved configuration.
-  - Add, remove, and reorder operations are saved only if the new connection is successfully prepared. If it fails, the original configuration and playback are restored, and an error is displayed.
-  - Supports mono/stereo for main input/output. Mono → stereo is duplicated; stereo → mono is an average of left/right. Auxiliary input is silent.
-  - Changing connections or Bypass may cause a brief audio dropout, and sounding notes and decay may be interrupted. Sidechain, parallel connections, and host-side Dry/Wet are not supported.
-- Patches
-  - If no instrument is loaded and there is only one instrument candidate, `Browse patches` / `T` automatically loads it and starts playback. Requests during loading/scanning are processed after completion, and canceling an uninitiated automatic load if the list is closed. It does not auto-select if multiple candidates exist. The candidate count judgment follows the CLAP priority setting in the Plugins list and does not reduce candidate count based on search strings. Load failures are displayed, and no automatic retries are performed. The supported formats for the patch list itself and catalog limitations remain as before.
-  - The `Browse patches` button next to `Sequence` or the `T` key opens an independent, maximized patch browser window on the screen where the main window is located. The main window's position/size are not changed. It cannot be opened while MML is being edited. Narrow down by Role → Preset → Search with frames. Roles/Presets with no patches are not displayed. Items that become 0 after Solo/Mute (e.g., `FM Bass` when only Dexed is Soloed) are also hidden. It does not hide items by search string; self-made conditions are displayed even if 0 items, so they can be deleted. The condition area on the left and the Patches list on the right are scrollable. It uses remaining width and height for the list, allowing operation even in un-maximized or narrow windows. `Search`, `Solo/Mute`, `Random`, `☰` are arranged in the top row. The search field uses the remaining width; the `/` key within the browser moves input to the search field. Detailed instrument conditions can be seen by hovering `Solo/Mute`. Clicking this button or the `M` key within the browser opens a vertically stacked Solo/Mute overlay; `OK` or `Enter` confirms all at once. Within the overlay, pressing the alphabetic key to the left of an instrument name toggles Solo for lowercase and Mute for `Shift`+letter, confirming on the spot (same assignments as cmrt's patch selector, using the first unused letter of the instrument name, e.g., `d` for Dexed, `u` for Surge XT). Solo/Mute are displayed next to the instrument name. Clicking the selected mode again reverts to normal; `Esc` / clicking outside the overlay discards changes. Multiple Solos are treated as OR, Mute as exclusion. Search is case-insensitive regular expression, space-AND, `-condition` exclusion, `plugin:` condition (e.g., `pad -bright`, `plugin:floe`, `plugin:surgext -bass`). Aliases of integrated patches can also be searched. Invalid regular expressions result in an error, stopping application, random selection, and condition saving. If 0 items, you can review conditions by editing the search field or changing Role/Preset. Catalog loading pending/failed are displayed separately from 0 items. Role, Preset, and search string are saved on exit and restored on next launch. Presets are restored by name; if a condition is deleted, it reverts to `ALL` for that Role. If the selected Role becomes 0 items on restoration or Solo/Mute change, it reverts to `ALL` overall; if Preset becomes 0 items, it reverts to `ALL` for that Role.
-  - The list displays patch name cells in a single line, wrapping into multiple columns (left → right → next row) depending on width. In a narrow window, it reverts to 1 column. Resizing maintains the selected patch; changing column count alone does not reload. Clicking a patch does not move the list display position. Arrow keys or `h` / `j` / `k` / `l` move as they appear visually. Left/right move to previous/next patch (to the end of the adjacent row at row ends); up/down move to the row above/below, moving to the end of a short final row if no patch directly below. Entering a number first, like `2j` or `10k` (Vim-style), moves that many times (stops at ends; numbers are canceled by non-movement keys). `PageUp` / `PageDown` move by 10 times up/down, and combined with a number, by that multiple. Key navigation, Random, filtering, and column count changes scroll only if the selected row is off-screen. It does not scroll if all patches fit. In single-instrument results, the instrument name is omitted; in mixed results, it's retained. Text color indicates only one difference in results. If instruments are mixed, the instrument name part is color-coded per instrument. In single-instrument results, if Preset is `ALL`, patch names are color-coded per corresponding Preset; if not distinguishable that way, per category. Colors are Monokai-like. If all are same, normal text color is used. Colors repeat in a cycle of 5, so distant, different groups may have the same color. For pink patches, the patch name prioritizes 'pink'. Classification folders, etc., are omitted; if distinguishing similarly named patches, necessary paths are retained. Dexed program assignment is maintained. Hovering displays the full display path, source path, valid category, and merged count if 2 or more. Load/Size are not always shown in the list; `no category` / `1 merged` are also not displayed. Normal patches immediately request application on mouse selection/key navigation changes; the same behavior occurs when different candidates are selected by condition changes. Opening alone does not change the patch. If the list selection position is lost due to filtering, if the currently playing patch remains in the results, the selection aligns to that patch, and it is not reapplied. On opening, the saved list selection is restored by patch name and instrument/original patch identification, scrolling to a visible position (not reapplied). Row numbers are not saved; the same patch is selected even if catalog order changes. If no list selection record exists, if the patch applied and playing via Browse patches is in the current results, that patch is selected. The playing patch is saved on exit and carried over as the restored patch on next launch. Adding/removing/browsing effects preserves this carry-over. If the saved patch is deleted/filtered out, it becomes unselected, and the patch is not changed. If neither list selection record nor playing patch information exists, it's unselected. After changing patches by loading/deleting Favorites/History/instrument, the playing patch is unknown, and selection is cleared. Key navigation starts from the selection when opened; if unselected, it moves to the beginning. The next selection can be made even during preparation; uninitiated requests are replaced by the latest one. On normal successful application, duplicate patch names or fixed padding at the bottom are not displayed. Only if the selected and applied patches differ, a brief guide is displayed, indicating that the previous patch might continue playing for unconfirmed pink patches, etc. The pink patch Space guide and application failure/save error are displayed.
-  - Pink patches with a sample capacity of 64,000,000 bytes or more are not automatically applied (unknown capacity is treated normally). After selection, `Space` opens a confirmation overlay for instrument/patch/capacity, and pressing `Enter` within it starts preparation/application. `Esc` during confirmation cancels without changes. Once applied, re-confirmation is required. During loading, a progress overlay is displayed, and cancellation mid-way is not possible. `Space` / `Enter` in the search field, save menu, or Solo/Mute overlay are not used for patch application (`Enter` in Solo/Mute overlay is same as `OK`).
-  - `Random` or the `R` key within the browser selects uniformly from the displayed results. During text input, `T` / `R` / `M` / `/` / `h` / `j` / `k` / `l` / number / `Enter` shortcuts do not work, nor do `R` / `M` while browser overlays or the save menu are displayed. For pink patches, selection alone requires the same Space → Enter confirmation. In normal startup, `Esc`, `Enter`, or the OS close button of the browser window closes only the browser, preserving the main app and the last successfully applied patch, discarding uninitiated requests and old preparation results. Already started application processes are completed. When confirmation overlay, Solo/Mute, or save menu are open, `Esc` / clicking outside the overlay closes only the child, not passing the same input to the browser or background operations. OS close closes the entire browser. It can be reopened, and there's no undo operation to revert to the original patch.
-  - The `r` key on the main window, without opening Browse patches, selects and applies a patch from the filtered results of saved Role, Preset, and search string (including Solo/Mute), similar to `R` in the browser. Immediately after pressing, a `Changing patch...` overlay appears in the center of the main screen and disappears when patch application is complete. If pressed before catalog loading, the overlay remains visible, and it selects after loading. If a pink patch is drawn, it's only selected, and a guide to open Browse patches and press `Space` is displayed in the status bar. It's also displayed in the status bar for 0 items or invalid searches. The overlay is removed even if not applied or if loading fails. This does not work in SMF selection mode.
-  - Search conditions can be added to a Role using `Save condition to Role` within the hamburger menu `☰`, and deleted from `Preset` via `Delete`. The default destination for adding from ALL is Etc. It uses the common selector's normalization/classification rules and saves to `patch-filter-presets.json` in the app's config directory. If loading fails due to corruption, the original file is protected, writing is stopped, and save failures are displayed on screen. Role/Preset/search/Solo/Mute are retained during the same app session; only saved custom conditions are restored after restart. TUI conditions and Favorites are not shared or migrated.
-  - During Browse patches preparation, current playback continues, and conflicting loading, scanning, and patch operations are disabled. There may be a wait for sample loading for Floe etc. MML/Velocity/CC1 `sweep` / `-` selections, and effect order/state/Bypass are maintained (CC1 and Macro `0`, `127` revert to `-`), and on success, the next launch state is saved. Favorites/History are not automatically added. Application success and save failure are displayed separately. Progress of preparation/application is updated even when child windows are focused.
-  - Patch browser candidates are CLAP patches from existing cmrt catalogs (Surge XT, Dexed, Floe, sforzando, Six Sines, TyrellN6, Vaporizer2) whose instrument and format+ID match installed instruments.
-  - Among drum/percussion patches, those whose pitch tracks notes (`tracks_keyboard` is true) as measured by the shared table are categorized as `pitched percussion` in lead, regardless of the plugin (patches identifiable as mallet/bell by name go into that category). Kick, snare, and hi-hat are excluded. The table is fetched and saved after startup; on fetch failure, the previous valid table is used; if that's also missing, traditional classification is used. A restart is required for changes to take effect. If a patch is renamed/moved and no longer matches the table, traditional classification is used, and patch state/Favorites/History are not changed ([Reasons and limitations of classification: ADR 0040](docs/adr/0040-measured-pitched-percussion-categories.md)).
-  - The patch browser catalog uses the existing `%LOCALAPPDATA%\clap-mml-render-tui\patch-catalog\catalog.json` in read-only mode. VST3 fallback and unknown instruments are excluded. Effect preset selection uses Browse effects in the effect routing section. Dexed retains program assignment within the cartridge. Floe/sforzando external samples are needed in their original locations; there is no function to duplicate/save samples.
-  - In environments without cmrt or the `catalog.json` mentioned above, Surge XT's patch list is obtained from [cat-music-patterns](https://github.com/cat2151/cat-music-patterns) on each launch, saved to `%LOCALAPPDATA%\cat-plugin-player\patch-catalog\surge-xt.json`, and used as candidates for Browse patches. If it cannot be obtained, the previously saved list is used; if that's also missing, the patch browser displays a load failure. It shows a loading pending message until acquisition is complete (up to 10 seconds). The list is created from Surge XT 1.3.4; Surge XT versions with different contents will not show added patches, and selecting a non-existent patch will display a preparation failure. It does not switch if `catalog.json` exists but cannot be read. Reasons are in [ADR 0025](docs/adr/0025-surge-xt-patch-catalog-without-cmrt.md).
-  - If preparation/application fails, the reason is displayed. The original configuration, state, and playback status are recovered, and instances where state recovery also failed are prevented from saving. Save failures after patch application are displayed as applied. Instrument-specific preparation/reflection conditions and verification scope are recorded in [ADR 0019](docs/adr/0019-random-patch-all-catalog.md).
-  - You can save multiple patches/settings as favorites using `★ Add favorite` for each plugin. On the main screen and Browse patches, the `F` key saves the currently loaded instrument; in Browse effects, it saves the effect connected to the target slot (unapplied candidates are not saved). It does not work during text input or while a dialog is displayed, nor can it save during loading/preparation. For instruments, it also saves the playback pattern, stopped selection, and confirmed MML/chord body. For effects, it does not save playback settings. The name for new entries prioritizes the stem (patch/preset name excluding path and corresponding preset file extension) from the recorded patch/preset name for both instruments and effects, formatted as `stem serial_number`. Effect plugin name prefixes are also removed. Dots and program numbers in patch names are retained (e.g., `.../TX7-34.SYX/22 <Flute.22>` → `22 <Flute.22> 1`). The full name is kept for search/hover display. If the name is unobtained or blank, it's `plugin_name serial_number`. It can be changed later. Existing entries are not renamed, and re-saving the same state retains the existing name.
-  - When loading a different plugin, the patch/settings and playback pattern of the plugin being replaced are automatically recorded to History before switching. New entries are named following the same rules as favorites, prioritizing patch/preset names. It does not add to history for re-loading the same plugin or restoration at startup. Confirmed MML/chord body and stopped selection for instruments are also recorded within the same scope as favorites. For effects, it does not record playback settings. If saving fails, the switch is aborted.
-  - During manual/automatic saving, it checks for duplicates (same plugin, role, playback pattern, confirmed MML body, state) and reuses existing entry names. For History's automatic recording, it treats only differences in stop state as identical, but MML with different bodies are kept as separate entries. Effects do not compare playback settings.
-  - The [Plugin-Specific Processing Policy/List (ADR 0002)](docs/adr/0002-plugin-specific-favorite-state-comparison.md) provides exceptions, reasons, scope, and limitations for each product. For TyrellN6 CLAP's confirmed state format, compressed parts that change only with playback are excluded from duplicate detection, grouping patches with identical text patch settings. Confirmed PCore `UI_op=9/10` and trailing blank lines in text are also excluded from comparison ([ADR 0011](docs/adr/0011-tyrell-n6-ui-operation-favorite-comparison.md)). For Vaporizer2 CLAP's confirmed format, minute differences in MSEG time/coordinates (absolute difference for specified items: time ≤ `0.00011` ms, normalized coordinates ≤ `0.000001`. See [ADR 0010](docs/adr/0010-vaporizer2-mseg-recalculation-drift.md) for details) caused by loading/saving are treated as identical. Edits within this range are indistinguishable. Saved data is retained as is. For Surge XT, Vaporizer2, Six Sines, and Floe, differences in Macro values manipulated in Macro fields are ignored, and patches differing only in Macro values are grouped into the same entry. For Floe, the "modified from preset" marker that appears when a Macro is manipulated is also ignored ([ADR 0039](docs/adr/0039-parameter-macro-sweep.md). Surge XT is [ADR 0007](docs/adr/0007-surge-xt-favorite-state-comparison.md)).
-  - The central `Favorites` / `History` / `Plugins` tabs switch between lists. The `l` key cycles through Favorites → History → Plugins. Favorites maintain manual order; new additions are placed at the beginning. Calling, re-saving, or recording to History does not change the order. You can filter by favorite name, plugin name, format, and saved patch/effect preset name (case-insensitive partial match). Names successfully applied via Browse patches/Browse effects are recorded separately and displayed as supplementary information in Favorites/History. This is carried over after restart and favorite recall. Name changes/preset changes within the plugin GUI are not tracked; the last name applied via the browser is retained. Existing unnamed entries can be searched by traditional info; applying the same patch from the browser and re-saving complements the name. The `/` key on the main screen moves focus to the filter field (common to all tabs. Does not work during text input, MML input screen, browser, or dialog display).
-  - The hamburger menu (Settings) on the list side opens with the `d` key. Menu item keys are active only while open; executing an item with a key closes the menu. `Esc` or clicking outside the menu cancels. The key to open does not work during text input, MML input screen, browser, or dialog display.
-  - In the Favorites hamburger menu, turning `Reorder favorites` ON (from Favorites tab, `d` → `o` key) allows reordering with `↑` / `↓` at the end of the row, saving immediately. Row click loading and effect removal behave as before. `Sort by plugin name` (`d` → `n` key) sorts once by plugin name ascending and saves (case-insensitive, preserving relative order for same names). Manual adjustments are still possible afterwards. Reordering is disabled during filtering; reorder mode is OFF at startup. Refer to [ADR 0017](docs/adr/0017-manual-favorites-order.md) for adoption history and specification.
-  - History is in order of most recent registration. If the same patch is detected, the saved patch is reused, its registration time is updated, and it's moved to the top. Elapsed time is displayed in units of `1s`, `1m`, `1h`, `1d`, `1w`, `1mon`, `1y` (month is 30 days, year is 365 days). Manual Favorites are retained. All old-format items are migrated to History, and items not starting with `auto ` are also kept in Favorites (because old formats did not record automatic save origin, ensuring all renamed automatic saves are included in History). Refer to [ADR 0016](docs/adr/0016-history-instead-of-automatic-favorites.md) for policy and reasons.
-  - History does not display Rename/Delete operation menus. Renaming/deleting is done in Favorites.
-  - `Show only CLAP for duplicate plugins` in the global settings `☰` is ON by default and can be toggled with `d` → `d` key. `Rescan plugins...` in the same menu can also open the confirmation screen with `d` → `y` key. If there's a CLAP with the same name, vendor, and type, VST3 in the Plugins list is hidden (ignoring leading/trailing spaces and case differences in name/vendor; if name or vendor is empty, both are displayed). Turning OFF shows both formats. The setting is saved to `[plugins] prefer_clap` in `config.toml` and retained on next launch. It does not change Favorites or the format loaded/restored.
-  - On both tabs, clicking the name/image loads, and clicking again for a connected effect removes it. The currently loaded/connected row is colored, and color is retained even when effects are bypassed. `Load` / `Add` / `Remove` buttons in Plugins perform the same operations.
-  - Favorites are displayed one item per row. Long names and supplementary information are truncated; full text is visible on hover. Waveform/spectrum are displayed below Routing on the right; the right panel width can be adjusted by dragging the boundary. `Audio analysis`'s `On right` toggles analysis display to bottom-right / bottom of screen (bottom-right at startup).
-  - For sforzando CLAP's confirmed state format, it does not create new identical patches based solely on differences in save counter and note/CC1 playback values, reusing existing favorites. Differences in patch settings are retained. Refer to [ADR 0006](docs/adr/0006-sforzando-favorite-state-comparison.md) for scope and limitations.
-  - `Instrument` / `Effect` in colored text are displayed to the left of each row. Clicking a favorite name restores the patch/settings. In normal startup, saved confirmed body and playback pattern selection are restored from instrument favorites. In SMF selection mode, only the patch state is used, retaining the input SMF. While stopped, it remains stopped; `Play` plays the restored phrase. While playing, it switches to the saved pattern/MML. Old-format favorites without a body retain the current body; old-format stopped items retain the current selection. If conversion or state loading/connection fails, the original body/selection/playback state is restored, and failed content is not saved to the session. Instrument favorites retain connected effects; effect favorites retain the instrument and MML. An instrument is required to recall an effect.
-  - Favorites of connected effects show `Connected - click again to remove`, and re-clicking the name removes that effect. This also applies if settings are edited after recall or during Bypass. The instrument, other effects, and saved favorites remain. Another patch of the same format + ID switches settings at the current position, and unconnected effects are appended to the end. Selected favorites for each effect are also restored on next launch.
-  - `…` at the end of the row allows renaming/deleting. Edits after recall or traditional automatic saves do not overwrite favorites. `Last favorite` indicates the last saved/recalled favorite.
-  - Favorites are saved to `%LOCALAPPDATA%\cat-plugin-player\favorites\`. Short audio dropouts may occur during saving/restoring, and the scope of what can be saved is the same as traditional state saving.
-- Lissajous Display
-  - `Lissajous` is displayed below the oscilloscope in the right analysis panel. The analysis display's hamburger menu opens with the `a` key; item keys are active only while open. Executing an item with a key closes the menu; `Esc` or clicking outside the menu cancels. Restrictions on opening keys are the same as Settings. If `Oscilloscope`'s `☰` → `On right` (`a` → `p` key) is unchecked, spectrum, oscilloscope, and Lissajous display side-by-side at the bottom of the screen.
-  - A 45° rotated Lissajous curve displays the last 50ms of output (up to 4096 samples), reflecting effects and Bypass. A common automatic magnification preserves volume differences and aspect ratio; in-phase at same level becomes a vertical line, out-of-phase a horizontal line, sine waves with phase difference become ellipses or circles. Output only on the left is diagonal top-left to bottom-right, only on the right is diagonal top-right to bottom-left, mono is a vertical line, and silence is a central dot.
-  - It updates independently of notes, cycle counts, or trigger settings, and `Show analysis labels` (`a` → `a` key) can display headings. Axis and rendering method can also be confirmed in the graph tooltip.
-  - `Correlation` directly below Lissajous displays the correlation between left/right over the last 150ms as a bar and numerical value from -1 to +1. +1 is in-phase, near 0 indicates weak correlation, -1 is out-of-phase. Negative values are displayed in red, serving as a guideline to judge cancellation when mixed to mono. It shows "—" for silence or if one side is silent.
-- Waveform Display
-  - The `Oscilloscope` at the bottom of the screen displays L (green) and R (blue) outputs overlaid, reflecting effects and Bypass. Mono displays the same waveform for both.
-  - Display width is determined from the last Note On MIDI note number (A4 = 440Hz), and you can select `1`, `2`, `4`, `8 cycles` (`a` → `c` key cycles through cycle counts). After Note Off, decay is displayed based on the last note. Output containing chords or detune may not repeat perfectly at that width.
-  - Trigger can be chosen from `Zero cross` and `Similarity`, toggled with `a` → `z` key. `Show red guides` can also be toggled with `a` → `g` key.
-  - `Zero cross` aligns with the negative → positive crossing of the left channel. If the left channel is silent, the right channel is used; if no crossing, it displays from the beginning.
-  - `Similarity` sweeps from the beginning of the buffer for the display width, one sample at a time, to find the position with maximum correlation to the previous display. Ties prefer the earlier position, and the same start position is used for left/right. For the first display or if the comparison target is silent, zero-cross is used.
-  - The comparison history is reset when a note is played, playback pattern, display cycle count, trigger method, or audio stream changes. It remains in a waiting display until enough data is collected.
-  - Scanning is performed on a separate thread from audio processing. Display updates may be slow for low notes or high cycle counts. If display data is interrupted, the history is reset.
-  - Default display settings at startup are 4 cycles and zero-cross. Display settings are not saved.
-
-## Settings: Window Position and Size
-
-You can specify the main window's startup position/size and plugin GUI placement method in `%LOCALAPPDATA%\cat-plugin-player\config.toml`. Please edit it after closing the app. Session and favorite selection states are saved in `status.json` in the same directory, and normal saving does not overwrite the TOML. If states were mixed in an old TOML, they are migrated on first launch, saving the original file as `config.toml.before-status-migration.bak` before removing only the state items. Comments, formatting, and unknown items in settings are preserved, and independent comments attached to deleted items are moved to the end. If an existing `status.json` is present, it takes precedence.
-
-```toml
-[window.main]
-x = 100.0
-y = 100.0
-width = 1200.0
-height = 800.0
-
-[window.plugin]
-placement = "right_then_bottom_right"
-```
-
-The main window's `x` and `y` are logical coordinates and are used for the startup position if both are specified. If omitted, it defaults to the traditional initial position. `width` and `height` are the inner width/height (logical coordinates) of the main window. You can specify only one; if omitted or set to 0 or less/non-finite, it reverts to 900 width and 600 height. Changes are reflected on the next launch. The plugin placement method is currently only `right_then_bottom_right`, and omitting it behaves the same way. GUI size and placement are calculated based on actual window frame, screen working area, and DPI. Automatic saving of positions moved manually, or per-plugin position specification, is not performed.
-
-## Local Build and Execution
-
-Clone this app, `uapmd`, `clap-mml-render-tui`, and `clap-mml-play-server` into the same parent directory, then run from this app's directory. TUI's `app` / `patches` / `patch-select` / `tui-core` and play-server's `core-lib` / `server-config` are always referenced locally from Cargo.toml. Play-server requires `prepare_catalog_clap_patch_state` / `supports_catalog_clap_plugin` in addition to the traditional `prepare_clap_patch_state` / `PatchStateError`, and TUI's `cmrt-patches` requires their re-export. The patch browser uses public Role/Preset/filter APIs and tui-core's sample capacity judgment. Browse effects uses play-server's `AudioEffectCatalog` / `EffectRenderer` and TUI's effect selector selection conditions, and tui-core's search conditions. Insufficient checkout or missing APIs will result in build errors, and no automatic switching to Git versions is performed.
-
-```powershell
-cargo build --release
-& ./target/release/cat-plugin-player.exe
-```
-
-If UAPMD is not in the sibling `uapmd` directory, first set `$env:UAPMD_DIR = 'X:\projects\uapmd'`. The location of UAPMD during build is specified by environment variable. `config.toml` is not read as build settings.
-
-Do not use `cargo install`; directly run the exe generated in the default `target/release`. The build uses local code (including uncommitted changes) and existing `target/shim`, but source changes may require re-configuration and re-building. If `target/shim` was created with a different version like VS 2022, it will continue to build with that version, so delete `target/shim` before building ([ADR 0020](docs/adr/0020-visual-studio-2026-toolchain.md)). The shim DLL is bundled with the exe and unpacked to the cache directory and loaded on GUI startup.
-
-Refer to [ADR 0012](docs/adr/0012-local-dependencies-and-release-execution.md) for the 3-repo dependency structure and operational policy. Local TUI switching is not needed for building with `cat`. If building TUI itself cross-repo, use TUI's existing `python scripts/cross_repo_local.py on` procedure; `off` is handled manually. Local references use uncommitted changes, and Cargo.lock does not fix the content of each checkout. When verifying, record the HEAD and diff of each repo.
-
-Surge XT's initial setup is centralized in `shared/first_instrument_install.rs`, and `cat-smf-editor` also references the same instrument absence detection, terms of use screen, and winget process. Each app is responsible for rescanning and loading after successful setup.
-
-Host Rust/native and SMF processing are centralized in `shared/`, and `cat-smf-editor` also references the same authoritative modules. No independent crates are added; each app bundles its own DLL from the default `target/shim`.
-
-The common host supports direct parameter automation for CLAP plain values and VST3 normalized values. It enumerates parameters and obtains value representations in the UI, passing resolved targets to audio processing in fixed-capacity batches. The editor's dedicated track and the player's Vaporizer2, Six Sines, and Floe Macro fields use this path. For conditions of generation/patching, reapplication, regression verification, and unsent author reports, see [Parameter Automation Patching](patches/uapmd/parameter-automation/README.md); for reasons of adoption, see [ADR 0037](docs/adr/0037-direct-parameter-automation.md).
-
-Launch with no arguments for the normal GUI. `--help` and `--version` are also available.
-
-SMF selection mode is `--select-smf <SMF> --browser patch|effect --preserve-position`. If browser is omitted, it defaults to `patch`; position preservation requires explicit specification. Passing `--patch-filter <program_name>` searches the patch browser from ALL conditions with that name. Regular expression symbols in the name are treated as literals, and spaces are AND. Only if 0 items are found after catalog loading, it temporarily switches to an OR search with words joined by `|` (e.g., `church organ` → `church|organ`). `--patch-filter-file <JSON>` restores search, Role, and Preset as is, returning to the same file on successful exit. If the file is missing, it uses initial search; existing file conditions take precedence. Empty searches are also retained, and no automatic switching to word OR is performed for restoration conditions. It is not used for effect/master selection. The search field can be edited as a case-insensitive regular expression as usual. `--preview-smf <SMF>` specifies a separate SMF for previewing all tracks, which is not returned. It sends MIDI events of all tracks to the selected instrument/effect, reflecting per-track tempo for format 2. The preview SMF is not modified. `--start-seconds <seconds>` specifies the initial preview position, and `--loop-end-seconds <seconds>` specifies the loop end beyond the input SMF. If omitted, it's from the beginning to the end of the input SMF. Use finite, non-negative seconds, and ensure the start position is before the loop end. It restores controllers and sustained notes at the start, and natural loop boundaries revert to the beginning. The original SMF events are not modified. Adding `--browser-only` does not display the main screen, opening the browser in the foreground. This option is for selection mode only. In normal track selection, you can proceed to another browser via buttons within the browser. `--master-effects` starts with the effect browser and does not proceed to the patch browser. The main screen can be displayed only when favorites/routing are needed via `Favorites / routing`. Closing the browser with `Enter` is also treated as saving and exiting the entire player. On save failure or during change processing, the browser is retained, and errors are displayed within the browser. `Esc`, `q` (not used for search input), `×` on main window/browser save the instrument state, ordered effects, and bypass state to the input SMF and exit. `--master-effects` saves only the conductor's master effect/bypass and retains track settings. `q` in the search field is text input. During change processing, it waits for confirmation; on save failure, it retains the screen and selection, allowing retry. The normal `status.json` is not updated. Existing state saves/favorite operations for selected items use the usual save destination. State compatibility across OS/plugin versions and duplication of external samples are not guaranteed. Refer to [Saving Contracts and Common Host (ADR 0029)](docs/adr/0029-shared-host-smf-selection.md).
-
-## For Developers
-
-### Obtaining Offline WAVs
-
-`--render-wav` generates a new host and instrument for each call, loads the specified binary state, acquires the initial sound (200ms of note 48, velocity 100, CC1=0), and then exits. It does not use GUI, audio device, external effects, or normal session restoration.
-
-```powershell
-& ./target/release/cat-plugin-player.exe --render-wav X:/measure/out.wav --plugin-format CLAP --plugin-id org.surge-synth-team.surge-xt --plugin-path 'C:/Program Files/Common Files/CLAP/Surge Synth Team/Surge XT.clap' --state-file X:/measure/state.bin --wait-ms 10
-```
-
-Format is `CLAP` or `VST3`; ID and path are specified according to the plugin whose state was saved. Create the output parent folder beforehand and use a new name for the WAV that does not have an existing `.json` of the same name. It does not overwrite input state, Favorites, History, or normal config/status/state files.
-
-It saves a 32-bit float stereo WAV at 48kHz, 256 frames, 9600 frames from note on. `--wait-ms` is a non-negative integer audio sample time. During this time, it processes empty events and renders without syncing to real-time, even after note on. It does not add the automatic wait of normal startup. The JSON records SHA-256 of state/PCM, plugin identification, wait, onset position/processed frames, silence determination, and time taken for generation, state application, audio processing, and saving. Time spent waiting for the generation callback is a separate item. Recording all-zero samples (`status=silent`) exits non-zero, leaving WAV/JSON; load/processing errors also exit non-zero. PCM may not match for the same input across different plugins.
-
-### Surge XT CLAP Initial Note Latency Detection Table
-
-All catalog patches are measured once each under various conditions (new process, new instance) with high-speed offline measurement. It does not overwrite normal config/status/state, Favorites, or History. WAVs, states, and logs are kept in a measurement-specific run directory within the cache; the distributed JSON saves onset positions, errors, and 0ms adoption decisions for all patches.
-
-```powershell
-& ./target/release/cat-plugin-player.exe measure-surge-start-delay --output ../cat-music-patterns/surge-xt-start-delay.json
-```
-
-Default is 10ms vs 100ms, 200ms recording, and an onset difference within 1ms is allowed as 0ms. You can change the comparison wait with `--candidate-wait-ms 0` etc., and change detection conditions with `--reference-wait-ms`, `--max-onset-delta-ms`, `--onset-ratio`. 0ms allowance is an adoption policy and does not treat 10ms vs 100ms results as actual 0ms measurements. `--jobs` is concurrency (default 4), `--timeout-seconds` is the upper limit for each render (default 30 seconds), `--limit` is a count limit for operational check, `--work-dir` is the parent directory for saving measurement runs. Silence/errors are handled in separate categories and measurement continues.
-
-If only changing thresholds, re-rendering is not necessary. You can re-select, for example, with a 2ms tolerance while retaining original measurement conditions/values.
-
-```powershell
-& ./target/release/cat-plugin-player.exe measure-surge-start-delay --reclassify ../cat-music-patterns/surge-xt-start-delay.json --max-onset-delta-ms 2 --output X:/measure/reclassified.json
-```
-
-The output table is replaced only on successful completion. Committing/pushing to `cat-music-patterns` is performed as a separate, explicit operation. At startup, it does not wait for communication to complete, and table updates do not resume playback. Refer to [Key points of measurement and adoption decision (ADR 0008)](docs/adr/0008-surge-xt-automatic-note-start-delay.md).
-
-### Startup Time Measurement
-
-Specifying an output destination in `CAT_STARTUP_TRACE` records each point of the startup process to a CSV. If unspecified, it does not record and does not change startup order or auto-playback conditions.
-Example of execution in the root of a release-built repository:
-
-```powershell
-$env:CAT_STARTUP_TRACE = Join-Path (Get-Location) 'target/startup.csv'
-try {
-    & ./target/release/cat-plugin-player.exe
-} finally {
-    Remove-Item Env:CAT_STARTUP_TRACE
-}
-Get-Content ./target/startup.csv
-```
-
-Create the output parent directory in advance. It overwrites files with the same name.
-Each measurement point is recorded only once per process, so restart the app for each comparison.
-
-- The baseline is the entry point of Rust's `main()`, not including time before process creation or OS DLL loading.
-- `scan_callback` is when the scan completion notification reaches the main thread. `load_call_returned` and `instance_callback` separate the generation API call and completion notification; `gui_requested` to `app_creation` is the GUI initialization phase.
-- `first_audio_callback` is the start of the audio callback; `first_signal_rendered` is after processing the first block that generated samples with an absolute value exceeding 0.000001 (-120 dBFS). This is not the time sound is output from speakers.
-- The audio thread only obtains time and records it atomically; CSV saving is done on the UI side. Typically, it saves after the first signal generation and catalog preparation are complete. If not complete, it saves partial results after 10 seconds of UI update, or upon normal exit. Saving may not be possible if the UI is stopped or if forced termination occurs.
-- Unreached measurement points appear under `# missing:`. Check the screen and standard error for failure details. Refer to [src/startup.rs](src/startup.rs) for measurement point definitions, and [ADR 0034](docs/adr/0034-surge-xt-startup-minimal-data-home.md) for startup speedup decisions and limitations.
-
-### Recording
-
-When reproducing initial setup for a demonstration recording, use `cargo build --release --features recording-mode`.
-For each launch, it creates an empty save destination under `%LOCALAPPDAPTA%\cat-plugin-player-recordings\`,
-does not read/write normal settings/history, and detects only Surge XT / Surge XT Effects CLAP.
-It does not refer to the cmrt catalog but acquires a new catalog for Surge.
-It does not fake the absence of Surge XT; the operation assumes manual or coding agent uninstallation before recording.
-After recording, revert to the normal exe with `cargo build --release`.
-Refer to [ADR 0026](docs/adr/0026-recording-mode.md) for scope and limitations.
-
-### Surge XT Effects State Table
-
-When Surge XT is updated, for example, regenerate the table by running the following in an environment with Surge XT Effects installed:
-
-```
-cargo run --release --example export_surge_fx_states -- ..\cat-music-patterns\surge-xt-fx-states.json
-```
-
-Committing/pushing to `cat-music-patterns` is done manually. Refer to [ADR 0028](docs/adr/0028-surge-xt-fx-prepared-states.md) for format and reasons.
-
-※↑AI should only write in this h1 section
-
-</details>
-
-# Future Brainstorming
-- ※Subject to change based on mood
-- Expand on strengths not found in [cmrt](https://cat2151.github.io/clap-mml-render-tui/README.ja), such as VST3 and GUI support.
-  - Integrate GUI edit results status with cmrt.
-    - Use edited patches and effects by loading them into cmrt.
-  - Experiment with egui.
+## Future Brainstorming
+- * Subject to change based on discretion.
+- Leverage strengths not found in [cmrt](https://cat2151.github.io/clap-mml-render-tui/README.ja), such as support for VST3 and GUI.
+  - Integrate GUI edit status with cmrt.
+    - Load and use edited sounds and effects in cmrt.
+  - Experiment with various things using egui.
     - Keyboard display?
     - Drum sequencer?
-    - SMF visualization, simultaneous performance of multiple SMFs, swapping patches and effects?
-    - Should these be separated into different apps? Or should they be done in this app because of patch and effect swapping? What workflow is envisioned?
-- Utilize various cmrt crates.
-  - ※This will also refine the crates and provide benefits through their use, a win-win.
+    - SMF visualization, playing multiple SMFs together, swapping sounds and effects?
+    - Should these be extracted into separate apps? Or is it better to do them in this app because of the sound/effect swapping? What kind of workflow is envisioned?
+- Do various things using cmrt's crates.
+  - * This also refines the crates, and there are benefits from using them, so it's a win-win.
   - CLI import / export
-    - The cmrt keyboard screen can be played directly from the CLI by specifying patches, effects, arpeggios, etc. Make the same possible (to the level where it plays by simply changing `cmrt` to `cat-plugin-player`).
-      - Frequent breaking changes are fine. Manual migration is possible later. It's better than stagnation due to fear of change.
+    - The cmrt keyboard screen allows you to specify patch, effect, arpeggio, etc., from the CLI and play it instantly. Make the same possible (to the level where it plays by just changing `cmrt` to `cat-plugin-player`).
+      - Frequent breaking changes are acceptable. Manual migration is possible later. It's better than being unable to move forward due to fear of change, stopping progress.
   - SMF import / export
-    - Currently, outputting SMF with audio plugin names and patch names recorded is implemented; develop this further.
+    - Currently, outputting SMF with audio plugin names and patch names recorded is already implemented; further develop this.
 
-# Concept, What We Aim For
-- Musical Instrument
-  - For example, a synthesizer with a MIDI keyboard produces sound when you power it on and press keys.
+## Concepts and Goals
+- Instrument
+  - For example, a synthesizer with a MIDI keyboard produces sound when you power it on and press a key.
     - We aim for that level of ease of use.
-      - Minimize operations until sound is produced.
-- Sounding
-  - Aim to maintain "sounding in the author's environment" as much as possible.
+    - Minimize the operations required to produce sound.
+- Playability
+  - We aim to ensure it 'just works' in the author's environment as much as possible.
 - Immediate Sound
-  - Perceived 0.2 seconds from app launch to sound. Fastest path to performance.
-    - Processes like GUI display preparation are done *after* sound.
-      - Sounding before GUI display might be considered the audio version of a splash screen.
+  - Perceived 0.2 seconds from app launch to sound. We've optimized for the fastest possible playback.
+    - Processes like GUI display preparation are also handled after the sound.
+    - Sound playing before the GUI appears might be considered a sound version of a splash screen.
 - Educational Use
-  - Leans more towards educational use than commercial use.
+  - It is oriented more towards educational use than commercial use.
 - Experimentation, Exploration, Personal Use
-  - Frequent breaking changes will be made.
+  - We will make frequent breaking changes.
 
-# Random Thoughts Corner
-- ※Related to the concept
-- I love audio plugin preset patches.
+## Random Thoughts Corner
+- * Related to concepts.
+- I like the preset sounds of audio plugins.
   - Because they are reproducible.
-  - Because they are freely shared, everyone can benefit.
-- I want to provide a musical instrument UX.
-  - I want to provide a musical instrument UX, not a DAW UX.
-- What is a musical instrument?
-  - It is the composite of each layer from audio plugin to PC keyboard.
-    - There is an intermediate layer.
-      - That is the plugin host, the performance UI.
-        - This is a layer where vibe coding is possible.
-        - Building this can improve the UX.
-- For whom is this instrument?
+  - Because they are shared freely, everyone can benefit.
+- I want to provide an instrument UX.
+  - I want to provide an instrument UX, not a DAW UX.
+- What is an instrument?
+  - It is the sum of each layer from audio plugins to the PC keyboard.
+    - There are intermediate layers.
+      - These are plugin hosts and performance UIs.
+      - This is a layer that can be vibe coded.
+      - By creating this, UX can be improved.
+- An instrument for whom?
   - Cats, babies.
-    - Meaning, we target beginners, including cats and babies (e.g., Android tablets).
-  - ※This is merely a metaphorical expression. Actual operation on Android tablets is unconfirmed. The likelihood of effort to make it work on Android if it doesn't is also low.
+    - In other words, extend the range towards beginners, to the extent that it includes cats and babies (e.g., Android tablets) as targets.
+    - * This is purely a metaphor. It is unconfirmed whether it actually works on Android tablets. The likelihood of effort to make it work on Android if it doesn't is also low.
 
-# Out of Scope, Not Aimed For
+## Out of Scope and What We Don't Aim For
 - Robustness
-  - Absolutely no bugs, the app never crashes.
+  - Absolutely no bugs no matter what. The app won't crash.
   - Full compatibility. Loads and operates with all past settings and data.
-- Functionality
-  - Equipped with every imaginable feature. Usable for all purposes.
+- Features
+  - Equipped with every conceivable feature. Usable for all purposes.
 - Convenience
-  - Pursuing convenience and ease of use to the extreme.
+  - Pursue convenience and ease of use to the extreme.
 - Performance
-  - Operates at high speed with no CPU load in any environment. Audio never cuts out.
+  - Operates fast without CPU load in any environment. Sound will never drop out.
 - Requests
-  - Immediate response to all user requests.
+  - Immediately respond to all user requests.
 
-# License
+## Miscellaneous
+### How to Specify Main Screen Coordinates and Size at Startup
+
+In `AppData Local/settings.toml`, write the following, for example:
+
+```
+window = [0, 0, 1800, 900]
+```
+
+## License
 - MIT
