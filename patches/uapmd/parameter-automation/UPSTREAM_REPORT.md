@@ -30,6 +30,16 @@ them on state load/rescan, and does not publish rejected pending batches. Ordere
 mixed CLAP actions retain source order for source ticks sharing one sample; VST3
 uses the native separate queue/sample precision rather than fabricating delay.
 
+The ordered route also carries channel CC and pitch bend. CLAP queues MIDI events
+only for a MIDI-capable port. VST3 uses a fixed, preparation-time table of existing
+MIDI controller assignments and normalized values; it does not fall back to using
+a CC number as a native parameter ID. Unsupported capabilities fail explicitly.
+The fixtures expose CC7 and pitch bend through separate processor-observed values
+and exercise a nonzero channel. This extension leaves the legacy MIDI path alone.
+Controller classes remain distinct: an aftertouch assignment cannot substitute
+for a missing pitch-bend assignment, even when an internal table uses a compact
+slot for bend. A negative fixture exercises that boundary.
+
 Suggested upstream direction: correct CLAP flags/global addressing, resolve
 format-native IDs/cookies outside process, expose normalized VST3 scheduling
 without controller/listener calls, and use bounded reusable parameter queues

@@ -117,6 +117,22 @@ def test(dll_path, clap_path, vst3_path):
                 assert dll.uh_processor_process_automation(processors[0], ordered, 6, output, 2, 64) == 0
                 assert abs(output[0] - .7) < 1e-6 and abs(output[1] - .8) < 1e-6
                 if format_name == 'VST3':
+                    aftertouch_only = (Event * 1)(Event(Value(), 0x20EF0060, 1))
+                    assert dll.uh_processor_process_automation(processors[0], aftertouch_only, 1, output, 2, 64) < 0, 'bend used an aftertouch-only mapping'
+                    missing_mapping = (Event * 2)(
+                        Event(Value(first.generation, first.revision, 0, .9), 0, 0),
+                        Event(Value(), 0x20B30140, 1))
+                    assert dll.uh_processor_process_automation(processors[0], missing_mapping, 2, output, 2, 64) < 0
+                    assert dll.uh_processor_process(processors[0], None, 0, output, 2, 64) == 0
+                    assert abs(output[0] - .7) < 1e-6 and abs(output[1] - .8) < 1e-6, 'missing mapping leaked partial parameter update'
+                controls = (Event * 3)(Event(Value(), 0x20B30740, 1),
+                    Event(Value(), 0x20E30060, 1), Event(Value(), 0x20833E25, 1))
+                assert dll.uh_processor_process_automation(processors[0], controls, 3, output, 2, 64) == 0
+                assert abs(output[0] - 64/127) < 1e-6 and abs(output[1] - 12288/16383) < 1e-6, list(output[:2])
+                # Restore the same ordinary parameter baseline for the existing overflow checks.
+                restore = (Event * 2)(ordered[3], ordered[4])
+                assert dll.uh_processor_process_automation(processors[0], restore, 2, output, 2, 64) == 0
+                if format_name == 'VST3':
                     overflow = (Event * 65)(*[Event(Value(first.generation, first.revision, 0, .4), 0, 0) for _ in range(65)])
                     assert dll.uh_processor_process_automation(processors[0], overflow, 65, output, 2, 64) == -7
                     unchanged = Info()

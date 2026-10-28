@@ -54,9 +54,15 @@ batch must immediately precede process; failure must stop playback, not be ignor
 Processors must be destroyed before their instance/host. Metadata rescans require
 re-preparation and fresh bindings; persisted stable IDs must be resolved again.
 
-The ordered C ABI accepts at most 512 mixed note/parameter actions. CLAP keeps
+The ordered C ABI accepts at most 512 mixed note/CC/pitch-bend/parameter actions. CLAP keeps
 source order even when several source ticks map to one sample; VST3 keeps native
 sample precision in its separate queues. This does not emulate sub-sample timing.
+CC and bend use CLAP MIDI events on MIDI-capable input ports. VST3 preparation
+caches channel/controller mappings into a fixed table; processing sends normalized
+values to those mapped IDs without querying a controller or guessing an ID from
+the CC number. Missing mappings or unsupported dialects reject the batch. The
+editor keeps compound CC, bank/program and channel-mode messages outside pattern
+performance; the host does not reinterpret them as notes.
 VST3 UI current values read an atomic applied-value cache committed after successful
 processing. State load and metadata changes invalidate it. Overflow/rejected batches
 cancel pending values and must not change the reported current value.
@@ -84,6 +90,11 @@ generation/revision invalidation (including a real CLAP rescan), all-before-enqu
 validation, duplicates, ordered same-sample actions and capacity errors. The VST3
 current-value check also rejects publishing a cancelled overflow batch. Backend storage bounds and host
 allocation checks are separate from audio-device/subjective listening checks.
+The controller fixtures expose CC7 and pitch bend as separate processor-observed
+values and exercise a nonzero MIDI channel, including a release with velocity.
+An aftertouch-only mapping on channel index 15 must not satisfy a pitch-bend request;
+the native controller class is checked before translating it to a prepared slot.
+These tests cover the ordered route; they do not repair the legacy MIDI API.
 Source regeneration against unchanged inputs is not a clean-environment build.
 
 ## Author reporting

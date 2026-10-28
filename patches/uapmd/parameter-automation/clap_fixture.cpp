@@ -36,7 +36,7 @@ static const void* extension(const clap_plugin_t*, const char* id) {
         [](const clap_plugin_t*, bool input) -> uint32_t { return input ? 1 : 0; },
         [](const clap_plugin_t*, uint32_t i, bool input, clap_note_port_info_t* info) {
             if (i || !input) return false;
-            *info = {}; info->id = 0; info->supported_dialects = CLAP_NOTE_DIALECT_CLAP;
+            *info = {}; info->id = 0; info->supported_dialects = CLAP_NOTE_DIALECT_CLAP | CLAP_NOTE_DIALECT_MIDI;
             info->preferred_dialect = CLAP_NOTE_DIALECT_CLAP; return true;
         }};
     static const clap_plugin_params_t params{
@@ -78,6 +78,12 @@ static clap_process_status process(const clap_plugin_t* p, const clap_process_t*
             if (v.param_id == 101) f.values[0] = v.value;
             else if (v.param_id == 118) f.values[1] = v.value;
             else f.invalid = true;
+        } else if (event->type == CLAP_EVENT_MIDI) {
+            auto& m=*reinterpret_cast<const clap_event_midi_t*>(event);
+            f.invalid |= m.port_index != 0 || m.header.time != 0;
+            if ((m.data[0]&0xf0)==0xb0 && m.data[1]==7) f.values[0]=m.data[2]/127.0;
+            else if ((m.data[0]&0xf0)==0xe0) f.values[1]=((m.data[2]<<7)|m.data[1])/16383.0;
+            else f.invalid=true;
         } else if (event->type == CLAP_EVENT_NOTE_ON) {
             // Both parameter updates must reach the processor before this note.
             auto& note=*reinterpret_cast<const clap_event_note_t*>(event);

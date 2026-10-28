@@ -134,7 +134,8 @@ int32_t uh_processor_process_automation(UhProcessor* processor,const UhAutomatio
             if (!d.eligible || !std::isfinite(v.value) || v.value<d.min || v.value>d.max) return -3;
         } else if (e.kind==1) {
             auto type=(e.midi>>20)&15;
-            if ((e.midi>>28)!=2 || (e.midi&0x0f000000) || (type!=8 && type!=9) || (e.midi&0x8080)) return -3;
+            if ((e.midi>>28)!=2 || (e.midi&0x0f000000)
+                || (type!=8 && type!=9 && type!=11 && type!=14) || (e.midi&0x8080)) return -3;
         } else return -3;
     }
     for (uint32_t i=0;i<count;++i) {

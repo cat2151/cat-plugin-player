@@ -2,13 +2,28 @@
 #include "public.sdk/source/main/pluginfactory.h"
 #include "pluginterfaces/vst/ivstparameterchanges.h"
 #include "pluginterfaces/vst/ivstevents.h"
+#include "pluginterfaces/vst/ivstmidicontrollers.h"
+#include "pluginterfaces/vst/ivsteditcontroller.h"
 #include "pluginterfaces/base/ibstream.h"
 using namespace Steinberg;
 using namespace Steinberg::Vst;
 static const FUID fixtureId(0x13213213, 0x12341234, 0x56785678, 0xABCDEF01);
-class Fixture : public SingleComponentEffect {
+class Fixture : public SingleComponentEffect, public IMidiMapping {
     double values[2]{0.2, 0.3};
 public:
+    uint32 PLUGIN_API addRef() override { return SingleComponentEffect::addRef(); }
+    uint32 PLUGIN_API release() override { return SingleComponentEffect::release(); }
+    tresult PLUGIN_API queryInterface(const TUID iid, void** obj) override {
+        QUERY_INTERFACE(iid,obj,IMidiMapping::iid,IMidiMapping)
+        return SingleComponentEffect::queryInterface(iid,obj);
+    }
+    tresult PLUGIN_API getMidiControllerAssignment(int32 bus,int16 channel,CtrlNumber cc,ParamID& id) override {
+        if (bus!=0 || channel<0 || channel>15) return kResultFalse;
+        if (cc==7) {id=101;return kResultOk;}
+        if (cc==ControllerNumbers::kAfterTouch) {id=135;return kResultOk;}
+        if (cc==ControllerNumbers::kPitchBend && channel!=15) {id=118;return kResultOk;}
+        return kResultFalse;
+    }
     static FUnknown* create(void*) { return static_cast<IComponent*>(new Fixture); }
     tresult PLUGIN_API initialize(FUnknown* context) override {
         auto result = SingleComponentEffect::initialize(context);

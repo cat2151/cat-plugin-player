@@ -133,9 +133,24 @@ static void diagnostic(remidy::PluginFormat& format, const char* path, const cha
     double expectedOther = format.name() == "VST3" && expectBroken ? 136.0 : 0.2;
     require(otherRead && std::abs(other - expectedOther) < 1e-6,
         "other instance was modified");
-    instance->stopProcessing();
     std::cout << format.name() << " processor=" << left << ',' << right << " other=" << other << '\n';
     require(expectBroken ? !delivered : delivered, expectBroken ? "expected baseline defect absent" : "incorrect processor values/order");
+    if (!expectBroken) {
+        auto midi=format.name()=="CLAP" ? uh::automation::clapNote : uh::automation::vst3Note;
+        if (format.name()=="VST3") require(midi(params,0x20ef0060)!=0,"bend used an aftertouch-only mapping");
+        ctx.eventIn().position(0);allocations=0;
+        { remidy::AudioThreadScope audio;trackAllocations=true;
+            require(midi(params,0x20b30740)==0,"CC delivery failed");
+            require(midi(params,0x20e30060)==0,"pitch bend delivery failed");
+            require(midi(params,0x20833e25)==0,"channel release delivery failed");
+            require(instance->process(ctx)==remidy::StatusCode::OK,"MIDI process failed");
+            trackAllocations=false;
+        }
+        require(allocations==0,"host allocated during MIDI controller process");
+        require(std::abs(ctx.getFloatOutBuffer(0,0)[0]-64.f/127)<1e-6
+            && std::abs(ctx.getFloatOutBuffer(0,1)[0]-12288.f/16383)<1e-6,"incorrect MIDI controller values");
+    }
+    instance->stopProcessing();
     // Destroy and recreate: IDs resolve from the new instance, never a saved index/pointer.
     instance.reset(); instance = create(format, entry);
     require(instance->parameters()->parameters()[1]->stableId() == "118", "recreated identity mismatch");

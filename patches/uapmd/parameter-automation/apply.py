@@ -106,6 +106,15 @@ def generate(source, note, state, output):
         texts[cp] = texts[cp][:start] + method + texts[cp][end:]
         texts[cp] += '''
 remidy::StatusCode remidy::PluginInstanceCLAP::ParameterSupport::noteAutomation(uint32_t word) {
+    auto type=(word>>20)&15;
+    if (type==11 || type==14) {
+        if (!(owner->inputNoteDialects(0) & CLAP_NOTE_DIALECT_MIDI)) return StatusCode::INVALID_PARAMETER_OPERATION;
+        auto* event=reinterpret_cast<clap_event_midi_t*>(owner->events_in->tryAllocate(alignof(void*),sizeof(clap_event_midi_t)));
+        if (!event) return StatusCode::INSUFFICIENT_MEMORY;
+        *event={};event->header={sizeof(clap_event_midi_t),0,CLAP_CORE_EVENT_SPACE_ID,CLAP_EVENT_MIDI,0};
+        event->port_index=0;event->data[0]=(word>>16)&255;event->data[1]=(word>>8)&127;event->data[2]=word&127;
+        return StatusCode::OK;
+    }
     const auto before=owner->events_in->size();
     const auto velocity=static_cast<uint16_t>((word & 127) * 65535 / 127);
     uh::clap_dialect::note([&](size_t size)->void* { return owner->events_in->tryAllocate(alignof(void*),size); },
@@ -190,6 +199,8 @@ void clapCancel(remidy::PluginParameterSupport* p) {
         size_t automation_current_pending_count{};
         uh::automation::FixedChanges automation_changes{}, automation_output_changes{};
         HostEventList automation_note_events{};
+        std::array<std::array<uh::automation::Target,129>,16> automation_midi_targets{};
+        std::array<std::array<bool,129>,16> automation_midi_mapped{};
         HostParameterChanges processDataInputParameterChanges{};''')
         once(vh, '            explicit ParameterSupport(PluginInstanceVST3* owner);', '''            bool resolveAutomation(uint32_t index, uh::automation::Target* target) {
                 if (!target || index >= parameter_ids.size()) return false;
@@ -206,6 +217,22 @@ void clapCancel(remidy::PluginParameterSupport* p) {
                 for (size_t i = 0; i < parameter_ids.size(); ++i)
                     owner->automation_current[i].store(owner->controller->getParamNormalized(parameter_ids[i]), std::memory_order_relaxed);
                 owner->automation_current_valid.store(true, std::memory_order_release);
+                for (auto& row: owner->automation_midi_mapped) row.fill(false);
+                auto cache=[&](const auto& assignments) {
+                    for (const auto& a: assignments) {
+                        if (a.controller>=128 && a.controller!=ControllerNumbers::kPitchBend) continue;
+                        auto cc=a.controller==ControllerNumbers::kPitchBend ? 128 : int(a.controller);
+                        if (a.busIndex!=0 || a.channel<0 || a.channel>=16 || cc<0 || cc>128) continue;
+                        uh::automation::Target target{a.pId,nullptr,nullptr};
+                        auto index=param_id_to_index.find(a.pId);
+                        if (index!=param_id_to_index.end() && index->second<owner->automation_current_count)
+                            target.current=&owner->automation_current[index->second];
+                        owner->automation_midi_targets[a.channel][cc]=target;
+                        owner->automation_midi_mapped[a.channel][cc]=true;
+                    }
+                };
+                cache(owner->cached_midi1_mappings_from_mapping);
+                cache(owner->cached_midi1_mappings_from_mapping2);
                 owner->processDataInputEvents.prepareBounded(16384);
                 owner->automation_note_events.prepareBounded(16384);
                 owner->processDataOutputEvents.prepareBounded(16384);
@@ -228,6 +255,13 @@ void clapCancel(remidy::PluginParameterSupport* p) {
         # Leave legacy plain enqueue alone; automation uses its own normalized bounded queue.
         texts[vp] += '''
 remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::noteAutomation(uint32_t word) {
+    auto type=(word>>20)&15;
+    if (type==11 || type==14) {
+        auto channel=(word>>16)&15;auto cc=type==14 ? 128 : ((word>>8)&127);
+        if (!owner->automation_midi_mapped[channel][cc]) return StatusCode::INVALID_PARAMETER_OPERATION;
+        double value=type==14 ? (((word&127)<<7)|((word>>8)&127))/16383.0 : (word&127)/127.0;
+        return applyAutomation(owner->automation_midi_targets[channel][cc],value);
+    }
     Event event{}; event.busIndex=0; event.sampleOffset=0;
     bool on=((word>>20)&15)==9 && (word&127);
     event.type=on ? Event::kNoteOnEvent : Event::kNoteOffEvent;

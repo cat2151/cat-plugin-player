@@ -7,9 +7,14 @@ pub struct Render {
     remaining: [u64; 128],
     scheduled: [[u16; 128]; 16],
     reset_events: bool,
+    ordered_controls: bool,
 }
 
 impl Render {
+    /// Opt in only after native ordered-event preparation with stopped renderers.
+    pub fn set_ordered_controls(&mut self, enabled: bool) {
+        self.ordered_controls = enabled;
+    }
     /// Queue note-offs before the next real audio block, without advancing time.
     pub fn reset_events(&mut self) {
         self.reset_events = true;
@@ -88,12 +93,15 @@ impl Render {
             let pitch = ((event.midi >> 8) & 127) as usize;
             let channel = ((event.midi >> 16) & 15) as usize;
             let on = (event.midi >> 20) & 15 == 9 && event.midi & 127 != 0;
-            let held = &mut self.scheduled[channel][pitch];
-            *held = if on {
-                held.checked_add(1).ok_or(-7)?
-            } else {
-                held.saturating_sub(1)
-            };
+            parameters |= self.ordered_controls && matches!((event.midi >> 20) & 15, 11 | 14);
+            if matches!((event.midi >> 20) & 15, 8 | 9) {
+                let held = &mut self.scheduled[channel][pitch];
+                *held = if on {
+                    held.checked_add(1).ok_or(-7)?
+                } else {
+                    held.saturating_sub(1)
+                };
+            }
             if count == words.len() {
                 return Err(-7);
             }
@@ -136,6 +144,7 @@ impl Render {
             remaining: [0; 128],
             scheduled: [[0; 128]; 16],
             reset_events: false,
+            ordered_controls: false,
         }
     }
 

@@ -38,6 +38,16 @@ accepts already ordered mixed actions. CLAP preserves that order within its even
 list; VST3 retains the format's separate event/parameter queues and sample precision.
 No extra sample delay is invented to separate them.
 
+Pattern expression also needs channel CC and pitch bend beside those prepared
+parameter values. The original ordered route accepted notes only; sending controls
+through the separate legacy path would lose their position relative to expression
+events and would retain VST3's controller-based scheduling. Extend the bounded
+route with MIDI controls. CLAP uses the input port's cached MIDI capability;
+VST3 resolves the existing channel/controller assignments during preparation and
+uses a fixed table while processing. An absent mapping rejects delivery instead
+of guessing that a CC number is a parameter ID. This preserves the format's native
+queue precision and leaves the legacy API's behavior unchanged.
+
 VST3 controller values do not track processor-applied automation. Reading only the
 controller after playback returned the old value, while retaining an applied cache
 after loading baseline state returned the last automated value. Therefore UI current
