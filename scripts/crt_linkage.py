@@ -10,9 +10,9 @@ import sys
 from pathlib import Path
 
 VSWHERE = Path(r"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe")
-VC_RUNTIME = re.compile(r"^(vcruntime|msvcp|concrt)\d+.*\.dll$", re.IGNORECASE)
+VC_RUNTIME = re.compile(r"^(vcruntime|msvcp|concrt|vccorlib)\d+.*\.dll$", re.IGNORECASE)
 # With /MT the UCRT is linked statically too, so its DLLs must be absent as well.
-UCRT = re.compile(r"^(api-ms-win-crt-.*|ucrtbase)\.dll$", re.IGNORECASE)
+UCRT = re.compile(r"^(api-ms-win-crt-.*|ucrtbased?)\.dll$", re.IGNORECASE)
 
 
 def dumpbin():

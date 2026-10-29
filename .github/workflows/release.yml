@@ -37,7 +37,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          sparse-checkout: Cargo.toml
+          sparse-checkout: |
+            Cargo.toml
+            .github/release-notes.md
           sparse-checkout-cone-mode: false
       - id: refs
         run: |
@@ -89,34 +91,22 @@ jobs:
           TUI: ${{ steps.refs.outputs.tui }}
           SERVER: ${{ steps.refs.outputs.server }}
           INPUTS: ${{ steps.refs.outputs.inputs }}
+        shell: python
         run: |
-          set -euo pipefail
-          if [ "$UAPMD" = "$UAPMD_VERIFIED_SHA" ]; then
-            verified="一致"
-          else
-            verified="不一致（手元で動作を確認していない uapmd の版でビルドした）"
-          fi
-          cat > notes.md <<EOF
-          cat-plugin-player v${VERSION} (Windows x64)
-
-          ## 配布物
-          - \`cat-plugin-player-${VERSION}-windows-x64.zip\`: exe と LICENSE。VC++ ランタイムを静的リンクしているので、Microsoft Visual C++ 再頒布可能パッケージは不要
-
-          ## この版について
-          - GitHub Actions が毎日自動でビルドし、公開している（下の commit がどれも変わらない日は作り直さない）
-          - 通っているのは自動の検査（ビルド、VC++ ランタイムのリンク検査、テスト）だけで、人による動作確認はしていない
-          - uapmd は上流の main を使うので、作者が手元で確かめた版と違う場合がある（下の「ビルドに使った commit」）
-
-          ## ビルドに使った commit
-          - cat-plugin-player: ${GITHUB_SHA}
-          - clap-mml-render-tui: ${TUI}
-          - clap-mml-play-server: ${SERVER}
-          - uapmd（atsushieno/uapmd の main）: ${UAPMD}
-            - 手元で確認した uapmd ${UAPMD_VERIFIED_SHA} と${verified}
-
-          ${INPUTS}
-          EOF
-          cat notes.md >> "$GITHUB_STEP_SUMMARY"
+          import os, pathlib, string
+          env = os.environ
+          verified = '一致' if env['UAPMD'] == env['UAPMD_VERIFIED_SHA'] else '不一致（手元で動作を確認していない uapmd の版でビルドした）'
+          commits = [f'- cat-plugin-player: {env["GITHUB_SHA"]}',
+                     f'- clap-mml-render-tui: {env["TUI"]}',
+                     f'- clap-mml-play-server: {env["SERVER"]}',
+                     f'- uapmd（atsushieno/uapmd の main）: {env["UAPMD"]}',
+                     f'  - 手元で確認した uapmd {env["UAPMD_VERIFIED_SHA"]} と{verified}']
+          template = string.Template(pathlib.Path('.github/release-notes.md').read_text(encoding='utf-8'))
+          notes = template.substitute(name='cat-plugin-player', version=env['VERSION'],
+              package_files='LICENSE', commits='\n'.join(commits), build_inputs=env['INPUTS'])
+          pathlib.Path('notes.md').write_text(notes, encoding='utf-8')
+          with open(env['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as summary:
+              summary.write(notes)
       - uses: actions/upload-artifact@v7
         with:
           name: release-notes

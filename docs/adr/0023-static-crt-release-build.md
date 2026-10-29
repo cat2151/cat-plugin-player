@@ -22,6 +22,9 @@
   `<!-- build-inputs ... -->` の1行で書く。毎日の実行は、この行が公開中の release と完全に一致すれば build と publish を飛ばす。
   release が無い・行を読めないときはビルドする。手動起動は一致しても常にビルドする。判定は run の summary に出す。
 - 公開はこの workflow だけが行う。ローカルでビルドした exe を公開する script は持たない。
+- release本文はeditorと同じ原文にし、アプリ固有の値だけを差し替える。
+  userがcommit一覧で本文を埋めない方針を選んだため、一覧は閉じた折りたたみに入れる。
+  原文は両repoの `.github/release-notes.md` に置き、editorの配布buildで一致を検査する。
 
 ## 理由
 
