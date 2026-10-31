@@ -131,7 +131,10 @@ impl Browser {
                         "{} — {}",
                         ticket.candidate.plugin_name, ticket.candidate.display
                     ));
-                    ui.colored_label(PINK, size(ticket.candidate.measurement.sfz_sample_bytes));
+                    ui.colored_label(
+                        PINK,
+                        sample_size(ticket.candidate.measurement.sfz_sample_bytes),
+                    );
                     ui.label("この音色はロードに10秒以上あるいは1分以上かかる可能性があります");
                     ui.label("ENTER : ロードして演奏する");
                     ui.label("ESC : 演奏しない");
@@ -238,6 +241,9 @@ impl Browser {
         if ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, Key::R)) {
             self.select_random();
         }
+        if ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, Key::W)) {
+            self.fit_columns = !self.fit_columns;
+        }
         if let Some((step, times)) = ctx.input_mut(navigation::consume_step) {
             if !self.results.is_empty() {
                 let at = self
@@ -267,11 +273,15 @@ impl Browser {
     }
 }
 
-fn size(bytes: Option<u64>) -> String {
-    bytes.map_or_else(
-        || "Size: unmeasured".into(),
-        |bytes| format!("Size: {:.1} MB samples", bytes as f64 / 1_000_000.0),
-    )
+/// Sample size recorded in the patch catalog.
+pub(crate) fn sample_size(bytes: Option<u64>) -> String {
+    match bytes {
+        None => "Size: unmeasured".into(),
+        Some(bytes) if bytes >= 1_000_000_000 => {
+            format!("Size: {:.1} GB samples", bytes as f64 / 1e9)
+        }
+        Some(bytes) => format!("Size: {:.1} MB samples", bytes as f64 / 1e6),
+    }
 }
 
 pub(crate) fn editing_text(ctx: &egui::Context) -> bool {

@@ -5,6 +5,10 @@ fn names(tints: &[RowTint]) -> Vec<Option<usize>> {
     tints.iter().map(|tint| tint.name).collect()
 }
 
+fn backgrounds(tints: &[RowTint]) -> Vec<Option<usize>> {
+    tints.iter().map(|tint| tint.background).collect()
+}
+
 #[test]
 fn shown_plugins_tint_only_the_plugin_prefix() {
     let candidates = vec![
@@ -19,7 +23,7 @@ fn shown_plugins_tint_only_the_plugin_prefix() {
 }
 
 #[test]
-fn presets_under_role_all_outrank_categories() {
+fn presets_under_role_all_tint_backgrounds_before_categories() {
     let users = cmrt_patch_select::prepare_user_presets(vec![
         ("bass".into(), "zebra".into()),
         ("bass".into(), "yak".into()),
@@ -39,15 +43,15 @@ fn presets_under_role_all_outrank_categories() {
     let results = snapshot.filter(bass, 0, "").unwrap();
     let presets = Some(snapshot.presets[bass].as_slice());
     let tints = tints(&snapshot.candidates, &results, presets, false);
-    assert_eq!(names(&tints), [Some(0), Some(1)]);
+    assert_eq!(backgrounds(&tints), [Some(0), Some(1)]);
     assert!(tints.iter().all(|tint| tint.plugin.is_none()));
     // A chosen preset passes no presets, and equal categories leave nothing to tell apart.
     let tints = super::tints(&snapshot.candidates, &results, None, false);
-    assert_eq!(names(&tints), [None, None]);
+    assert_eq!(backgrounds(&tints), [None, None]);
 }
 
 #[test]
-fn categories_tint_names_and_uncategorized_rows_stay_plain() {
+fn categories_tint_backgrounds_and_uncategorized_rows_stay_plain() {
     let candidates = vec![
         candidate("a", "Alpha", "One", Some("Bass")),
         candidate("a", "Alpha", "Two", Some("Lead")),
@@ -55,9 +59,22 @@ fn categories_tint_names_and_uncategorized_rows_stay_plain() {
         candidate("a", "Alpha", "Four", Some("Bass")),
     ];
     let tints = super::tints(&candidates, &[0, 1, 2, 3], None, false);
-    assert_eq!(names(&tints), [Some(0), Some(1), None, Some(0)]);
+    assert_eq!(backgrounds(&tints), [Some(0), Some(1), None, Some(0)]);
     assert_eq!(
-        names(&super::tints(&candidates, &[0, 3], None, false)),
+        backgrounds(&super::tints(&candidates, &[0, 3], None, false)),
         [None, None]
     );
+}
+
+#[test]
+fn parent_folders_tint_names_even_when_plugins_are_shown() {
+    let candidates = vec![
+        candidate("a", "Alpha", "Pads/One", None),
+        candidate("b", "Beta", "Keys/Two", None),
+        candidate("a", "Alpha", "Pads/Three", None),
+        candidate("a", "Alpha", "Loose", None),
+    ];
+    let tints = tints(&candidates, &[0, 1, 2, 3], None, true);
+    assert_eq!(names(&tints), [Some(0), Some(1), Some(0), None]);
+    assert_eq!(parent_folder("Bank\\Sub\\Patch"), Some("Sub"));
 }

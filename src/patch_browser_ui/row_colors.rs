@@ -1,15 +1,16 @@
-//! Monokai tints for the most significant difference among the current results.
+//! Monokai tints that tell rows apart: plugin, left-pane preset, and parent folder.
 use super::*;
 use crate::patch_catalog::Candidate;
 use cmrt_patch_select::FilterPreset;
 use std::collections::HashMap;
 
-/// Palette slots per row; `None` keeps the ordinary text color.
+/// Palette slots per row; `None` keeps the ordinary text or cell color.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct RowTint {
     pub prefix_len: usize,
     pub plugin: Option<usize>,
     pub name: Option<usize>,
+    pub background: Option<usize>,
 }
 
 /// Monokai without its pink, which already marks heavy sample loads. (dark, light)
@@ -45,47 +46,51 @@ pub(crate) fn color(slot: usize, dark: bool) -> Color32 {
     }
 }
 
-/// Plugin when plugin names are shown, else preset (only under a role's ALL), else category.
+/// Plugin prefix by plugin when names are shown; background by the left pane's preset
+/// (only under a role's ALL), else by category; name by the patch's parent folder.
 pub(super) fn tints(
     candidates: &[Candidate],
     results: &[usize],
     presets: Option<&[FilterPreset]>,
     mixed: bool,
 ) -> Vec<RowTint> {
-    let rows = results.iter().map(|&index| &candidates[index]);
-    if mixed {
-        let plugins = slots(rows.map(|c| Some((&c.format, &c.plugin_id))).collect());
-        return plugins.map_or_else(
-            || vec![RowTint::default(); results.len()],
-            |plugins| {
-                plugins
-                    .into_iter()
-                    .map(|plugin| RowTint {
-                        plugin,
-                        ..Default::default()
-                    })
-                    .collect()
-            },
-        );
-    }
-    let by_preset = presets.and_then(|presets| {
-        slots(
-            results
-                .iter()
-                .map(|&index| first_preset(presets, index))
-                .collect(),
-        )
-    });
-    let names = by_preset
-        .or_else(|| slots(rows.map(|c| c.entry.selector_category()).collect()))
-        .unwrap_or_else(|| vec![None; results.len()]);
-    names
-        .into_iter()
-        .map(|name| RowTint {
-            name,
+    let rows: Vec<_> = results.iter().map(|&index| &candidates[index]).collect();
+    let plugins = mixed
+        .then(|| {
+            slots(
+                rows.iter()
+                    .map(|c| Some((&c.format, &c.plugin_id)))
+                    .collect(),
+            )
+        })
+        .flatten();
+    let backgrounds = presets
+        .and_then(|presets| {
+            slots(
+                results
+                    .iter()
+                    .map(|&index| first_preset(presets, index))
+                    .collect(),
+            )
+        })
+        .or_else(|| slots(rows.iter().map(|c| c.entry.selector_category()).collect()));
+    let names = slots(rows.iter().map(|c| parent_folder(&c.display)).collect());
+    let pick = |slots: &Option<Vec<Option<usize>>>, at: usize| slots.as_ref().and_then(|s| s[at]);
+    (0..results.len())
+        .map(|at| RowTint {
+            plugin: pick(&plugins, at),
+            name: pick(&names, at),
+            background: pick(&backgrounds, at),
             ..Default::default()
         })
         .collect()
+}
+
+/// The folder directly above the patch, if any.
+fn parent_folder(display: &str) -> Option<&str> {
+    let mut parts = display.rsplit(['/', '\\']);
+    parts.next();
+    parts.next()
 }
 
 /// The first named preset holding the row; ALL and Favorite are not kinds of patch.

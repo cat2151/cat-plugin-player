@@ -66,9 +66,43 @@ impl Browser {
             FontId::proportional(24.0),
             Color32::WHITE,
         );
-        let rect = egui::Rect::from_center_size(center, text.size() + egui::vec2(56.0, 40.0));
+        // Name and catalog size tell a long sample load from a hang.
+        let loading = [&requests.applying, &requests.preparing, &requests.desired]
+            .into_iter()
+            .find_map(|ticket| ticket.as_ref())
+            .map(|ticket| &ticket.candidate);
+        let detail = loading.map(|candidate| {
+            painter.layout_no_wrap(
+                format!(
+                    "{} — {}\n{}",
+                    candidate.plugin_name,
+                    candidate.display,
+                    crate::patch_browser_ui::sample_size(candidate.measurement.sfz_sample_bytes)
+                ),
+                FontId::proportional(16.0),
+                Color32::LIGHT_GRAY,
+            )
+        });
+        let gap = 8.0;
+        let content = detail.as_ref().map_or(text.size(), |detail| {
+            egui::vec2(
+                text.size().x.max(detail.size().x),
+                text.size().y + gap + detail.size().y,
+            )
+        });
+        let rect = egui::Rect::from_center_size(center, content + egui::vec2(56.0, 40.0));
         painter.rect_filled(rect, 12.0, Color32::from_rgb(30, 30, 38));
-        painter.galley(center - text.size() / 2.0, text, Color32::WHITE);
+        let top = center.y - content.y / 2.0;
+        let detail_top = top + text.size().y + gap;
+        painter.galley(
+            egui::pos2(center.x - text.size().x / 2.0, top),
+            text,
+            Color32::WHITE,
+        );
+        if let Some(detail) = detail {
+            let at = egui::pos2(center.x - detail.size().x / 2.0, detail_top);
+            painter.galley(at, detail, Color32::LIGHT_GRAY);
+        }
         ctx.request_repaint_after(std::time::Duration::from_millis(50));
     }
 

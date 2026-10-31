@@ -1,11 +1,13 @@
 //! Cached row names and visible-row-only painting; native identity is never shortened.
 use super::*;
+use crate::patch_browser_catalog::Snapshot;
 use crate::patch_catalog::Candidate;
 use row_colors::RowTint;
 use std::collections::{HashMap, HashSet};
 
 impl Browser {
     pub(crate) fn refresh_row_labels(&mut self) {
+        self.widest_label = None;
         let Some(snapshot) = &self.snapshot else {
             self.row_labels.clear();
             self.row_tints.clear();
@@ -34,12 +36,19 @@ impl Browser {
         // Reserve scrollbar space so a column never disappears when scrolling starts.
         let gap = ui.spacing().item_spacing.x;
         let width = (ui.available_width() - ui.spacing().scroll.bar_width - gap).max(1.0);
-        let columns = ((width + gap) / (240.0 + gap)).floor().max(1.0) as usize;
+        let cell = if self.fit_columns {
+            self.widest_label(ui) + 2.0 * LABEL_INSET
+        } else {
+            240.0
+        };
+        let columns = ((width + gap) / (cell + gap)).floor().max(1.0) as usize;
         let resized = self.list_columns != columns;
         self.list_columns = columns;
         let cell_width = (width - gap * (columns - 1) as f32) / columns as f32;
         let total_rows = self.results.len().div_ceil(columns);
         let mut select = None;
+        let mut random = false;
+        let mut hover = None;
         let height = ui.available_height().max(0.0);
         let stride = row_height + ui.spacing().item_spacing.y;
         let content_height = (total_rows as f32 * stride - ui.spacing().item_spacing.y).max(0.0);
@@ -84,28 +93,24 @@ impl Browser {
                         let index = self.results[cell];
                         let candidate = &self.snapshot.as_ref().unwrap().candidates[index];
                         let text = &self.row_labels[cell];
-                        let response = ui
-                            .push_id(index, |ui| {
-                                ui.add_sized(
-                                    [cell_width, row_height],
-                                    egui::Button::new("").selected(self.selected == Some(index)),
-                                )
-                            })
-                            .inner;
+                        let response = cell_response(ui, index, cell_width, row_height);
+                        let tint = self.row_tints[cell];
+                        paint_cell(ui, &response, self.selected == Some(index), tint.background);
                         // Fixed-height virtual rows must not expand when a path wraps.
                         let painter = ui
                             .painter()
-                            .with_clip_rect(response.rect.shrink2(egui::vec2(6.0, 1.0)));
-                        let tint = self.row_tints[cell];
+                            .with_clip_rect(response.rect.shrink2(egui::vec2(LABEL_INSET, 1.0)));
                         let dark = ui.visuals().dark_mode;
-                        let plain = ui.visuals().text_color();
+                        let plain = cell_text(dark);
                         let paint = |slot: Option<usize>| {
                             slot.map_or(plain, |slot| row_colors::color(slot, dark))
                         };
                         let name_color = if candidate.measurement.is_heavy_offline_load() {
                             PINK
                         } else {
-                            paint(tint.name)
+                            tint.name.map_or(plain, |slot| {
+                                plain.lerp_to_gamma(row_colors::color(slot, dark), NAME_TINT)
+                            })
                         };
                         let font = egui::TextStyle::Body.resolve(ui.style());
                         let mut job = egui::text::LayoutJob::default();
@@ -115,11 +120,20 @@ impl Browser {
                         }
                         let galley = ui.fonts(|fonts| fonts.layout_job(job));
                         let top = response.rect.center().y - galley.size().y / 2.0;
-                        painter.galley(egui::pos2(response.rect.left() + 6.0, top), galley, plain);
-                        let response = response.on_hover_text(details(candidate));
+                        painter.galley(
+                            egui::pos2(response.rect.left() + LABEL_INSET, top),
+                            galley,
+                            plain,
+                        );
+                        if response.hovered() {
+                            hover = Some(hover_tooltip(&response, index, self.hover_since, || {
+                                details(self.snapshot.as_ref().unwrap(), index)
+                            }));
+                        }
                         if response.clicked() {
                             select = Some(index);
                         }
+                        random |= response.secondary_clicked();
                     }
                 });
             }
@@ -138,8 +152,118 @@ impl Browser {
             // Pointer selection already targets a visible cell, including a partial edge row.
             self.scroll_to_selected = false;
         }
+        self.hover_since = hover;
+        if random {
+            self.select_random();
+        }
+    }
+
+    /// Width of the longest row label, measured once per result list.
+    fn widest_label(&mut self, ui: &egui::Ui) -> f32 {
+        if let Some(width) = self.widest_label {
+            return width;
+        }
+        let font = egui::TextStyle::Body.resolve(ui.style());
+        let width = ui.fonts(|fonts| {
+            self.row_labels
+                .iter()
+                .map(|label| label.chars().map(|c| fonts.glyph_width(&font, c)).sum())
+                .fold(0.0, f32::max)
+        });
+        self.widest_label = Some(width);
+        width
     }
 }
+
+/// Horizontal space between a cell edge and its label.
+const LABEL_INSET: f32 = 6.0;
+
+/// A plain click target: unlike a button it shows no press, so a right click looks inert
+/// until it acts, and the identity keeps its tooltip across scrolling.
+fn cell_response(ui: &mut egui::Ui, index: usize, width: f32, height: f32) -> egui::Response {
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::hover());
+    ui.interact(
+        rect,
+        ui.id().with(("patch_cell", index)),
+        egui::Sense::click(),
+    )
+}
+
+/// Shows the cell's tooltip once the pointer has rested on it for the tooltip delay,
+/// returning when that rest began. egui's own rule waits for pointer movement after a click,
+/// which it cannot see at the browser's low frame rate while the main window is hidden.
+fn hover_tooltip(
+    response: &egui::Response,
+    index: usize,
+    previous: Option<(usize, f64)>,
+    text: impl FnOnce() -> String,
+) -> (usize, f64) {
+    let now = response.ctx.input(|input| input.time);
+    let pressed = response.clicked() || response.secondary_clicked();
+    let since = previous
+        .filter(|&(at, _)| at == index && !pressed)
+        .map_or(now, |(_, since)| since);
+    if now - since >= f64::from(response.ctx.style().interaction.tooltip_delay) {
+        response.show_tooltip_text(text());
+    }
+    (index, since)
+}
+
+/// Hovering never changes a cell; only the selected (playing) cell is lit, with a slow
+/// pulse, so the pointer is never mistaken for the chosen patch.
+fn paint_cell(ui: &egui::Ui, response: &egui::Response, selected: bool, group: Option<usize>) {
+    let visuals = ui.visuals();
+    let radius = visuals.widgets.inactive.corner_radius;
+    if !selected {
+        ui.painter()
+            .rect_filled(response.rect, radius, cell_fill(visuals.dark_mode, group));
+        return;
+    }
+    let time = ui.input(|input| input.time);
+    let pulse = (0.5 + 0.5 * (time * std::f64::consts::TAU / PULSE_SECONDS).sin()) as f32;
+    let glow = visuals.selection.stroke.color;
+    let fill = visuals
+        .selection
+        .bg_fill
+        .lerp_to_gamma(glow, 0.1 + 0.25 * pulse);
+    ui.painter().rect_filled(response.rect, radius, fill);
+    ui.painter().rect_stroke(
+        response.rect,
+        radius,
+        egui::Stroke::new(2.0_f32, glow.gamma_multiply(0.4 + 0.6 * pulse)),
+        egui::StrokeKind::Outside,
+    );
+}
+
+/// Far from the text colors, faintly tinted by the row's preset so presets in ALL separate.
+fn cell_fill(dark: bool, group: Option<usize>) -> Color32 {
+    let base = if dark {
+        Color32::from_gray(32)
+    } else {
+        Color32::from_gray(244)
+    };
+    group.map_or(base, |slot| {
+        base.lerp_to_gamma(row_colors::color(slot, dark), GROUP_TINT)
+    })
+}
+
+/// Text kept far from the cell fill in both themes.
+fn cell_text(dark: bool) -> Color32 {
+    if dark {
+        Color32::from_gray(215)
+    } else {
+        Color32::from_gray(25)
+    }
+}
+
+/// How much of the parent folder's color tints a patch name.
+const NAME_TINT: f32 = 0.45;
+
+/// How much of the preset color shows through an unselected cell.
+const GROUP_TINT: f32 = 0.12;
+
+/// One breath of the selected cell's glow.
+const PULSE_SECONDS: f64 = 1.2;
 
 fn suffix(path: &str, depth: usize) -> String {
     let parts: Vec<_> = path.split(['/', '\\']).collect();
@@ -242,7 +366,8 @@ fn mixed_plugins(candidates: &[Candidate], results: &[usize]) -> bool {
     })
 }
 
-fn details(candidate: &Candidate) -> String {
+fn details(snapshot: &Snapshot, index: usize) -> String {
+    let candidate = &snapshot.candidates[index];
     let mut text = format!(
         "{} — {}\n{}",
         candidate.plugin_name,
@@ -258,6 +383,12 @@ fn details(candidate: &Candidate) -> String {
     }
     if candidate.entry.merged_count() > 1 {
         text.push_str(&format!("\n{} merged", candidate.entry.merged_count()));
+    }
+    for (role, presets) in snapshot.memberships(index) {
+        text.push_str(&format!("\nRole: {role}"));
+        if !presets.is_empty() {
+            text.push_str(&format!("\nPreset: {}", presets.join(", ")));
+        }
     }
     text
 }

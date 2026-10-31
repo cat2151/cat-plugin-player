@@ -43,6 +43,12 @@ pub(crate) struct Browser {
     /// Set on open; reveal the saved named cursor, or the playing patch, after loading.
     pub reveal_pending: bool,
     pub list_columns: usize,
+    /// `w`: columns as wide as the longest label instead of the fixed width.
+    pub fit_columns: bool,
+    /// Cached for `fit_columns`; cleared whenever the labels change.
+    pub widest_label: Option<f32>,
+    /// Hovered cell and when the pointer came to rest on it, for its tooltip.
+    pub hover_since: Option<(usize, f64)>,
     /// Vim-style count typed before a movement key.
     pub count: Option<usize>,
     /// Save the currently loaded instrument on the root UI thread.
@@ -224,6 +230,7 @@ impl Browser {
                 self.results.clear();
                 self.row_labels.clear();
                 self.row_tints.clear();
+                self.widest_label = None;
                 self.selected = None;
                 self.requests.invalidate();
             }

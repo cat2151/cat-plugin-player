@@ -401,6 +401,8 @@ fn preset_last_row_is_reachable_by_pointer_scroll() {
     );
 }
 
+#[path = "cell_tests.rs"]
+mod cell_tests;
 #[path = "controls_tests.rs"]
 mod controls_tests;
 

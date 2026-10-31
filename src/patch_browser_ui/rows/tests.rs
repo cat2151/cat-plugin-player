@@ -39,18 +39,46 @@ fn contextual_names_keep_shortest_unique_suffix_and_dexed_program_identity() {
 
 #[test]
 fn hover_only_has_valid_category_and_multiple_merge_details() {
+    let hover = |patch: &Candidate| {
+        let snapshot = Snapshot::build(vec![patch.clone()], &[]).unwrap();
+        details(&snapshot, 0)
+    };
     let mut patch = candidate("a", "Alpha", "Bass/Patch", None);
-    assert!(!details(&patch).contains("category"));
-    assert!(!details(&patch).contains("merged"));
-    assert!(!details(&patch).contains("Load:"));
-    assert!(!details(&patch).contains("Size:"));
+    assert!(!hover(&patch).contains("category"));
+    assert!(!hover(&patch).contains("merged"));
+    assert!(!hover(&patch).contains("Load:"));
+    assert!(!hover(&patch).contains("Size:"));
     patch.entry = patch.entry.with_merged(3, vec!["alias".into()]);
-    assert!(details(&patch).contains("3 merged"));
+    assert!(hover(&patch).contains("3 merged"));
     patch.entry = cmrt_patch_select::PatchCatalogEntry::new(
         "Bass/Patch".into(),
         "bass/patch".into(),
         "Alpha".into(),
         Some("Bass".into()),
     );
-    assert!(details(&patch).contains("Category: Bass"));
+    assert!(hover(&patch).contains("Category: Bass"));
+}
+
+/// In ALL the row alone does not say where the patch belongs, so the hover names it.
+#[test]
+fn hover_names_the_role_and_presets_holding_the_patch() {
+    let users = cmrt_patch_select::prepare_user_presets(vec![("bass".into(), "zebra".into())]);
+    let snapshot = Snapshot::build(
+        vec![
+            candidate("a", "Alpha", "Zebra", Some("Bass")),
+            candidate("a", "Alpha", "Other", Some("Bass")),
+        ],
+        &users,
+    )
+    .unwrap();
+    let zebra = snapshot
+        .candidates
+        .iter()
+        .position(|candidate| candidate.display == "Zebra")
+        .unwrap();
+    let text = details(&snapshot, zebra);
+    assert!(text.contains("\nRole: Bass track"), "{text}");
+    assert!(text.contains("zebra"), "{text}");
+    assert!(!details(&snapshot, 1 - zebra).contains("zebra"));
+    assert!(!text.contains("ALL"), "{text}");
 }

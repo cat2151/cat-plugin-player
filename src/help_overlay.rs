@@ -22,6 +22,7 @@ type Group = &'static [(&'static str, &'static str)];
 const MOVE: Group = &[
     ("h j k l  ← ↓ ↑ →", "移動"),
     ("PgUp  PgDn", "10行"),
+    ("Home  End", "先頭 / 末尾"),
     ("数字 → 移動", "回数"),
 ];
 
@@ -93,13 +94,14 @@ const SMF: &[Group] = &[
 const PATCH: &[Group] = &[
     MOVE,
     &[
-        ("R", "ランダム"),
+        ("R  右クリック", "ランダム"),
         ("Space", "重い音色を読む"),
         ("Enter  Esc", "閉じる"),
     ],
     &[
         ("/", "検索"),
         ("M", "Solo / Mute（a-z Solo, Shift+A-Z Mute）"),
+        ("W", "列幅"),
     ],
     &[("F", "お気に入りに追加")],
 ];

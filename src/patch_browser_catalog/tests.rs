@@ -334,3 +334,43 @@ fn installed_patches_belong_to_one_preset_row() {
     );
     assert!(overlaps.is_empty());
 }
+
+/// Every role's list, ALL included, runs in its Preset pane order across plugins.
+#[test]
+fn patches_follow_the_preset_pane_order_in_every_role() {
+    let snapshot = Snapshot::build(
+        vec![
+            candidate("surge", "Surge XT", "Warm Pad.fxp", Some("Pads")),
+            candidate("dexed", "Dexed", "bank.syx/01 E.PIANO", None),
+            candidate("surge", "Surge XT", "Saw Lead.fxp", Some("Leads")),
+            candidate("dexed", "Dexed", "bank.syx/02 SUB BASS", None),
+            candidate("surge", "Surge XT", "Brass Stab.fxp", Some("Brass")),
+            candidate("dexed", "Dexed", "bank.syx/03 STRINGS", None),
+        ],
+        &[],
+    )
+    .unwrap();
+    for (role, presets) in snapshot.presets.iter().enumerate() {
+        let row_of = |index: &usize| {
+            presets
+                .iter()
+                .skip(1)
+                .filter(|preset| !preset.is_user && !preset.is_favorite)
+                .position(|preset| preset.matches.binary_search(index).is_ok())
+                .unwrap_or(presets.len())
+        };
+        let rows: Vec<_> = snapshot
+            .filter(role, 0, "")
+            .unwrap()
+            .iter()
+            .map(row_of)
+            .collect();
+        assert!(rows.is_sorted(), "role {role}: {rows:?}");
+    }
+    let names: Vec<_> = snapshot
+        .candidates
+        .iter()
+        .map(|c| c.display.as_str())
+        .collect();
+    assert_eq!(names[0], "bank.syx/02 SUB BASS", "{names:?}");
+}

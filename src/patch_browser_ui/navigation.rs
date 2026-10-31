@@ -7,6 +7,8 @@ pub(crate) enum Step {
     Right,
     Up,
     Down,
+    First,
+    Last,
 }
 
 const PAGE: usize = 10;
@@ -43,6 +45,12 @@ pub(crate) fn consume_step(input: &mut InputState) -> Option<(Step, usize)> {
             .find(|&(_, key)| input.consume_key(Modifiers::NONE, key))
             .map(|(step, _)| (step, PAGE))
     })
+    .or_else(|| {
+        [(Step::First, Key::Home), (Step::Last, Key::End)]
+            .into_iter()
+            .find(|&(_, key)| input.consume_key(Modifiers::NONE, key))
+            .map(|(step, _)| (step, 1))
+    })
 }
 
 /// Appends a typed digit to the pending count; a leading 0 is not a count.
@@ -63,6 +71,11 @@ pub(crate) fn consume_count_digit(input: &mut InputState, count: Option<usize>) 
 
 /// The cell reached from `at`; with nothing selected yet, every step starts at the first cell.
 pub(crate) fn next(at: Option<usize>, len: usize, columns: usize, step: Step) -> usize {
+    match step {
+        Step::First => return 0,
+        Step::Last => return len - 1,
+        _ => {}
+    }
     let Some(at) = at else {
         return 0;
     };
@@ -75,7 +88,7 @@ pub(crate) fn next(at: Option<usize>, len: usize, columns: usize, step: Step) ->
         // Below a cell of the full row above the partial last row lies empty space;
         // the nearest cell is then the last one.
         Step::Down if at / columns < last / columns => (at + columns).min(last),
-        Step::Down => at,
+        Step::Down | Step::First | Step::Last => at,
     }
 }
 

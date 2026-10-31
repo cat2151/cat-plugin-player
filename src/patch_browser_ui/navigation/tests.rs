@@ -39,3 +39,10 @@ fn repeated_steps_stop_at_the_edge() {
     assert_eq!(next_by(Some(5), 7, 3, Step::Up, usize::MAX), 2);
     assert_eq!(next_by(None, 7, 3, Step::Right, 1), 0);
 }
+
+#[test]
+fn home_and_end_reach_the_first_and_last_cell() {
+    assert_eq!(next(Some(4), 7, 3, Step::First), 0);
+    assert_eq!(next(None, 7, 3, Step::Last), 6);
+    assert_eq!(next_by(Some(0), 7, 3, Step::Last, 5), 6);
+}

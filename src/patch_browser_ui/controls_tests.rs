@@ -352,6 +352,17 @@ fn main_random_overlay_paints_before_selection_and_lasts_through_apply() {
     );
     assert_eq!(browser.main_random, MainRandom::Catalog);
     assert_eq!(browser.poll_main_random(), None);
+    let output = ctx.run(egui::RawInput::default(), |ctx| {
+        browser.show_main_random_overlay(ctx);
+    });
+    assert!(
+        output.shapes.iter().any(|shape| matches!(
+            &shape.shape,
+            egui::epaint::Shape::Text(text)
+                if text.galley.job.text == "Alpha — Bass\nSize: unmeasured"
+        )),
+        "the loading patch names its plugin and catalog size"
+    );
     browser.requests.next().unwrap();
     browser.main_random = MainRandom::Idle;
     let _ = ctx.run(egui::RawInput::default(), |ctx| {

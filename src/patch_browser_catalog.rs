@@ -1,8 +1,8 @@
 //! An immutable selector snapshot; indices never cross snapshot generations.
 use crate::patch_catalog::Candidate;
 use cmrt_patch_select::{
-    filter_candidates, plugin_menu::PluginMenu, sort_for_selector, FilterGroup, FilterPreset,
-    PatchCatalogEntry, PreparedPresets,
+    filter_candidates, plugin_menu::PluginMenu, preset_rank, sort_for_selector, FilterGroup,
+    FilterPreset, PatchCatalogEntry, PreparedPresets,
 };
 use cmrt_patches::{PatchRoleIndex, PatchRoleInput, PluginTerm};
 use std::cell::RefCell;
@@ -29,6 +29,26 @@ impl Snapshot {
                 entry.selector_category().map(str::to_owned),
             )
         };
+        // PatchRoleIndex keys on display: isolate plugins before using the shared classifier.
+        let mut role_indices: BTreeMap<_, Vec<&PatchCatalogEntry>> = BTreeMap::new();
+        for candidate in &candidates {
+            role_indices
+                .entry((candidate.format.clone(), candidate.plugin_id.clone()))
+                .or_default()
+                .push(&candidate.entry);
+        }
+        let role_indices: BTreeMap<_, _> = role_indices
+            .into_iter()
+            .map(|(plugin, entries)| (plugin, role_index(&entries, users)))
+            .collect();
+        let ranks: HashMap<_, _> = candidates
+            .iter()
+            .map(|candidate| {
+                let roles = &role_indices[&(candidate.format.clone(), candidate.plugin_id.clone())];
+                let rank = preset_rank(roles, candidate.entry.display());
+                (key(&candidate.entry), rank)
+            })
+            .collect();
         let mut by_entry: HashMap<_, VecDeque<Candidate>> = HashMap::new();
         let mut entries = Vec::with_capacity(candidates.len());
         for candidate in candidates {
@@ -38,7 +58,7 @@ impl Snapshot {
                 .or_default()
                 .push_back(candidate);
         }
-        sort_for_selector(&mut entries);
+        sort_for_selector(&mut entries, |entry| ranks[&key(entry)]);
         let candidates: Vec<_> = entries
             .iter()
             .map(|entry| by_entry.get_mut(&key(entry)).unwrap().pop_front().unwrap())
@@ -46,11 +66,10 @@ impl Snapshot {
         let mut groups: BTreeMap<_, Vec<usize>> = BTreeMap::new();
         for (index, candidate) in candidates.iter().enumerate() {
             groups
-                .entry((&candidate.format, &candidate.plugin_id))
+                .entry((candidate.format.clone(), candidate.plugin_id.clone()))
                 .or_default()
                 .push(index);
         }
-        // PatchRoleIndex keys on display: isolate plugins before using the shared classifier.
         let empty = PreparedPresets::build(&[], users, &PatchRoleIndex::default())?;
         let mut presets: Vec<_> = (0..FilterGroup::ALL.len())
             .map(|role| empty.for_role(role).to_vec())
@@ -59,28 +78,12 @@ impl Snapshot {
             .iter()
             .map(|role| vec![Vec::new(); role.len()])
             .collect();
-        for indices in groups.values() {
+        for (plugin, indices) in &groups {
             let local: Vec<_> = indices
                 .iter()
                 .map(|&index| entries[index].clone())
                 .collect();
-            let normalized: Vec<_> = local
-                .iter()
-                .map(|entry| entry.display().to_lowercase())
-                .collect();
-            let roles = PatchRoleIndex::build(
-                local
-                    .iter()
-                    .zip(&normalized)
-                    .map(|(entry, normalized)| PatchRoleInput {
-                        display: entry.display(),
-                        normalized_display: normalized,
-                        selector_category: entry.selector_category(),
-                        plugin: Some(entry.plugin_sort_key()),
-                    }),
-                users,
-            );
-            let prepared = PreparedPresets::build(&local, users, &roles)?;
+            let prepared = PreparedPresets::build(&local, users, &role_indices[plugin])?;
             for (role, role_matches) in matches.iter_mut().enumerate() {
                 for (preset, target) in prepared.for_role(role).iter().zip(role_matches) {
                     target.extend(preset.matches.iter().map(|&index| indices[index]));
@@ -150,9 +153,47 @@ impl Snapshot {
         listing
     }
 
+    /// Each role holding the candidate, with its presets other than that role's ALL.
+    pub fn memberships(&self, index: usize) -> Vec<(&'static str, Vec<&str>)> {
+        let holds = |preset: &FilterPreset| preset.matches.binary_search(&index).is_ok();
+        self.presets
+            .iter()
+            .enumerate()
+            .skip(1)
+            .filter(|(_, presets)| holds(&presets[0]))
+            .map(|(role, presets)| {
+                let names = presets[1..]
+                    .iter()
+                    .filter(|preset| holds(preset))
+                    .map(|preset| preset.label.as_str())
+                    .collect();
+                (FilterGroup::ALL[role].label(), names)
+            })
+            .collect()
+    }
+
     pub fn filter(&self, role: usize, preset: usize, query: &str) -> Result<Vec<usize>, String> {
         filter_candidates(&self.entries, &self.presets[role][preset].matches, query)
     }
+}
+
+fn role_index(entries: &[&PatchCatalogEntry], users: &[(String, String)]) -> PatchRoleIndex {
+    let normalized: Vec<_> = entries
+        .iter()
+        .map(|entry| entry.display().to_lowercase())
+        .collect();
+    PatchRoleIndex::build(
+        entries
+            .iter()
+            .zip(&normalized)
+            .map(|(entry, normalized)| PatchRoleInput {
+                display: entry.display(),
+                normalized_display: normalized,
+                selector_category: entry.selector_category(),
+                plugin: Some(entry.plugin_sort_key()),
+            }),
+        users,
+    )
 }
 
 /// Which Role / Preset rows the left panes show; anything not yet computed is shown.
