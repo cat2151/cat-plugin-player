@@ -53,10 +53,10 @@ impl App {
                 }
             }
         }
-        if (!browser.open && browser.main_random == crate::patch_browser::MainRandom::Idle)
-            // Editor selection must not resolve saved filters against the
-            // single instrument known by the audio-first startup restore.
-            || (self.selection.is_some() && (self.scanning || self.deferred_scan))
+        // Built even while closed, so main-window Random can name its choice at once.
+        // Editor selection must not resolve saved filters against the
+        // single instrument known by the audio-first startup restore.
+        if (self.selection.is_some() && (self.scanning || self.deferred_scan))
             || browser.snapshot.is_some()
             || browser.build.is_some()
             || browser.build_error.is_some()

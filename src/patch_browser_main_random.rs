@@ -1,12 +1,12 @@
 //! Main-window `r`: the browser's own Random over its saved filter, with the window closed.
 use super::*;
 
-/// The closed browser builds its catalog and starts native work only for this request.
+/// The closed browser starts native work only for this request.
 #[derive(Default, PartialEq, Debug)]
 pub(crate) enum MainRandom {
     #[default]
     Idle,
-    /// Waiting for the catalog snapshot.
+    /// Pressed before the background catalog snapshot was ready.
     Catalog,
     /// A patch is chosen; waiting for its preparation to start.
     Start,
@@ -15,7 +15,9 @@ pub(crate) enum MainRandom {
 impl App {
     pub(crate) fn request_main_random(&mut self, ctx: &eframe::egui::Context) {
         if !self.patch_browser.open {
-            self.patch_browser.begin_main_random(ctx);
+            if let Some(status) = self.patch_browser.begin_main_random(ctx) {
+                self.status = status;
+            }
         }
     }
 
@@ -28,11 +30,14 @@ impl App {
 }
 
 impl Browser {
-    pub(crate) fn begin_main_random(&mut self, ctx: &eframe::egui::Context) {
+    /// Chooses now when the snapshot is ready, so the first overlay frame names the patch.
+    pub(crate) fn begin_main_random(&mut self, ctx: &eframe::egui::Context) -> Option<String> {
         self.main_random_overlay = true;
         self.main_random = MainRandom::Catalog;
-        // Selection can be slow. Let the keypress frame paint before starting it.
+        // Native preparation can block. Let the keypress frame paint before starting it.
         self.main_random_paint_pass = frame_start_pass(ctx);
+        self.snapshot.as_ref()?;
+        self.choose_main_random()
     }
 
     pub(crate) fn main_random_waiting_for_paint(&self, ctx: &eframe::egui::Context) -> bool {
@@ -119,6 +124,10 @@ impl Browser {
             return Some(format!("Random patch failed: {error}"));
         }
         self.snapshot.as_ref()?;
+        self.choose_main_random()
+    }
+
+    fn choose_main_random(&mut self) -> Option<String> {
         self.select_random();
         self.main_random = MainRandom::Idle;
         if self.requests.desired.is_some() {

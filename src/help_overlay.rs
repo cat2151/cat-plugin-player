@@ -103,6 +103,7 @@ const PATCH: &[Group] = &[
         ("M", "Solo / Mute（a-z Solo, Shift+A-Z Mute）"),
         ("W", "列幅"),
     ],
+    &[("[  ]", "前 / 次の Type")],
     &[("F", "お気に入りに追加")],
 ];
 

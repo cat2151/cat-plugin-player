@@ -40,6 +40,8 @@ pub(crate) struct Browser {
     pub error: Option<String>,
     pub build_error: Option<String>,
     pub scroll_to_selected: bool,
+    /// `[` / `]` moved the Type pane's choice out of the painted rows.
+    pub scroll_to_preset: bool,
     /// Set on open; reveal the saved named cursor, or the playing patch, after loading.
     pub reveal_pending: bool,
     pub list_columns: usize,
@@ -300,6 +302,7 @@ impl App {
         }
         let main_random = self.patch_browser.main_random == MainRandom::Start;
         if !(self.patch_browser.open || main_random)
+            || self.patch_browser.main_random_waiting_for_paint(ctx)
             || self.actions_busy()
             || self.resident_waiting()
         {

@@ -30,7 +30,7 @@ impl Browser {
         }
         ui.label(format!("Patches ({} results)", self.results.len()));
         if self.results.is_empty() {
-            ui.label("No results. Edit search or choose another Role / Preset.");
+            ui.label("No results. Edit search or choose another Role / Type.");
         }
         let row_height = ui.text_style_height(&egui::TextStyle::Body) + 6.0;
         // Reserve scrollbar space so a column never disappears when scrolling starts.
@@ -387,7 +387,7 @@ fn details(snapshot: &Snapshot, index: usize) -> String {
     for (role, presets) in snapshot.memberships(index) {
         text.push_str(&format!("\nRole: {role}"));
         if !presets.is_empty() {
-            text.push_str(&format!("\nPreset: {}", presets.join(", ")));
+            text.push_str(&format!("\nType: {}", presets.join(", ")));
         }
     }
     text

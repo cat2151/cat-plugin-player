@@ -184,7 +184,7 @@ impl Browser {
             } else if let Some(error) = &self.build_error {
                 ui.colored_label(Color32::YELLOW, error);
             } else if self.snapshot.is_none() {
-                ui.label("Preparing Role / Preset catalog...");
+                ui.label("Preparing Role / Type catalog...");
             } else {
                 ui.add_enabled_ui(enabled, |ui| self.controls(ui));
             }
@@ -243,6 +243,14 @@ impl Browser {
         }
         if ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, Key::W)) {
             self.fit_columns = !self.fit_columns;
+        }
+        if let Some(forward) = ctx.input_mut(|input| {
+            [(false, Key::OpenBracket), (true, Key::CloseBracket)]
+                .into_iter()
+                .find(|&(_, key)| input.consume_key(egui::Modifiers::NONE, key))
+                .map(|(forward, _)| forward)
+        }) {
+            self.step_preset(forward);
         }
         if let Some((step, times)) = ctx.input_mut(navigation::consume_step) {
             if !self.results.is_empty() {

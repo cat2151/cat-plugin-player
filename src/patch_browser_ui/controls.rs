@@ -189,7 +189,7 @@ impl Browser {
             if let Some(error) = self.store.as_ref().and_then(|store| store.error.as_ref()) {
                 ui.colored_label(Color32::YELLOW, error);
             }
-            ui.label("Saved presets can be deleted in the Preset pane. Esc returns to browsing.");
+            ui.label("Saved conditions can be deleted in the Type pane. Esc returns to browsing.");
         });
         if response.should_close() {
             self.condition_menu = false;

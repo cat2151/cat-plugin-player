@@ -15,7 +15,7 @@ impl Browser {
         let role = egui::Rect::from_min_size(left.min, egui::vec2(left.width(), role_height));
         let preset = egui::Rect::from_min_max(egui::pos2(left.min.x, role.max.y + gap), left.max);
         pane(ui, role, "Role", |ui| changed |= self.roles(ui));
-        pane(ui, preset, "Preset", |ui| changed |= self.presets(ui));
+        pane(ui, preset, "Type", |ui| changed |= self.presets(ui));
         if changed {
             self.filter(true);
         }
@@ -50,6 +50,25 @@ impl Browser {
         changed
     }
 
+    /// `[` / `]`: the previous / next listed Type, wrapping at either end.
+    pub(super) fn step_preset(&mut self, forward: bool) {
+        let Some(snapshot) = &self.snapshot else {
+            return;
+        };
+        let listed: Vec<usize> = (0..snapshot.presets[self.role].len())
+            .filter(|&index| self.listing.preset(self.role, index))
+            .collect();
+        let Some(at) = listed.iter().position(|&index| index == self.preset) else {
+            return;
+        };
+        let next = listed[(at + if forward { 1 } else { listed.len() - 1 }) % listed.len()];
+        if next != self.preset {
+            self.preset = next;
+            self.scroll_to_preset = true;
+            self.filter(true);
+        }
+    }
+
     pub(super) fn presets(&mut self, ui: &mut egui::Ui) -> bool {
         let mut changed = false;
         let mut delete = None;
@@ -65,11 +84,11 @@ impl Browser {
                         continue;
                     }
                     ui.horizontal(|ui| {
-                        if ui
-                            .selectable_label(self.preset == index, &preset.label)
-                            .clicked()
-                            && self.preset != index
-                        {
+                        let label = ui.selectable_label(self.preset == index, &preset.label);
+                        if self.preset == index && std::mem::take(&mut self.scroll_to_preset) {
+                            label.scroll_to_me(None);
+                        }
+                        if label.clicked() && self.preset != index {
                             self.preset = index;
                             changed = true;
                         }

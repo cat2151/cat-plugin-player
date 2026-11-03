@@ -155,3 +155,65 @@ fn solo_hides_presets_of_other_plugins_and_leaves_a_hidden_choice() {
     assert_eq!((browser.role, browser.preset), (drum, 0));
     assert_eq!(browser.results.len(), 1);
 }
+
+#[test]
+fn brackets_step_through_listed_types_and_wrap() {
+    let snapshot = Snapshot::build(
+        vec![
+            candidate("dexed", "Dexed", "01 KICK", None),
+            candidate("surge", "Surge XT", "Snare 1", None),
+        ],
+        &[],
+    )
+    .unwrap();
+    let drum = FilterGroup::ALL
+        .iter()
+        .position(|group| group.role() == Some(cmrt_patches::PatchRole::Drum))
+        .unwrap();
+    let position = |label: &str| {
+        snapshot.presets[drum]
+            .iter()
+            .position(|preset| preset.label == label)
+            .unwrap()
+    };
+    let (kick, snare) = (position("kick"), position("snare"));
+    assert!(!snapshot.listing("").preset(drum, position("hi-hat")));
+    let mut browser = Browser {
+        open: true,
+        snapshot: Some(snapshot),
+        role: drum,
+        ..Default::default()
+    };
+    browser.filter(false);
+    let ctx = egui::Context::default();
+    let mut press = |key: Key| {
+        let event = egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        };
+        let _ = painted(&mut browser, &ctx);
+        let _ = ctx.run(
+            egui::RawInput {
+                events: vec![event],
+                ..Default::default()
+            },
+            |ctx| browser.show(ctx, None, "test"),
+        );
+        (browser.preset, browser.results.len())
+    };
+    assert_eq!(press(Key::CloseBracket), (kick, 1));
+    assert_eq!(
+        press(Key::CloseBracket),
+        (snare, 1),
+        "hidden hi-hat is skipped"
+    );
+    assert_eq!(press(Key::CloseBracket), (0, 2), "wraps to ALL");
+    assert_eq!(
+        press(Key::OpenBracket),
+        (snare, 1),
+        "wraps back to the last"
+    );
+}

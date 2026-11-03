@@ -183,7 +183,9 @@ impl App {
             // An explicit patch/favorite may succeed after recovery failed.
             self.editor_rebuild = None;
         }
-        if self.selection.is_some() {
+        // A resident player has no selection until the editor asks, yet its session
+        // still starts empty and must not replace the standalone player's.
+        if self.selection.is_some() || self.shutdown.selection_requested {
             return;
         }
         if !self.unsafe_state.is_empty()

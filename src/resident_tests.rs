@@ -420,3 +420,22 @@ mod panes;
 
 #[path = "resident_cursor_pipe_tests.rs"]
 mod cursor;
+
+#[test]
+fn a_resident_never_replaces_the_standalone_session() {
+    if crate::native_library::process::isolated() {
+        return;
+    }
+    let _library = crate::native_library::load().unwrap();
+    let (mut app, _editor) = app("resident session");
+    let config = app.config_path.clone().unwrap();
+    let standalone = crate::status::Status {
+        sequence_pattern: crate::SequencePattern::Fmaj7G6Arpeggio,
+        ..Default::default()
+    };
+    standalone.write(&config).unwrap();
+    let disk = std::fs::read(crate::status::path(&config)).unwrap();
+    // Any background save, such as a refreshed Surge start-delay table, while hidden.
+    app.save_session();
+    assert_eq!(std::fs::read(crate::status::path(&config)).unwrap(), disk);
+}

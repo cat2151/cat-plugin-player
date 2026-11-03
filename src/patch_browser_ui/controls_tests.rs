@@ -328,40 +328,30 @@ fn main_random_waits_for_catalog_then_uses_the_filter_or_reports_why_not() {
 }
 
 #[test]
-fn main_random_overlay_paints_before_selection_and_lasts_through_apply() {
+fn main_random_overlay_names_patch_in_first_frame_and_lasts_through_apply() {
     use crate::patch_browser::MainRandom;
     let mut browser = browser();
     browser.open = false;
     browser.query = "plugin:alpha".into();
     browser.filter(false);
     let ctx = egui::Context::default();
-    browser.begin_main_random(&ctx);
-    assert!(
-        browser.requests.desired.is_none(),
-        "selection must wait for paint"
-    );
+    assert_eq!(browser.begin_main_random(&ctx), None);
+    assert_eq!(browser.main_random, MainRandom::Start);
     let output = ctx.run(egui::RawInput::default(), |ctx| {
         browser.show_main_random_overlay(ctx);
     });
-    assert!(
-        output.shapes.iter().any(|shape| matches!(
-            &shape.shape,
-            egui::epaint::Shape::Text(text) if text.galley.job.text == "Changing patch..."
-        )),
-        "the very first frame must contain the overlay text"
-    );
-    assert_eq!(browser.main_random, MainRandom::Catalog);
-    assert_eq!(browser.poll_main_random(), None);
-    let output = ctx.run(egui::RawInput::default(), |ctx| {
-        browser.show_main_random_overlay(ctx);
-    });
-    assert!(
-        output.shapes.iter().any(|shape| matches!(
-            &shape.shape,
-            egui::epaint::Shape::Text(text)
-                if text.galley.job.text == "Alpha — Bass\nSize: unmeasured"
-        )),
-        "the loading patch names its plugin and catalog size"
+    let texts: Vec<_> = output
+        .shapes
+        .iter()
+        .filter_map(|shape| match &shape.shape {
+            egui::epaint::Shape::Text(text) => Some(text.galley.job.text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        texts,
+        ["Changing patch...", "Alpha — Bass\nSize: unmeasured"],
+        "the very first frame names the loading patch and its catalog size"
     );
     browser.requests.next().unwrap();
     browser.main_random = MainRandom::Idle;
@@ -416,14 +406,13 @@ fn main_random_waits_for_presented_frame_even_when_sizing_discards_a_pass() {
             ctx.request_discard("test sizing pass");
         }
         passes += 1;
+        // The choice is made, but native preparation is gated on this until painted.
         assert!(browser.main_random_waiting_for_paint(ctx));
-        assert!(browser.requests.desired.is_none());
+        assert!(browser.requests.desired.is_some());
         browser.show_main_random_overlay(ctx);
     });
     assert_eq!(passes, 2);
     let _ = ctx.run(egui::RawInput::default(), |ctx| {
         assert!(!browser.main_random_waiting_for_paint(ctx));
-        browser.poll_main_random();
-        assert!(browser.requests.desired.is_some());
     });
 }
