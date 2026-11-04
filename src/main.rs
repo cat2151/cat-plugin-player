@@ -28,6 +28,8 @@ mod help_overlay;
 mod history;
 mod host_ui;
 mod main_menu;
+#[path = "../shared/main_reached.rs"]
+mod main_reached;
 use plugin_specific::surge_start_delay;
 mod surge_start_delay_app;
 use ffi as host;

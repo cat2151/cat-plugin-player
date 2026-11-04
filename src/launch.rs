@@ -4,6 +4,7 @@ use clap::Parser;
 use std::time::Instant;
 
 pub(super) fn run() -> eframe::Result {
+    let main_reached_ms = main_reached::since_process_creation_ms();
     let cli = cli::Cli::parse();
     if let Some(command) = &cli.command {
         return crate::surge_start_delay::measure::run(command)
@@ -19,9 +20,14 @@ pub(super) fn run() -> eframe::Result {
     if cli.patch_roots {
         return crate::patch_roots_request::run().map_err(|e| eframe::Error::AppCreation(e.into()));
     }
+    let from_editor = cli.select_smf.is_some() || cli.resident.is_some();
+    if !from_editor {
+        let log = config::path().map(|config| config.with_file_name("startup.log"));
+        main_reached::report(main_reached_ms, log);
+    }
     startup::init(Instant::now());
     let _native_library = native_library::load().map_err(eframe::Error::AppCreation)?;
-    let mut app = App::prepare_mode(cli.select_smf.is_some() || cli.resident.is_some());
+    let mut app = App::prepare_mode(from_editor);
     app.load_plugin_cache();
     if let Some(name) = &cli.resident {
         let resident = resident::Resident::connect(name)
