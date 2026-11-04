@@ -18,7 +18,41 @@ fn frame(browser: &mut EffectBrowser, ctx: &egui::Context, events: Vec<egui::Eve
         status: "",
         success: None,
     };
-    let _ = ctx.run(input, |ctx| browser.show(ctx, &view));
+    let _ = ctx.run(input, |ctx| {
+        let palette_input = crate::command_palette::begin(
+            ctx,
+            crate::command_palette::effect_commands(browser),
+            true,
+        );
+        browser.show(ctx, &view);
+        crate::command_palette::end(ctx, palette_input);
+    });
+}
+
+#[test]
+fn palette_cancel_keeps_browser_open_and_run_dispatches_column_width_once() {
+    let ctx = egui::Context::default();
+    let mut browser = browser();
+    let mut toggle = key(Key::P);
+    if let egui::Event::Key { modifiers, .. } = &mut toggle {
+        *modifiers = egui::Modifiers::CTRL | egui::Modifiers::SHIFT;
+    }
+    frame(&mut browser, &ctx, vec![]);
+    frame(&mut browser, &ctx, vec![toggle.clone()]);
+    frame(&mut browser, &ctx, vec![]);
+    frame(&mut browser, &ctx, vec![key(Key::Escape)]);
+    assert!(browser.open);
+    frame(&mut browser, &ctx, vec![toggle]);
+    frame(&mut browser, &ctx, vec![]);
+    frame(&mut browser, &ctx, vec![egui::Event::Text("column".into())]);
+    let before = browser.fit_columns;
+    frame(&mut browser, &ctx, vec![key(Key::Enter)]);
+    frame(&mut browser, &ctx, vec![]);
+    assert_ne!(browser.fit_columns, before);
+    assert!(browser.query.is_empty());
+    assert!(browser.open);
+    frame(&mut browser, &ctx, vec![]);
+    assert_ne!(browser.fit_columns, before);
 }
 
 fn key(key: Key) -> egui::Event {

@@ -26,8 +26,21 @@ fn frame(browser: &mut Browser, ctx: &egui::Context, events: Vec<egui::Event>) {
         events,
         ..Default::default()
     };
-    let _ = ctx.run(input, |ctx| browser.show(ctx, None, "test"));
+    let _ = ctx.run(input, |ctx| {
+        let palette_input = crate::command_palette::begin(
+            ctx,
+            crate::command_palette::patch_commands(browser),
+            browser.solo_draft.is_none()
+                && !browser.condition_menu
+                && browser.requests.confirmation.is_none(),
+        );
+        browser.show(ctx, None, "test");
+        crate::command_palette::end(ctx, palette_input);
+    });
 }
+
+#[path = "palette_tests.rs"]
+mod palette_tests;
 
 fn key(key: Key) -> egui::Event {
     egui::Event::Key {

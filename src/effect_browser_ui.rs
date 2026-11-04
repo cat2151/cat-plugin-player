@@ -84,6 +84,11 @@ impl App {
         let mut exit_selection = false;
         ctx.show_viewport_immediate(viewport(), builder, |ctx, _class| {
             self.catalog_startup.observe_activity(ctx);
+            let palette_input = crate::command_palette::begin(
+                ctx,
+                crate::command_palette::effect_commands(browser),
+                !crate::help_overlay::is_open(ctx),
+            );
             crate::help_overlay::show(ctx, crate::help_overlay::Page::Effect);
             if focus {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
@@ -96,6 +101,7 @@ impl App {
                 return;
             }
             browser.show(ctx, &view);
+            crate::command_palette::end(ctx, palette_input);
             // The live Host dispatcher remains in the root main-thread update.
             ctx.request_repaint_after_for(
                 std::time::Duration::from_millis(50),

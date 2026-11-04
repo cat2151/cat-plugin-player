@@ -103,7 +103,7 @@ jobs:
                      f'  - 手元で確認した uapmd {env["UAPMD_VERIFIED_SHA"]} と{verified}']
           template = string.Template(pathlib.Path('.github/release-notes.md').read_text(encoding='utf-8'))
           notes = template.substitute(name='cat-plugin-player', version=env['VERSION'],
-              package_files='LICENSE', commits='\n'.join(commits), build_inputs=env['INPUTS'])
+              package_files='LICENSE と Migemo のライセンス', commits='\n'.join(commits), build_inputs=env['INPUTS'])
           pathlib.Path('notes.md').write_text(notes, encoding='utf-8')
           with open(env['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as summary:
               summary.write(notes)
@@ -160,7 +160,7 @@ jobs:
         run: python scripts/crt_linkage.py target/release/cat-plugin-player.exe target/shim/out/uapmd_shim.dll
       - name: Package
         working-directory: cat-plugin-player
-        run: Compress-Archive -Path target/release/cat-plugin-player.exe, LICENSE -DestinationPath $env:ZIP
+        run: Compress-Archive -Path target/release/cat-plugin-player.exe, LICENSE, assets/migemo/LICENSE_* -DestinationPath $env:ZIP
       - uses: actions/upload-artifact@v7
         with:
           name: windows-x64

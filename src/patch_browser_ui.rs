@@ -56,6 +56,23 @@ impl App {
             let mut exit_selection = false;
             ctx.show_viewport_immediate(browser_viewport(), builder, |ctx, _class| {
                 self.catalog_startup.observe_activity(ctx);
+                let palette_input = crate::command_palette::begin(
+                    ctx,
+                    crate::command_palette::patch_commands(&self.patch_browser),
+                    self.patch_browser.solo_draft.is_none()
+                        && !self.patch_browser.condition_menu
+                        && self.patch_browser.requests.confirmation.is_none()
+                        && !self
+                            .patch_browser
+                            .requests
+                            .preparing
+                            .as_ref()
+                            .or(self.patch_browser.requests.applying.as_ref())
+                            .is_some_and(|ticket| {
+                                ticket.candidate.measurement.is_heavy_offline_load()
+                            })
+                        && !crate::help_overlay::is_open(ctx),
+                );
                 crate::help_overlay::show(ctx, crate::help_overlay::Page::Patch);
                 if focus {
                     ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
@@ -69,6 +86,7 @@ impl App {
                 }
                 self.patch_browser
                     .show(ctx, self.patch_catalog.notice(), &self.status);
+                crate::command_palette::end(ctx, palette_input);
                 // The live Host dispatcher remains in the root main-thread update.
                 // Child focus and worker progress must keep that update awake.
                 ctx.request_repaint_after_for(

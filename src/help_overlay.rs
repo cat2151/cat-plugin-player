@@ -27,6 +27,7 @@ const MOVE: Group = &[
 ];
 
 const LIBRARY: Group = &[
+    ("Ctrl+Shift+P", "コマンドパレット"),
     ("L", "Favorites / History / Plugins"),
     ("D", "Settings メニュー"),
     ("A", "解析表示メニュー"),
@@ -92,6 +93,7 @@ const SMF: &[Group] = &[
 ];
 
 const PATCH: &[Group] = &[
+    &[("Ctrl+Shift+P", "コマンドパレット")],
     MOVE,
     &[
         ("R  右クリック", "ランダム"),
@@ -108,6 +110,7 @@ const PATCH: &[Group] = &[
 ];
 
 const EFFECT: &[Group] = &[
+    &[("Ctrl+Shift+P", "コマンドパレット")],
     MOVE,
     &[("R", "ランダム"), ("Enter  Esc", "閉じる")],
     &[("/", "検索"), ("W", "列幅")],
@@ -125,6 +128,11 @@ pub(crate) fn open(ctx: &egui::Context, page: Page) {
         data.insert_temp(id.with("page"), page);
     });
     ctx.request_repaint();
+}
+
+pub(crate) fn is_open(ctx: &egui::Context) -> bool {
+    ctx.data(|data| data.get_temp::<bool>(id(ctx)))
+        .unwrap_or(false)
 }
 
 /// Call before the window's other key handling, so Esc and every other key go to the overlay.

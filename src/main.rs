@@ -8,6 +8,7 @@ mod audio_fade;
 mod boot;
 mod browser_load;
 mod cli;
+mod command_palette;
 mod config;
 #[path = "../shared/correlation.rs"]
 mod correlation;
@@ -281,6 +282,16 @@ impl eframe::App for App {
             // eframe shows the root after its first paint, overriding the builder.
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
         }
+        let palette_input = command_palette::begin(
+            ctx,
+            command_palette::main_commands(self),
+            !self.mml_input.open
+                && self.favorites.rename.is_none()
+                && !self.confirm_rescan
+                && !self.first_instrument.dialog_open()
+                && !self.patch_browser.main_random_overlay
+                && !help_overlay::is_open(ctx),
+        );
         let help = if self.selection.is_some() {
             help_overlay::Page::Smf
         } else {
@@ -369,6 +380,7 @@ impl eframe::App for App {
         self.library_panel(ctx);
         self.first_instrument_dialog(ctx);
         self.patch_browser.show_main_random_overlay(ctx);
+        command_palette::end(ctx, palette_input);
         self.log_status_error(&previous_status);
     }
 }
