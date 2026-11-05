@@ -93,7 +93,8 @@ impl Browser {
                         let index = self.results[cell];
                         let candidate = &self.snapshot.as_ref().unwrap().candidates[index];
                         let text = &self.row_labels[cell];
-                        let response = cell_response(ui, index, cell_width, row_height);
+                        let response =
+                            cell_response(ui, "patch_cell", index, cell_width, row_height);
                         let tint = self.row_tints[cell];
                         paint_cell(ui, &response, self.selected == Some(index), tint.background);
                         // Fixed-height virtual rows must not expand when a path wraps.
@@ -180,19 +181,21 @@ const LABEL_INSET: f32 = 6.0;
 
 /// A plain click target: unlike a button it shows no press, so a right click looks inert
 /// until it acts, and the identity keeps its tooltip across scrolling.
-fn cell_response(ui: &mut egui::Ui, index: usize, width: f32, height: f32) -> egui::Response {
+pub(crate) fn cell_response(
+    ui: &mut egui::Ui,
+    salt: &str,
+    index: usize,
+    width: f32,
+    height: f32,
+) -> egui::Response {
     let (rect, _) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::hover());
-    ui.interact(
-        rect,
-        ui.id().with(("patch_cell", index)),
-        egui::Sense::click(),
-    )
+    ui.interact(rect, ui.id().with((salt, index)), egui::Sense::click())
 }
 
 /// Shows the cell's tooltip once the pointer has rested on it for the tooltip delay,
 /// returning when that rest began. egui's own rule waits for pointer movement after a click,
 /// which it cannot see at the browser's low frame rate while the main window is hidden.
-fn hover_tooltip(
+pub(crate) fn hover_tooltip(
     response: &egui::Response,
     index: usize,
     previous: Option<(usize, f64)>,
@@ -211,7 +214,12 @@ fn hover_tooltip(
 
 /// Hovering never changes a cell; only the selected (playing) cell is lit, with a slow
 /// pulse, so the pointer is never mistaken for the chosen patch.
-fn paint_cell(ui: &egui::Ui, response: &egui::Response, selected: bool, group: Option<usize>) {
+pub(crate) fn paint_cell(
+    ui: &egui::Ui,
+    response: &egui::Response,
+    selected: bool,
+    group: Option<usize>,
+) {
     let visuals = ui.visuals();
     let radius = visuals.widgets.inactive.corner_radius;
     if !selected {

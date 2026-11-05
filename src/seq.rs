@@ -75,6 +75,7 @@ impl EventBuf {
 
 pub struct Sequencer {
     preview: crate::preview::Player,
+    drum: crate::drum_preview::Player,
     startup_remaining: usize,
     sample_rate: u32,
     sample_remainder: u64,
@@ -94,6 +95,7 @@ impl Sequencer {
     pub fn new(sample_rate: u32) -> Self {
         Self {
             preview: Default::default(),
+            drum: Default::default(),
             startup_remaining: 0,
             sample_rate,
             sample_remainder: 0,
@@ -147,6 +149,14 @@ impl Sequencer {
         self.preview.replace(notes);
     }
 
+    pub(crate) fn drum_preview(&mut self, notes: crate::preview::Notes) {
+        self.drum.replace(notes);
+    }
+
+    pub(crate) fn drum_note(&self) -> Option<u8> {
+        self.drum.current_note()
+    }
+
     fn samples(&mut self, micros: u32) -> usize {
         let scaled = self.sample_rate as u64 * micros as u64 + self.sample_remainder;
         self.sample_remainder = scaled % 1_000_000;
@@ -197,6 +207,19 @@ impl Sequencer {
         frames: usize,
         out: &mut EventBuf,
     ) {
+        if self.drum.active() {
+            if !self.timed.reset(out) {
+                return;
+            }
+            self.release(out);
+            if self.sounding.iter().any(|&n| n) {
+                return;
+            }
+            self.restart_pending = true;
+            self.drum.render(self.sample_rate, frames, out);
+            self.current_velocity = self.drum.current_velocity();
+            return;
+        }
         if self.preview.active() {
             if !self.timed.reset(out) {
                 return;
@@ -322,3 +345,31 @@ impl Sequencer {
 #[cfg(test)]
 #[path = "seq_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod drum_transport_tests {
+    use super::*;
+    #[test]
+    fn finite_drum_audition_and_stop_never_restart_off_transport() {
+        let mut seq = Sequencer::new(48000);
+        let mut out = EventBuf::new();
+        seq.drum_preview(crate::drum_preview::program(&[0, 127], 48000));
+        let mut ons = Vec::new();
+        for _ in 0..400 {
+            out.clear();
+            seq.render(
+                SequencePattern::Off,
+                SequenceVelocity::default(),
+                480,
+                &mut out,
+            );
+            ons.extend(
+                out.as_slice()
+                    .iter()
+                    .copied()
+                    .filter(|w| w & 0x00f0_0000 == 0x0090_0000),
+            );
+        }
+        assert_eq!(ons, vec![note_on(0, 0, 127), note_on(0, 127, 127)]);
+    }
+}

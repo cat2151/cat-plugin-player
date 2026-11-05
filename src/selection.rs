@@ -193,7 +193,7 @@ impl App {
             && self
                 .selection
                 .as_ref()
-                .is_some_and(|s| s.browser_only.is_some())
+                .is_some_and(|s| s.browser_only == Some(browser))
         {
             self.selection.as_mut().unwrap().exit_requested = true;
             // Keep a usable browser until any pending change/save has actually succeeded.

@@ -31,6 +31,8 @@ pub(crate) struct EffectBrowser {
     pub selected: Option<usize>,
     pub scroll_to_selected: bool,
     pub list_columns: usize,
+    /// Hovered cell and when its tooltip delay began, as in the patch browser.
+    pub hover_since: Option<(usize, f64)>,
     /// Columns widen until the longest label in the results fits whole.
     pub fit_columns: bool,
     /// Vim-style count typed before a movement key.
@@ -330,6 +332,9 @@ fn position(names: &[String], name: Option<String>) -> usize {
 
 impl App {
     pub(crate) fn open_effect_browser(&mut self) {
+        if self.drum_browser.open {
+            self.close_drum_browser();
+        }
         let ids = self.effect_ids();
         self.effect_browser.open_window(&ids);
         self.browser_auto_effect = Some(crate::browser_load::EffectLoad::NeedSource);

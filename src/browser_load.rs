@@ -44,6 +44,9 @@ impl App {
     }
 
     pub(crate) fn open_patch_browser(&mut self) {
+        if self.drum_browser.open {
+            self.close_drum_browser();
+        }
         self.patch_browser.open_window();
         self.browser_auto_instrument = true;
         self.poll_browser_load();

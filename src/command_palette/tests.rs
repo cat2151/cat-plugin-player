@@ -1,6 +1,6 @@
 use super::*;
 
-fn key(key: Key, modifiers: Modifiers) -> Event {
+pub(super) fn key(key: Key, modifiers: Modifiers) -> Event {
     Event::Key {
         key,
         physical_key: None,
@@ -10,9 +10,10 @@ fn key(key: Key, modifiers: Modifiers) -> Event {
     }
 }
 
-fn commands() -> Vec<Command> {
+pub(super) fn commands() -> Vec<Command> {
     vec![
         Command::new(
+            "random-patch",
             "Random patch",
             "ランダムに音色を選択",
             "音色 ランダム",
@@ -21,6 +22,7 @@ fn commands() -> Vec<Command> {
             true,
         ),
         Command::new(
+            "next-velocity",
             "Next velocity",
             "次のベロシティへ",
             "ベロシティ",
@@ -29,6 +31,7 @@ fn commands() -> Vec<Command> {
             true,
         ),
         Command::new(
+            "disabled-action",
             "Disabled action",
             "無効な操作",
             "無効",
@@ -39,7 +42,7 @@ fn commands() -> Vec<Command> {
     ]
 }
 
-fn frame(ctx: &egui::Context, events: Vec<Event>, allowed: bool) -> Vec<Event> {
+pub(super) fn frame(ctx: &egui::Context, events: Vec<Event>, allowed: bool) -> Vec<Event> {
     let mut background = Vec::new();
     let _ = ctx.run(
         egui::RawInput {
@@ -62,7 +65,7 @@ fn frame(ctx: &egui::Context, events: Vec<Event>, allowed: bool) -> Vec<Event> {
     background
 }
 
-fn open(ctx: &egui::Context) {
+pub(super) fn open(ctx: &egui::Context) {
     frame(
         ctx,
         vec![key(Key::P, Modifiers::CTRL | Modifiers::SHIFT)],
@@ -82,6 +85,8 @@ fn search_accepts_multiple_words_case_and_japanese() {
     assert!(commands[0].matches(&query));
     query.update("velocity");
     assert!(!commands[0].matches(&query));
+    query.update("Main velocity");
+    assert!(commands[1].matches(&query));
     query.update("  ");
     assert!(commands.iter().all(|c| c.matches(&query)));
 }
@@ -129,18 +134,18 @@ fn filtered_enter_dispatches_once_on_next_frame_without_enter_leaking() {
 }
 
 #[test]
-fn arrows_disabled_and_empty_results_do_not_execute() {
+fn unavailable_commands_are_absent_from_results_count_and_navigation() {
     let ctx = egui::Context::default();
     open(&ctx);
     frame(&ctx, vec![key(Key::ArrowDown, Modifiers::NONE)], true);
-    assert_eq!(state(&ctx).selected, 1);
     frame(&ctx, vec![key(Key::ArrowDown, Modifiers::NONE)], true);
+    assert_eq!(state(&ctx).selected, 1);
+    frame(&ctx, vec![Event::Text("disabled".into())], true);
+    assert_eq!(state(&ctx).query, "disabled");
+    assert!(filter(&commands(), &state(&ctx)).is_empty());
     frame(&ctx, vec![key(Key::Enter, Modifiers::NONE)], true);
     assert!(state(&ctx).open);
     assert_eq!(state(&ctx).pending, None);
-    frame(&ctx, vec![Event::Text("no match".into())], true);
-    frame(&ctx, vec![key(Key::Enter, Modifiers::NONE)], true);
-    assert!(state(&ctx).open);
 }
 
 #[test]
@@ -148,9 +153,9 @@ fn page_and_ctrl_home_end_navigate_without_changing_the_query() {
     let ctx = egui::Context::default();
     open(&ctx);
     for (key_code, modifiers, selected) in [
-        (Key::PageDown, Modifiers::NONE, 2),
+        (Key::PageDown, Modifiers::NONE, 1),
         (Key::PageUp, Modifiers::NONE, 0),
-        (Key::End, Modifiers::CTRL, 2),
+        (Key::End, Modifiers::CTRL, 1),
         (Key::Home, Modifiers::CTRL, 0),
     ] {
         assert!(frame(&ctx, vec![key(key_code, modifiers)], true).is_empty());
@@ -261,6 +266,7 @@ fn menu_commands_use_the_existing_prefix_dispatcher() {
         );
         let _ = ctx.run(egui::RawInput::default(), |ctx| {
             let commands = vec![Command::new(
+                "menu-command",
                 "Menu command",
                 "メニュー操作",
                 "",

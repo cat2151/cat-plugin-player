@@ -14,6 +14,7 @@ pub(crate) enum Page {
     Effect,
     Settings,
     Analysis,
+    Drum,
 }
 
 /// A function's binds share one color; the colors alone mark the groups.
@@ -24,6 +25,28 @@ const MOVE: Group = &[
     ("PgUp  PgDn", "10行"),
     ("Home  End", "先頭 / 末尾"),
     ("数字 → 移動", "回数"),
+];
+
+const DRUM: &[Group] = &[
+    &[
+        ("h / ←   l / →", "Kit / Note focus"),
+        ("j k / ↓ ↑", "1行移動"),
+        ("PgUp PgDn", "10行・端で停止"),
+        ("Home End", "先頭 / 末尾"),
+    ],
+    &[
+        ("Space (Kit)", "ロード・全note一周"),
+        ("Space (Note)", "単音試聴・重いkitもロード"),
+        ("Shift+Space (Note)", "全note一周"),
+        ("V", "Velocity loop"),
+        ("P", "試聴停止（残響は鳴り切る場合あり）"),
+    ],
+    &[
+        ("/ (Kit)", "検索編集"),
+        ("Enter / Esc (検索)", "確定 / queryを戻す"),
+        ("Enter / Esc", "適用済みkitを保持して閉じる"),
+        ("Ctrl+Shift+P", "コマンドパレット"),
+    ],
 ];
 
 const LIBRARY: Group = &[
@@ -65,6 +88,7 @@ const MAIN: &[Group] = &[
     ],
     &[
         ("T", "音色一覧"),
+        ("G", "Drum kits（通常モード）"),
         ("R", "ランダム（音色一覧の絞り込み内）"),
         ("F", "お気に入りに追加"),
         ("/", "絞り込み"),
@@ -73,6 +97,7 @@ const MAIN: &[Group] = &[
         ("E  X", "エフェクト一覧"),
         ("B", "バイパス"),
         ("U", "楽器 UI 表示 / 非表示"),
+        ("O → a–z", "エフェクト UI 切替（1つなら O のみ）"),
     ],
     LIBRARY,
 ];
@@ -80,6 +105,7 @@ const MAIN: &[Group] = &[
 const SMF: &[Group] = &[
     &[
         ("T", "音色一覧"),
+        ("G", "Drum kits（通常モード）"),
         ("F", "お気に入りに追加"),
         ("/", "絞り込み"),
     ],
@@ -87,6 +113,7 @@ const SMF: &[Group] = &[
         ("E  X", "エフェクト一覧"),
         ("B", "バイパス"),
         ("U", "楽器 UI 表示 / 非表示"),
+        ("O → a–z", "エフェクト UI 切替（1つなら O のみ）"),
     ],
     LIBRARY,
     &[("Esc  Q", "保存して戻る")],
@@ -176,6 +203,7 @@ pub(crate) fn show(ctx: &egui::Context, page: Page) {
         Page::Effect => EFFECT,
         Page::Settings => SETTINGS,
         Page::Analysis => ANALYSIS,
+        Page::Drum => DRUM,
     };
     let dark = ctx.style().visuals.dark_mode;
     egui::Area::new(id)

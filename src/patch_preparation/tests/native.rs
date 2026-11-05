@@ -143,6 +143,11 @@ fn transaction_cases() {
         app.load_plugin(index);
         wait(&mut app);
         let id = app.instrument_id().unwrap();
+        app.instances
+            .iter_mut()
+            .find(|i| i.id == id)
+            .unwrap()
+            .preset_name = Some("Previous patch".into());
         app.host.load_state(id, &[4]).unwrap();
         let effect = add(&mut app, &key("effect"));
         app.plugins[effect].kind = PluginKind::Effect;
@@ -214,6 +219,10 @@ fn transaction_cases() {
             assert_eq!(state_store::load(&path, target).unwrap(), Some(vec![5]));
             if target.id != normal.id {
                 assert_eq!(state_store::load(&path, &normal).unwrap(), Some(vec![4]));
+                assert_eq!(
+                    state_store::load_preset_name(&path, &normal).as_deref(),
+                    Some("Previous patch")
+                );
             }
         } else {
             assert!(

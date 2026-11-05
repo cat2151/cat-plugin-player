@@ -24,7 +24,7 @@ pub(crate) fn take_favorite_shortcut(ctx: &egui::Context, enabled: bool) -> bool
 impl App {
     /// A browser window takes the keys the main window would otherwise handle.
     pub(crate) fn browser_open(&self) -> bool {
-        self.patch_browser.open || self.effect_browser.open
+        self.patch_browser.open || self.effect_browser.open || self.drum_browser.open
     }
 
     /// Single-letter shortcuts of the main window; off while a child window or text field takes keys.
@@ -68,6 +68,10 @@ impl App {
     }
 
     pub(crate) fn playback_controls(&mut self, ui: &mut egui::Ui) {
+        if self.can_open_drums() && self.main_shortcut(ui.ctx(), egui::Key::G) {
+            self.open_drum_browser();
+            ui.ctx().request_repaint();
+        }
         if self.main_shortcut(ui.ctx(), egui::Key::T) {
             self.open_patch_browser();
             ui.ctx().request_repaint();
@@ -104,6 +108,16 @@ impl App {
 
     fn browse_controls(&mut self, ui: &mut egui::Ui) {
         ui.group(|ui| {
+            if !self.drum_kit_active()
+                && ui
+                    .add_enabled(
+                        self.can_open_drums() && !self.drum_browser.open,
+                        egui::Button::new("Drum kits (G)"),
+                    )
+                    .clicked()
+            {
+                self.open_drum_browser();
+            }
             if ui
                 .add_enabled(
                     !self.mml_input.open && !self.patch_browser.open,

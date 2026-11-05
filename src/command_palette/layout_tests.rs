@@ -9,6 +9,7 @@ fn draw(ctx: &egui::Context, size: egui::Vec2) -> egui::FullOutput {
         |ctx| {
             let mut commands = vec![
                 Command::new(
+                    "random-patch",
                     "Random patch",
                     "ランダムに音色を選択",
                     "音色",
@@ -19,6 +20,7 @@ fn draw(ctx: &egui::Context, size: egui::Vec2) -> egui::FullOutput {
                 23
             ];
             commands.push(Command::new(
+                "next-velocity",
                 "Next velocity",
                 "次のベロシティへ",
                 "",
@@ -60,8 +62,8 @@ fn all_24_rows_fit_and_height_recovers_after_filtering_and_reopening() {
         .filter_map(|shape| match &shape.shape {
             egui::Shape::Text(text)
                 if text.galley.job.text.contains(" / ")
-                    && (text.galley.job.text.starts_with("Random patch")
-                        || text.galley.job.text.starts_with("Next velocity")) =>
+                    && (text.galley.job.text.starts_with("Main: Random patch")
+                        || text.galley.job.text.starts_with("Main: Next velocity")) =>
             {
                 Some((shape, text))
             }
@@ -120,6 +122,6 @@ fn japanese_function_name_is_painted_and_searchable() {
     let output = draw(&ctx, size);
     assert!(output.shapes.iter().any(|shape| {
         matches!(&shape.shape, egui::Shape::Text(text)
-            if text.galley.job.text == "Next velocity / 次のベロシティへ")
+            if text.galley.job.text == "Main: Next velocity / 次のベロシティへ")
     }));
 }

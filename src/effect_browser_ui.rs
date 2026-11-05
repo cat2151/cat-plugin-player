@@ -24,7 +24,12 @@ impl App {
         if !self.effect_browser.open {
             return;
         }
-        let focus = self.take_browser_focus(crate::cli::Browser::Effect);
+        let focus = self.take_browser_focus(crate::cli::Browser::Effect)
+            || crate::command_palette::take_focus(ctx, crate::command_palette::Screen::Effect);
+        let palette_commands =
+            crate::command_palette::commands(self, crate::command_palette::Screen::Effect);
+        let palette_allowed =
+            crate::command_palette::allowed(self, crate::command_palette::Screen::Effect);
         let target = self.effect_browser.target;
         let slots: Vec<_> = self
             .instances
@@ -86,8 +91,8 @@ impl App {
             self.catalog_startup.observe_activity(ctx);
             let palette_input = crate::command_palette::begin(
                 ctx,
-                crate::command_palette::effect_commands(browser),
-                !crate::help_overlay::is_open(ctx),
+                palette_commands.clone(),
+                palette_allowed && !crate::help_overlay::is_open(ctx),
             );
             crate::help_overlay::show(ctx, crate::help_overlay::Page::Effect);
             if focus {
@@ -329,7 +334,7 @@ fn status_panel(ctx: &egui::Context, view: &View) {
     });
 }
 
-fn viewport() -> egui::ViewportId {
+pub(crate) fn viewport() -> egui::ViewportId {
     egui::ViewportId::from_hash_of("effect_browser_window")
 }
 

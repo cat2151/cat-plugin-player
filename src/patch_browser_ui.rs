@@ -27,7 +27,12 @@ impl App {
             browser.reveal_playing();
         }
         if self.patch_browser.open {
-            let focus = self.take_browser_focus(crate::cli::Browser::Patch);
+            let focus = self.take_browser_focus(crate::cli::Browser::Patch)
+                || crate::command_palette::take_focus(ctx, crate::command_palette::Screen::Patch);
+            let palette_commands =
+                crate::command_palette::commands(self, crate::command_palette::Screen::Patch);
+            let palette_allowed =
+                crate::command_palette::allowed(self, crate::command_palette::Screen::Patch);
             let mut builder = egui::ViewportBuilder::default()
                 .with_title("Browse patches")
                 .with_inner_size([1100.0, 750.0])
@@ -58,20 +63,8 @@ impl App {
                 self.catalog_startup.observe_activity(ctx);
                 let palette_input = crate::command_palette::begin(
                     ctx,
-                    crate::command_palette::patch_commands(&self.patch_browser),
-                    self.patch_browser.solo_draft.is_none()
-                        && !self.patch_browser.condition_menu
-                        && self.patch_browser.requests.confirmation.is_none()
-                        && !self
-                            .patch_browser
-                            .requests
-                            .preparing
-                            .as_ref()
-                            .or(self.patch_browser.requests.applying.as_ref())
-                            .is_some_and(|ticket| {
-                                ticket.candidate.measurement.is_heavy_offline_load()
-                            })
-                        && !crate::help_overlay::is_open(ctx),
+                    palette_commands.clone(),
+                    palette_allowed && !crate::help_overlay::is_open(ctx),
                 );
                 crate::help_overlay::show(ctx, crate::help_overlay::Page::Patch);
                 if focus {
@@ -320,7 +313,7 @@ fn compact_label(ui: &mut egui::Ui, text: String) {
         .on_hover_text(text);
 }
 
-fn browser_viewport() -> egui::ViewportId {
+pub(crate) fn browser_viewport() -> egui::ViewportId {
     egui::ViewportId::from_hash_of("patch_browser_window")
 }
 
@@ -330,6 +323,7 @@ pub(crate) use layout::pane;
 pub(crate) mod navigation;
 pub(crate) mod row_colors;
 mod rows;
+pub(crate) use rows::{cell_response, hover_tooltip, paint_cell};
 mod status;
 #[cfg(test)]
 mod tests;

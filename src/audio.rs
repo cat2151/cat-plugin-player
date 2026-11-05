@@ -70,6 +70,8 @@ pub struct Voice {
     rendered: Arc<AtomicBool>,
     scope: crate::scope::Scope,
     preview: Arc<crate::preview::Mailbox>,
+    drum: Arc<crate::preview::Mailbox>,
+    drum_note: Arc<AtomicU8>,
     fade_out: Arc<AtomicBool>,
     faded: Arc<AtomicBool>,
 }
@@ -108,6 +110,11 @@ impl Voice {
         let preview = Arc::new(crate::preview::Mailbox::default());
         let preview_flag = preview.clone();
         let mut seen_preview = 0;
+        let drum = Arc::new(crate::preview::Mailbox::default());
+        let drum_flag = drum.clone();
+        let drum_note = Arc::new(AtomicU8::new(128));
+        let drum_meter = drum_note.clone();
+        let mut seen_drum = 0;
         let channels = output.config.channels as usize;
         let sequence_pattern = Arc::new(AtomicU64::new(sequence_pattern as u64));
         let sequence_flag = Arc::clone(&sequence_pattern);
@@ -198,6 +205,9 @@ impl Voice {
                         if let Some(notes) = preview_flag.poll(&mut seen_preview) {
                             sequencer.preview(notes);
                         }
+                        if let Some(notes) = drum_flag.poll(&mut seen_drum) {
+                            sequencer.drum_preview(notes);
+                        }
                         let events = if let Some(selected) = &mut selected {
                             selected.render(chunk.len() / channels);
                             selected.words.as_slice()
@@ -235,6 +245,7 @@ impl Voice {
                         for (meter, value) in macro_meter.iter().zip(macro_value) {
                             meter.store(value, Ordering::Relaxed);
                         }
+                        drum_meter.store(sequencer.drum_note().unwrap_or(128), Ordering::Relaxed);
                         capture.record(chunk, channels, events);
                         if trace_signal && chunk.iter().any(|sample| sample.abs() > 0.000001) {
                             startup::mark(Stage::FirstSignalRendered);
@@ -274,6 +285,8 @@ impl Voice {
             rendered,
             scope,
             preview,
+            drum,
+            drum_note,
             fade_out,
             faded,
         })
@@ -293,6 +306,15 @@ impl Voice {
 
     pub(crate) fn preview(&self, notes: Option<crate::preview::Notes>) {
         self.preview.publish(notes);
+    }
+
+    pub(crate) fn drum_preview(&self, notes: Option<crate::preview::Notes>) {
+        self.drum.publish(notes);
+    }
+
+    pub(crate) fn drum_note(&self) -> Option<u8> {
+        let note = self.drum_note.load(Ordering::Relaxed);
+        (note < 128).then_some(note)
     }
 
     pub fn sequence_pattern(&self) -> SequencePattern {
@@ -401,31 +423,4 @@ fn decode_macro(word: u16) -> Option<(MacroTarget, SequenceModulation)> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn rebuilding_stream_releases_notes_without_requiring_cc_support() {
-        let events = shutdown_events();
-        for note in crate::seq::GUITAR_NOTES.into_iter().chain([60]) {
-            assert!(events[..128].contains(&note_off(0, note)));
-        }
-        assert_eq!(events[2048], 0x20B0_7800);
-        assert_eq!(events[2063], 0x20BF_7800);
-    }
-
-    #[test]
-    fn macro_targets_survive_the_atomic_word() {
-        for target in [
-            MacroTarget::Cc(0),
-            MacroTarget::Cc(127),
-            MacroTarget::Parameter,
-        ] {
-            for choice in SequenceModulation::CHOICES.into_iter().flatten() {
-                let lane = Some((target, choice));
-                assert_eq!(decode_macro(encode_macro(lane)), lane);
-            }
-        }
-        assert_eq!(decode_macro(encode_macro(None)), None);
-    }
-}
+mod tests;

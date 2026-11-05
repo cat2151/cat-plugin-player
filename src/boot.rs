@@ -107,6 +107,13 @@ impl App {
             .err()
             .map(|e| format!("Could not restore MML: {e}"))
             .or(config_error);
+        let drum_browser = crate::drum_browser::Browser::restored(&config_path);
+        let suppress_drum_autostart = drum_browser.saved.applied.as_ref().is_some_and(|key| {
+            browser_filter
+                .playing
+                .as_ref()
+                .is_some_and(|playing| crate::drum_browser::same(key, playing))
+        });
         let mut app = Self {
             surge_start_delay: config_path
                 .as_ref()
@@ -153,10 +160,11 @@ impl App {
             scope_ui: crate::scope_ui::ScopeUi::with_on_right(on_right),
             plugin_icons: Default::default(),
             repaint_heartbeat: None,
+            drum_browser,
             patch_catalog: Default::default(),
             patch_browser: crate::patch_browser::Browser::restored(browser_filter),
             effect_browser: crate::effect_browser::EffectBrowser::restored(effect_filter),
-            auto_start_pending: true,
+            auto_start_pending: !suppress_drum_autostart,
             browser_auto_instrument: false,
             browser_auto_effect: None,
             effect_preparation: Default::default(),

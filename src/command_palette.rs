@@ -3,6 +3,16 @@
 use eframe::egui::{self, Event, Key, Modifiers};
 
 mod catalog;
+mod drums;
+mod history;
+#[cfg(test)]
+mod history_tests;
+#[cfg(test)]
+mod interaction_tests;
+mod routing;
+mod row;
+pub(crate) use routing::{allowed, commands, prepare, take_focus, Screen};
+pub(crate) use row::shortcut_hint;
 #[cfg(test)]
 mod layout_tests;
 mod migemo;
@@ -10,12 +20,16 @@ mod search;
 #[cfg(test)]
 mod search_tests;
 mod view;
+#[cfg(test)]
 pub(crate) use catalog::{effect_commands, main_commands, patch_commands};
 #[cfg(test)]
 mod tests;
 
 #[derive(Clone)]
 pub(crate) struct Command {
+    id: &'static str,
+    screen: Screen,
+    target: Option<routing::Target>,
     label: &'static str,
     japanese: &'static str,
     words: &'static str,
@@ -26,6 +40,7 @@ pub(crate) struct Command {
 
 impl Command {
     fn new(
+        id: &'static str,
         label: &'static str,
         japanese: &'static str,
         words: &'static str,
@@ -34,6 +49,9 @@ impl Command {
         enabled: bool,
     ) -> Self {
         Self {
+            id,
+            screen: Screen::Main,
+            target: None,
             label,
             japanese,
             words,
@@ -43,11 +61,25 @@ impl Command {
         }
     }
 
+    fn label(&self) -> String {
+        format!(
+            "{}: {} / {}",
+            self.screen.label(),
+            self.label,
+            self.japanese
+        )
+    }
+
+    fn key_label(&self) -> String {
+        self.shortcut.into()
+    }
+
+    fn identity(&self) -> String {
+        format!("{:?}/{}", self.screen, self.id)
+    }
+
     fn matches(&self, query: &search::SearchQuery) -> bool {
-        let text = format!(
-            "{} {} {} {}",
-            self.label, self.japanese, self.words, self.shortcut
-        );
+        let text = format!("{} {} {}", self.label(), self.words, self.shortcut);
         query.matches(&text)
     }
 }
@@ -60,6 +92,14 @@ struct State {
     selected: usize,
     focus: Option<egui::Id>,
     pending: Option<&'static str>,
+    pending_screen: Screen,
+    pending_query: String,
+    pending_target: Option<routing::Target>,
+    inventory: Vec<(String, Option<routing::Target>)>,
+    dispatched: Option<(String, String, Vec<Key>)>,
+    history: history::History,
+    geometry: Option<(f32, f32)>,
+    screen_rect: Option<egui::Rect>,
     composing: bool,
     handled: Option<u64>,
 }
@@ -69,8 +109,12 @@ pub(crate) struct Suspended {
     commands: Vec<Command>,
 }
 
+fn viewport_id(viewport: egui::ViewportId) -> egui::Id {
+    egui::Id::new("command-palette").with(viewport)
+}
+
 fn id(ctx: &egui::Context) -> egui::Id {
-    egui::Id::new("command-palette").with(ctx.viewport_id())
+    viewport_id(ctx.viewport_id())
 }
 
 fn state(ctx: &egui::Context) -> State {
@@ -131,6 +175,10 @@ pub(crate) fn begin(
     commands: Vec<Command>,
     allowed: bool,
 ) -> Option<Suspended> {
+    if owner(ctx).is_some_and(|owner| owner != ctx.viewport_id()) {
+        clear(ctx, true);
+        return None;
+    }
     let allowed = allowed && !ctx.input(|i| i.viewport().close_requested());
     let mut state = state(ctx);
     let token = frame_token(ctx);
@@ -142,10 +190,20 @@ pub(crate) fn begin(
         state.handled = Some(token);
         // UI state can change while a worker completes: never dispatch a stale action.
         if allowed {
-            if let Some(command) = commands.iter().find(|c| c.label == label && c.enabled) {
+            if let Some(command) = commands.iter().find(|c| {
+                c.label == label
+                    && c.screen == state.pending_screen
+                    && c.enabled
+                    && c.target == state.pending_target
+            }) {
                 if let Some(focus) = ctx.memory(|m| m.focused()) {
                     ctx.memory_mut(|m| m.surrender_focus(focus));
                 }
+                state.dispatched = Some((
+                    command.identity(),
+                    state.pending_query.clone(),
+                    command.keys.clone(),
+                ));
                 clear(ctx, true);
                 ctx.input_mut(|i| {
                     i.events = command
@@ -160,6 +218,11 @@ pub(crate) fn begin(
                         })
                         .collect();
                 });
+            } else {
+                state.open = true;
+                state.selected = 0;
+                state.query = state.pending_query.clone();
+                state.history = history::load(ctx);
             }
         }
     }
@@ -175,16 +238,19 @@ pub(crate) fn begin(
             clear(ctx, true);
         }
         state = State::default();
+        release_owner(ctx);
     } else if !state.open && toggle {
         state = State {
             open: true,
             focus: ctx.memory(|m| m.focused()),
+            history: history::load(ctx),
             ..Default::default()
         };
         ctx.memory_mut(|m| m.close_popup());
         clear(ctx, true);
     }
     let suspended = state.open.then(|| {
+        claim_owner(ctx, ctx.viewport_id());
         let input = ctx.input(Clone::clone);
         clear(ctx, true);
         Suspended { input, commands }
@@ -195,6 +261,27 @@ pub(crate) fn begin(
 
 /// After painting background widgets, restore the real input only for the palette.
 pub(crate) fn end(ctx: &egui::Context, suspended: Option<Suspended>) {
+    let mut current = state(ctx);
+    if let Some((identity, query, keys)) = current.dispatched.take() {
+        let unhandled = ctx.input(|i| {
+            i.events.iter().any(|e| {
+                matches!(e,
+            Event::Key { key, pressed: true, .. } if keys.contains(key))
+            })
+        });
+        if !unhandled {
+            current.history = history::load(ctx);
+            current.history.record(&query, &identity);
+            history::save(ctx, &current.history);
+        } else {
+            current.open = true;
+            current.selected = 0;
+            claim_owner(ctx, ctx.viewport_id());
+            clear(ctx, false);
+            ctx.request_repaint();
+        }
+        save(ctx, current);
+    }
     let Some(Suspended { input, commands }) = suspended else {
         return;
     };
@@ -213,10 +300,17 @@ pub(crate) fn end(ctx: &egui::Context, suspended: Option<Suspended>) {
         }
     }
     state.search.update(&state.query);
-    let mut filtered: Vec<_> = commands
+    let inventory: Vec<_> = commands
         .iter()
-        .filter(|c| c.matches(&state.search))
+        .filter(|c| c.enabled)
+        .map(|c| (c.identity(), c.target.clone()))
         .collect();
+    let invalid = state.inventory != inventory;
+    if invalid {
+        state.selected = 0;
+        state.inventory = inventory;
+    }
+    let mut filtered = filter(&commands, &state);
     state.selected = state.selected.min(filtered.len().saturating_sub(1));
     let mut execute = false;
     let mut cancel = false;
@@ -249,7 +343,7 @@ pub(crate) fn end(ctx: &egui::Context, suspended: Option<Suspended>) {
                 }
                 if *pressed {
                     match key {
-                        Key::Enter if !repeat && !search_input => execute = true,
+                        Key::Enter if !repeat && !search_input && !invalid => execute = true,
                         Key::Escape if !repeat => cancel = true,
                         _ => {}
                     }
@@ -258,20 +352,23 @@ pub(crate) fn end(ctx: &egui::Context, suspended: Option<Suspended>) {
             });
         });
     }
-    let mut chosen = if execute {
-        filtered
-            .get(state.selected)
-            .filter(|c| c.enabled)
-            .map(|c| c.label)
+    let chosen = if execute {
+        filtered.get(state.selected).filter(|c| c.enabled).copied()
     } else {
         None
     };
     if !cancel && chosen.is_none() {
-        chosen = view::show(ctx, &commands, &mut filtered, &mut state, reveal);
+        view::show(ctx, &commands, &mut filtered, &mut state, reveal);
     }
     if cancel || chosen.is_some() {
         state.open = false;
-        state.pending = chosen;
+        release_owner(ctx);
+        state.pending = chosen.map(|c| c.label);
+        if let Some(command) = chosen {
+            state.pending_screen = command.screen;
+            state.pending_query = state.query.clone();
+            state.pending_target = command.target.clone();
+        }
         if let Some(focus) = ctx.memory(|m| m.focused()) {
             ctx.memory_mut(|m| m.surrender_focus(focus));
         }
@@ -284,4 +381,27 @@ pub(crate) fn end(ctx: &egui::Context, suspended: Option<Suspended>) {
     }
     clear(ctx, false);
     save(ctx, state);
+}
+
+fn owner(ctx: &egui::Context) -> Option<egui::ViewportId> {
+    ctx.data(|d| d.get_temp(egui::Id::new("command-palette-owner")))
+}
+
+fn claim_owner(ctx: &egui::Context, viewport: egui::ViewportId) {
+    ctx.data_mut(|d| d.insert_temp(egui::Id::new("command-palette-owner"), viewport));
+}
+
+fn release_owner(ctx: &egui::Context) {
+    if owner(ctx) == Some(ctx.viewport_id()) {
+        ctx.data_mut(|d| d.remove::<egui::ViewportId>(egui::Id::new("command-palette-owner")));
+    }
+}
+
+fn filter<'a>(commands: &'a [Command], state: &State) -> Vec<&'a Command> {
+    let mut result: Vec<_> = commands
+        .iter()
+        .filter(|c| c.enabled && c.matches(&state.search))
+        .collect();
+    result.sort_by_key(|c| state.history.rank(&state.query, &c.identity()));
+    result
 }

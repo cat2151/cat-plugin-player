@@ -68,6 +68,10 @@ impl App {
             ));
             return;
         }
+        if self.drum_kit_active() {
+            self.drum_main_controls(ui);
+            return;
+        }
         let current = self.sequence_pattern;
         let original = current.selection(self.selected_sequence);
         let mut selected = original;

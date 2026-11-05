@@ -287,6 +287,7 @@ impl App {
                         .as_ref()
                         .map(|ticket| ticket.candidate.clone());
                     if self.patch_browser.requests.failed_preparation() {
+                        self.drum_patch_finished(false);
                         let target = candidate.map_or(String::new(), |candidate| {
                             format!(
                                 "{} — {} ({}): ",
@@ -301,7 +302,7 @@ impl App {
             }
         }
         let main_random = self.patch_browser.main_random == MainRandom::Start;
-        if !(self.patch_browser.open || main_random)
+        if !(self.patch_browser.open || self.drum_browser.open || main_random)
             || self.patch_browser.main_random_waiting_for_paint(ctx)
             || self.actions_busy()
             || self.resident_waiting()
@@ -317,6 +318,7 @@ impl App {
             });
             let Some(installed) = installed else {
                 self.patch_browser.requests.failed_preparation();
+                self.drum_patch_finished(false);
                 self.status = "Browse patch failed: target plugin no longer available".into();
                 return;
             };

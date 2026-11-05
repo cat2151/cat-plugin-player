@@ -14,6 +14,10 @@ mod config;
 mod correlation;
 #[path = "../shared/correlation_ui.rs"]
 mod correlation_ui;
+mod drum_browser;
+mod drum_browser_app;
+mod drum_browser_ui;
+mod drum_preview;
 mod effect_apply;
 mod effect_catalog;
 mod effect_preparation;
@@ -245,6 +249,7 @@ struct App {
     repaint_heartbeat: Option<repaint_heartbeat::RepaintHeartbeat>,
     patch_catalog: patch_catalog::Catalog,
     patch_browser: patch_browser::Browser,
+    drum_browser: drum_browser::Browser,
     effect_browser: effect_browser::EffectBrowser,
     auto_start_pending: bool,
     browser_auto_instrument: bool,
@@ -282,30 +287,32 @@ impl eframe::App for App {
             // eframe shows the root after its first paint, overriding the builder.
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
         }
+        command_palette::prepare(self, ctx);
         let palette_input = command_palette::begin(
             ctx,
-            command_palette::main_commands(self),
-            !self.mml_input.open
-                && self.favorites.rename.is_none()
-                && !self.confirm_rescan
-                && !self.first_instrument.dialog_open()
-                && !self.patch_browser.main_random_overlay
-                && !help_overlay::is_open(ctx),
+            command_palette::commands(self, command_palette::Screen::Main),
+            command_palette::allowed(self, command_palette::Screen::Main)
+                && !help_overlay::is_open(ctx)
+                && !routing_ui::effect_ui::is_open(ctx),
         );
         let help = if self.selection.is_some() {
             help_overlay::Page::Smf
         } else {
             help_overlay::Page::Main
         };
-        help_overlay::show(ctx, help);
+        if !routing_ui::effect_ui::is_open(ctx) {
+            help_overlay::show(ctx, help);
+        }
         main_menu::keyboard(
             ctx,
-            !self.mml_input.open
+            !routing_ui::effect_ui::is_open(ctx)
+                && !self.mml_input.open
                 && !self.browser_open()
                 && self.favorites.rename.is_none()
                 && !self.confirm_rescan
                 && !self.first_instrument.dialog_open(),
         );
+        self.effect_ui_picker(ctx);
         if let Some(unsaved) = self.selection.as_mut().filter(|s| !s.saved) {
             if selection::exit_key(ctx) {
                 ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
@@ -351,6 +358,7 @@ impl eframe::App for App {
 
         self.poll_browser_load();
         self.browser_ui(ctx);
+        self.drum_browser_ui(ctx);
         self.poll_browser_patch(ctx);
         self.poll_effect_browser(ctx);
         self.effect_browser_ui(ctx);

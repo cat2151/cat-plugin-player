@@ -2,6 +2,8 @@
 use crate::App;
 use eframe::egui;
 
+pub(crate) mod effect_ui;
+
 impl App {
     pub(crate) fn routing_panel(&mut self, ctx: &egui::Context, analysis_on_right: bool) {
         // Apply actions only after the routing and analysis panes are drawn.
@@ -157,7 +159,7 @@ impl App {
                                     {
                                         toggle.on_hover_text("Show / hide instrument UI (U)")
                                     } else {
-                                        toggle
+                                        toggle.on_hover_text("Effect UI: O (choose an effect when multiple are loaded)")
                                     };
                                     if toggle.clicked() {
                                         if ui_visible {

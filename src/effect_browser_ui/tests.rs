@@ -183,3 +183,136 @@ fn native_main_window_e_or_x_opens_effect_browser() {
         );
     }
 }
+
+// Match the patch browser regression: main-window-hidden frames arrive at 18 Hz.
+fn hover_frame(
+    browser: &mut EffectBrowser,
+    ctx: &egui::Context,
+    time: f64,
+    events: Vec<egui::Event>,
+) -> egui::FullOutput {
+    ctx.run(
+        egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(900.0, 700.0),
+            )),
+            time: Some(time),
+            events,
+            ..Default::default()
+        },
+        |ctx| {
+            let view = View {
+                slots: vec![],
+                taken: vec!["id.Dragonfly".into()],
+                loading: false,
+                busy: false,
+                status: "",
+                success: None,
+            };
+            browser.show(ctx, &view);
+        },
+    )
+}
+
+fn effect_point(output: &egui::FullOutput, name: &str) -> egui::Pos2 {
+    output
+        .shapes
+        .iter()
+        .find_map(|shape| match &shape.shape {
+            egui::Shape::Text(text) if text.galley.text().contains(name) => {
+                Some(text.pos + text.galley.size() * 0.5)
+            }
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("missing effect {name}"))
+}
+
+fn cell_background(output: &egui::FullOutput, point: egui::Pos2) -> (Color32, egui::Stroke) {
+    output
+        .shapes
+        .iter()
+        .rev()
+        .find_map(|shape| match &shape.shape {
+            egui::Shape::Rect(rect) if rect.rect.contains(point) => Some((rect.fill, rect.stroke)),
+            _ => None,
+        })
+        .unwrap()
+}
+
+#[test]
+fn hovering_effects_preserves_cell_background_and_selection_in_both_themes() {
+    for dark in [true, false] {
+        let ctx = egui::Context::default();
+        ctx.set_visuals(if dark {
+            egui::Visuals::dark()
+        } else {
+            egui::Visuals::light()
+        });
+        let mut browser = browser();
+        browser.select(0);
+        browser.desired = None;
+        hover_frame(&mut browser, &ctx, 0.0, vec![]);
+        let idle = hover_frame(&mut browser, &ctx, 0.1, vec![]);
+        let selected = effect_point(&idle, "Big Hall");
+        let other = effect_point(&idle, "Small Room");
+        for point in [other, selected] {
+            let hovered = hover_frame(
+                &mut browser,
+                &ctx,
+                0.1,
+                vec![egui::Event::PointerMoved(point)],
+            );
+            assert_eq!(
+                cell_background(&idle, point),
+                cell_background(&hovered, point)
+            );
+            assert_eq!(browser.selected, Some(0));
+            assert!(browser.desired.is_none());
+        }
+    }
+}
+
+#[test]
+fn effect_tooltip_returns_after_click_at_low_frame_rate_with_taken_details() {
+    let ctx = egui::Context::default();
+    let mut browser = browser();
+    hover_frame(&mut browser, &ctx, 0.0, vec![]);
+    let output = hover_frame(&mut browser, &ctx, 0.01, vec![]);
+    let hall = effect_point(&output, "Big Hall");
+    let room = effect_point(&output, "Small Room");
+    let mut time = 0.01;
+    let mut next = |browser: &mut EffectBrowser, events| {
+        time += 1.0 / 18.0;
+        hover_frame(browser, &ctx, time, events)
+    };
+    let click = |pressed| egui::Event::PointerButton {
+        pos: hall,
+        button: egui::PointerButton::Primary,
+        pressed,
+        modifiers: Default::default(),
+    };
+    next(
+        &mut browser,
+        vec![egui::Event::PointerMoved(hall), click(true)],
+    );
+    next(&mut browser, vec![click(false)]);
+    assert_eq!(selected(&browser), "Big Hall");
+    browser.desired = None;
+    let moved = next(&mut browser, vec![egui::Event::PointerMoved(room)]);
+    let tooltip = |output: &egui::FullOutput| {
+        output.shapes.iter().any(|shape| {
+            matches!(&shape.shape, egui::Shape::Text(text)
+            if text.galley.text().contains("X:/presets/Dragonfly/Small Room")
+                && text.galley.text().contains("already connected in another slot"))
+        })
+    };
+    assert!(!tooltip(&moved), "new cell must wait for its tooltip delay");
+    let mut shown = false;
+    for _ in 0..18 {
+        shown |= tooltip(&next(&mut browser, vec![]));
+    }
+    assert!(shown);
+    assert_eq!(selected(&browser), "Big Hall");
+    assert!(browser.desired.is_none());
+}

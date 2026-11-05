@@ -14,6 +14,7 @@ pub(crate) struct Replacement {
     prepared: Prepared,
     old_pattern: SequencePattern,
     old_state: Option<(PluginKey, Vec<u8>)>,
+    old_name: Option<String>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -64,8 +65,14 @@ impl App {
         else {
             self.status = "Browse patch failed: target plugin no longer available".into();
             self.patch_browser.requests.finish(false);
+            self.drum_patch_finished(false);
             return;
         };
+        let old_name = self
+            .instances
+            .iter()
+            .find(|i| i.kind == PluginKind::Instrument)
+            .and_then(|i| i.preset_name.clone());
         self.pause_audio();
         self.patch_changing();
         let old_pattern = self.sequence_pattern;
@@ -98,6 +105,7 @@ impl App {
             prepared,
             old_pattern,
             old_state,
+            old_name,
         };
         let existing = self
             .instances
@@ -245,6 +253,7 @@ impl App {
         self.patch_browser.requests.finish(false);
         self.sequence_pattern = pattern;
         let resumed = self.patch_operation(Operation::Resume, |app| app.resume_audio());
+        self.drum_patch_finished(false);
         self.status = format!(
             "{message}{}",
             resumed
@@ -281,7 +290,7 @@ impl App {
             if let Some((key, state)) = &replacement.old_state {
                 let current = &self.instances.iter().find(|i| i.id == id).unwrap().plugin;
                 if key.format != current.format || key.id != current.id {
-                    state_store::save(path, key, state)?;
+                    state_store::save_named(path, key, state, replacement.old_name.as_deref())?;
                 }
             }
             // Surge may accept state.load before its audio thread installs it.
@@ -302,6 +311,7 @@ impl App {
             self.status
                 .push_str(&format!("; applied, saving failed: {error}"));
         }
+        self.drum_patch_finished(true);
         if let Err(error) = resumed {
             self.status
                 .push_str(&format!("; applied, no audio: {error}"));

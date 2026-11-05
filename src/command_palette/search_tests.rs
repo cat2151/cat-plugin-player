@@ -3,6 +3,7 @@ use super::*;
 fn plugin_command() -> Command {
     // No romaji aliases: the visible Japanese description must be searchable.
     Command::new(
+        "rescan",
         "Rescan",
         "プラグインを再スキャン…",
         "",
@@ -32,7 +33,7 @@ fn migemo_searches_japanese_description_and_preserves_literal_and_search() {
         query.update(text);
         assert!(!command.matches(&query), "{text}");
     }
-    let save = Command::new("Save", "設定を保存", "", "S", &[Key::S], true);
+    let save = Command::new("save", "Save", "設定を保存", "", "S", &[Key::S], true);
     query.update("hozon");
     assert!(save.matches(&query));
     assert!(!command.matches(&query));
@@ -75,7 +76,7 @@ fn typing_romaji_filters_visible_rows_and_enter_dispatches_the_match() {
     assert_eq!(state(&ctx).query, "pura");
     assert!(output.shapes.iter().any(|shape| {
         matches!(&shape.shape, egui::Shape::Text(text)
-            if text.galley.job.text == "Rescan / プラグインを再スキャン…")
+            if text.galley.job.text == "Main: Rescan / プラグインを再スキャン…")
     }));
     frame(vec![Event::Key {
         key: Key::Enter,

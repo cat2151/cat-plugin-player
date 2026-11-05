@@ -123,6 +123,25 @@ impl Catalog {
         self.eligible.iter().map(move |&index| &candidates[index])
     }
 
+    /// Keep missing instruments visible in the drum screen with an unavailable state.
+    pub fn drum_candidates(&self) -> impl Iterator<Item = &Candidate> {
+        let candidates = match &self.state {
+            State::Ready(candidates) => candidates.as_slice(),
+            _ => &[],
+        };
+        candidates.iter().filter(|c| c.measurement.drum_kit)
+    }
+
+    pub fn drum_notice(&self) -> Option<&str> {
+        if let Some(notice) = self.notice() {
+            return Some(notice);
+        }
+        if !cmrt_tui_core::patch_catalog_cache::cache_file_path().is_some_and(|p| p.exists()) {
+            return Some("Drum catalog unavailable: sibling catalog cache is missing.");
+        }
+        None
+    }
+
     pub fn notice(&self) -> Option<&str> {
         match &self.state {
             State::NotStarted => Some("Catalog will load after the first audio callback."),

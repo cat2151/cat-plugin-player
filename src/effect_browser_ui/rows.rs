@@ -1,6 +1,9 @@
 //! Virtual multi-column effect rows: plugin and kind tints, taken plugins dimmed.
 use super::*;
-use crate::{effect_catalog::Candidate, patch_browser_ui::row_colors};
+use crate::{
+    effect_catalog::Candidate,
+    patch_browser_ui::{cell_response, hover_tooltip, paint_cell, row_colors},
+};
 
 /// Horizontal space between a cell edge and its label.
 const LABEL_INSET: f32 = 6.0;
@@ -55,6 +58,7 @@ impl EffectBrowser {
         }
         let applied = self.applied_in_target();
         let mut select = None;
+        let mut hover = None;
         egui::ScrollArea::vertical()
             .id_salt("effect_rows")
             .max_height(height)
@@ -66,34 +70,35 @@ impl EffectBrowser {
                         for cell in row * columns..((row + 1) * columns).min(rows.len()) {
                             let index = self.results[cell];
                             let candidate = rows[cell];
-                            let response = ui
-                                .push_id(index, |ui| {
-                                    ui.add_sized(
-                                        [cell_width, row_height],
-                                        egui::Button::new("")
-                                            .selected(self.selected == Some(index)),
-                                    )
-                                })
-                                .inner;
+                            let response =
+                                cell_response(ui, "effect_cell", index, cell_width, row_height);
+                            paint_cell(ui, &response, self.selected == Some(index), None);
                             let taken = view.taken.contains(&candidate.plugin_id);
                             let playing = applied.is_some_and(|applied| {
                                 crate::effect_browser::same(applied, candidate)
                             });
                             paint_row(ui, &response, candidate, tints[cell], mixed, taken, playing);
-                            let mut hover = details(candidate);
-                            if taken {
-                                hover.push_str(&format!(
-                                    "\n{} is already connected in another slot",
-                                    candidate.plugin_name
-                                ));
+                            if response.hovered() {
+                                hover =
+                                    Some(hover_tooltip(&response, index, self.hover_since, || {
+                                        let mut text = details(candidate);
+                                        if taken {
+                                            text.push_str(&format!(
+                                                "\n{} is already connected in another slot",
+                                                candidate.plugin_name
+                                            ));
+                                        }
+                                        text
+                                    }));
                             }
-                            if response.on_hover_text(hover).clicked() {
+                            if response.clicked() {
                                 select = Some(index);
                             }
                         }
                     });
                 }
             });
+        self.hover_since = hover;
         if let Some(index) = select {
             self.select(index);
             // Pointer selection already targets a visible cell.
