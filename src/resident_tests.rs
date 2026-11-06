@@ -439,3 +439,6 @@ fn a_resident_never_replaces_the_standalone_session() {
     app.save_session();
     assert_eq!(std::fs::read(crate::status::path(&config)).unwrap(), disk);
 }
+
+#[path = "resident_kit_tests.rs"]
+mod kit;

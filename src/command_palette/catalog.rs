@@ -185,12 +185,12 @@ pub(crate) fn main_commands(app: &App) -> Vec<Command> {
         commands.extend([
             Command::new(
                 "play-stop-sequence",
-                "Play / stop sequence",
-                "シーケンスを再生・停止",
+                "Play / stop",
+                "再生・停止",
                 "再生 停止",
                 "Space",
                 &[Key::Space],
-                ready && app.instances.iter().any(|i| i.voice.is_some()),
+                ready && app.main_playback_available(),
             ),
             Command::new(
                 "next-sequence",
@@ -252,8 +252,7 @@ pub(crate) fn main_commands(app: &App) -> Vec<Command> {
         commands.retain(|command| {
             !matches!(
                 command.id,
-                "play-stop-sequence"
-                    | "next-sequence"
+                "next-sequence"
                     | "next-velocity"
                     | "next-cc1-modulation"
                     | "edit-mml-chord"

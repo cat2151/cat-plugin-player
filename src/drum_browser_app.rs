@@ -5,44 +5,6 @@ use crate::{
 };
 
 impl App {
-    pub(crate) fn drum_kit_active(&self) -> bool {
-        if self.selection.is_some() || self.resident.is_some() {
-            return false;
-        }
-        if let Some(candidate) = &self.patch_browser.requests.applied {
-            return candidate.measurement.drum_kit;
-        }
-        self.drum_browser
-            .saved
-            .applied
-            .as_ref()
-            .zip(self.patch_browser.restore_playing.as_ref())
-            .is_some_and(|(kit, playing)| same(kit, playing))
-    }
-
-    pub(crate) fn drum_main_controls(&mut self, ui: &mut eframe::egui::Ui) {
-        ui.group(|ui| {
-            ui.horizontal(|ui| {
-                if ui
-                    .add_enabled(
-                        self.can_open_drums() && !self.drum_browser.open,
-                        eframe::egui::Button::new("preview drum kit"),
-                    )
-                    .on_hover_ui(|ui| {
-                        crate::command_palette::shortcut_hint(ui, "preview drum kit", "G")
-                    })
-                    .clicked()
-                {
-                    self.open_drum_browser();
-                }
-            });
-            if let Some(candidate) = &self.patch_browser.requests.applied {
-                ui.add(eframe::egui::Label::new(&candidate.display).truncate())
-                    .on_hover_text(&candidate.display);
-            }
-        });
-    }
-
     pub(crate) fn can_open_drums(&self) -> bool {
         self.selection.is_none() && self.resident.is_none() && !self.mml_input.open
     }
@@ -91,6 +53,7 @@ impl App {
     }
 
     pub(crate) fn stop_drum_audio(&mut self) {
+        self.drum_browser.main_audition = false;
         self.drum_browser.audition_started = false;
         self.auto_start_pending = false;
         self.sequence_pattern = SequencePattern::Off;
@@ -105,13 +68,27 @@ impl App {
         self.drum_browser.opening_audition = false;
         self.drum_browser.loading_since = None;
         self.drum_browser.awaiting = None;
+        self.drum_browser.confirm = false;
         self.patch_browser.requests.invalidate();
         self.stop_drum_audio();
     }
 
     pub(crate) fn close_drum_browser(&mut self) {
         self.stop_drum_preview();
+        self.drum_browser.prepared = None;
         self.drum_browser.open = false;
+        if self.resident_kit() {
+            let resident = self.resident.as_mut().unwrap();
+            if let Some(target) = resident.shown {
+                if let Err(error) = resident
+                    .sender
+                    .send(&crate::resident_ipc::ToEditor::KitClosed { target })
+                {
+                    self.status = error.to_string();
+                }
+            }
+            self.hide_resident();
+        }
         self.drum_browser.editing = None;
         self.drum_browser.composing = false;
         self.save_drum_cursor();
@@ -123,6 +100,7 @@ impl App {
             return;
         }
         self.stop_drum_preview();
+        self.drum_browser.prepared = None;
         self.drum_browser.selected = Some(index);
         self.drum_browser.scroll = true;
         if let Some(candidate) = self.drum_browser.selected() {
@@ -139,6 +117,15 @@ impl App {
     }
 
     pub(crate) fn request_drum_audition(&mut self, audition: Audition, explicit: bool) {
+        self.request_drum(audition, explicit, false);
+    }
+
+    pub(crate) fn request_drum_confirmation(&mut self) {
+        // A loaded preview alone cannot supply bytes to a new resident target.
+        self.request_drum(Audition::All, true, true);
+    }
+
+    fn request_drum(&mut self, audition: Audition, explicit: bool, require_state: bool) {
         let Some(candidate) = self.drum_browser.selected().cloned() else {
             return;
         };
@@ -159,7 +146,7 @@ impl App {
         if !explicit && matches!(audition, Audition::Note(_)) && !applied {
             return;
         }
-        if applied && !self.actions_busy() {
+        if applied && !require_state && !self.actions_busy() {
             self.play_drum_audition(audition);
             return;
         }
@@ -179,6 +166,9 @@ impl App {
     }
 
     pub(crate) fn drum_patch_finished(&mut self, success: bool) {
+        if success && !self.drum_browser.open && self.drum_kit_active() {
+            self.play_main_drum_preview();
+        }
         if success
             && self
                 .patch_browser
@@ -190,6 +180,12 @@ impl App {
             self.drum_browser.saved.applied =
                 self.patch_browser.requests.applied.as_ref().map(identity);
             self.save_drum_cursor();
+        }
+        if success && self.drum_browser.confirm {
+            self.confirm_resident_kit();
+            if self.resident_waiting() {
+                return;
+            }
         }
         // A previous transaction may finish while a new candidate is queued.
         if success
@@ -206,6 +202,10 @@ impl App {
         }
         if !success && self.patch_browser.requests.desired.is_some() {
             return;
+        }
+        if !success {
+            self.drum_browser.prepared = None;
+            self.drum_browser.confirm = false;
         }
         let Some((key, audition)) = self.drum_browser.awaiting.take() else {
             return;

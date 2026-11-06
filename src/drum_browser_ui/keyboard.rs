@@ -34,8 +34,21 @@ impl App {
             }
             return;
         }
-        if take(Key::Escape) || take(Key::Enter) {
+        if self.drum_browser.composing
+            || ctx.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Ime(_))))
+        {
+            return;
+        }
+        if take(Key::Escape) {
             self.close_drum_browser();
+            return;
+        }
+        if take(Key::Enter) {
+            if self.resident_kit() {
+                self.confirm_resident_kit();
+            } else {
+                self.close_drum_browser();
+            }
             return;
         }
         if take(Key::P) {

@@ -100,7 +100,11 @@ impl App {
                 return;
             }
         };
-        self.sequence_pattern = old_pattern;
+        self.sequence_pattern = if prepared.candidate.measurement.drum_kit {
+            SequencePattern::Off
+        } else {
+            old_pattern
+        };
         let replacement = Replacement {
             prepared,
             old_pattern,
@@ -283,6 +287,13 @@ impl App {
         );
         self.patch_browser.requests.finish(true);
         self.patch_browser.requests.applied = Some(replacement.prepared.candidate.clone());
+        if self.resident_kit() {
+            if let Err(error) = self.resume_audio() {
+                self.status = error;
+            }
+            self.drum_patch_finished(true);
+            return;
+        }
         // Save both old and applied bytes with the existing state store. No favorite capture.
         self.pause_audio();
         let saved = (|| {

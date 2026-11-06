@@ -1,10 +1,12 @@
 use super::*;
 
 pub(crate) fn candidate(id: &str) -> Candidate {
-    let mut measurement = cmrt_tui_core::patch_load::PatchLoadMeasurement::default();
-    measurement.drum_kit = true;
-    measurement.drum_kit_notes = Some(vec![127, 0, 127, 255]);
-    measurement.drum_kit_note_names = vec![(0, "Original name".into())];
+    let measurement = cmrt_tui_core::patch_load::PatchLoadMeasurement {
+        drum_kit: true,
+        drum_kit_notes: Some(vec![127, 0, 127, 255]),
+        drum_kit_note_names: vec![(0, "Original name".into())],
+        ..Default::default()
+    };
     Candidate {
         format: "CLAP".into(),
         plugin_id: id.into(),
@@ -138,7 +140,7 @@ fn native_drum_heavy_gate_stop_stale_results_and_cursor_file() {
 }
 
 #[test]
-fn native_drum_startup_restores_cursor_without_autostart() {
+fn native_drum_startup_restores_cursor_with_autostart() {
     if crate::native_library::process::isolated() {
         return;
     }
@@ -153,15 +155,51 @@ fn native_drum_startup_restores_cursor_without_autostart() {
     };
     saved.set_note(&kit, 127);
     saved.save(&config).unwrap();
-    let mut status = crate::status::Status::default();
-    status.sequence_pattern = crate::SequencePattern::Off;
+    let mut status = crate::status::Status {
+        sequence_pattern: crate::SequencePattern::Off,
+        ..Default::default()
+    };
     status.patch_browser.playing = Some(identity(&kit));
     status.write(&config).unwrap();
     let mut app = crate::App::prepare();
-    assert!(!app.auto_start_pending);
+    assert!(app.auto_start_pending);
     assert_eq!(app.sequence_pattern, crate::SequencePattern::Off);
     assert_eq!(app.drum_browser.saved, saved);
     app.output = None;
     app.restore = None;
     app.restore_effect.clear();
+}
+
+#[test]
+#[ignore = "exports an installed kit DTO/state to CAT_KIT_CONTRACT_FIXTURE for editor offline acceptance"]
+fn installed_kit_contract_fixture() {
+    let target =
+        std::env::var_os("CAT_KIT_CONTRACT_FIXTURE").expect("external fixture destination");
+    let catalog = crate::patch_catalog::load().unwrap();
+    let candidate = catalog
+        .iter()
+        .find(|c| c.measurement.drum_kit && c.display.contains("CR-909"))
+        .expect("installed CR-909 kit");
+    let kit = kit_metadata(candidate, 1).unwrap();
+    let reference = crate::patch_reference::PatchReference {
+        plugin: crate::host::PluginKey {
+            format: candidate.format.clone(),
+            id: candidate.plugin_id.clone(),
+            name: candidate.plugin_name.clone(),
+            vendor: String::new(),
+            bundle_path: candidate.bundle_path.to_string_lossy().into(),
+        },
+        source: crate::patch_reference::Source::Catalog {
+            path: candidate.path.clone(),
+            file: candidate.path.clone(),
+        },
+        display: candidate.display.clone(),
+    };
+    let state = crate::state_request::generate(&reference).unwrap();
+    assert!(!state.is_empty());
+    std::fs::write(
+        target,
+        serde_json::to_vec(&(reference, kit, state)).unwrap(),
+    )
+    .unwrap();
 }

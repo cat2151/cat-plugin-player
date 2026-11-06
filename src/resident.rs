@@ -5,8 +5,7 @@
 //! which plays it with its own plugin instances.
 use crate::{
     cli::Browser,
-    config::PluginKey,
-    resident_ipc::{self, Open, Selected, SharedState, ToEditor, ToPlayer},
+    resident_ipc::{self, Open, SharedState, ToPlayer},
     resident_log, App,
 };
 use std::sync::mpsc;
@@ -16,10 +15,10 @@ pub(crate) struct Resident {
     pub(super) sender: resident_ipc::Sender,
     /// The browser on screen, or `None` while hidden.
     pub(crate) shown: Option<Open>,
-    preparation_target: Option<Open>,
+    pub(super) preparation_target: Option<Open>,
     focus: Option<Browser>,
     /// Sent to the editor and not answered yet.
-    offered: Option<Offer>,
+    pub(super) offered: Option<Offer>,
     /// The last state line written to the trace.
     logged: String,
     pub(super) panes: Option<(String, [String; 2], String)>,
@@ -30,14 +29,14 @@ pub(crate) struct Resident {
     pub(super) pane_cache: std::collections::BTreeMap<String, ([String; 2], String)>,
 }
 
-fn log(message: impl std::fmt::Display) {
+pub(super) fn log(message: impl std::fmt::Display) {
     resident_log::log("player", message);
 }
 
-struct Offer {
-    browser: Browser,
-    label: String,
-    _state: SharedState,
+pub(super) struct Offer {
+    pub(super) browser: Browser,
+    pub(super) label: String,
+    pub(super) _state: SharedState,
 }
 
 enum Incoming {
@@ -93,9 +92,9 @@ impl Resident {
     }
 }
 
-fn browser(open: Open) -> Browser {
+pub(super) fn browser(open: Open) -> Browser {
     match open {
-        Open::Patch { .. } | Open::Layer { .. } => Browser::Patch,
+        Open::Patch { .. } | Open::Layer { .. } | Open::Kit { .. } => Browser::Patch,
         Open::Effect { .. } | Open::MasterEffect { .. } => Browser::Effect,
     }
 }
@@ -164,6 +163,10 @@ impl App {
                         .get(&context)
                         .cloned()
                         .unwrap_or(cursor);
+                    if matches!(open, Open::Kit { .. }) {
+                        self.show_resident(open);
+                        continue;
+                    }
                     self.restore_resident_panes(open, panes.clone(), query.clone());
                     if matches!(open, Open::Patch { .. } | Open::Layer { .. }) {
                         self.patch_browser.restore_selected = cursor.clone();
@@ -185,133 +188,15 @@ impl App {
         self.resident.as_ref().is_some_and(|r| r.offered.is_some())
     }
 
-    /// Sends a prepared patch to the editor in place of loading it here.
-    pub(crate) fn offer_patch(&mut self, prepared: crate::patch_preparation::Prepared) {
-        let candidate = &prepared.candidate;
-        let label = format!("{} — {}", candidate.plugin_name, candidate.display);
-        let result = self
-            .plugins
-            .iter()
-            .find(|plugin| {
-                plugin.format == candidate.format
-                    && plugin.id == candidate.plugin_id
-                    && plugin.kind == crate::plugin_list::PluginKind::Instrument
-            })
-            .map(PluginKey::from_plugin)
-            .ok_or_else(|| "target plugin no longer available".to_string())
-            .and_then(|plugin| {
-                let name = Some(candidate.display.clone());
-                let file = if candidate.plugin_id == cmrt_core::DEXED_PLUGIN_ID {
-                    std::path::PathBuf::from(
-                        cmrt_core::parse_cartridge_patch_path(
-                            candidate.path.to_str().ok_or("Patch path is not UTF-8")?,
-                        )
-                        .map_err(|e| e.to_string())?
-                        .cartridge_path,
-                    )
-                } else {
-                    candidate.path.clone()
-                };
-                let source = crate::patch_reference::Source::Catalog {
-                    path: candidate.path.clone(),
-                    file,
-                };
-                self.offer(
-                    Browser::Patch,
-                    plugin,
-                    name,
-                    label.clone(),
-                    &prepared.state,
-                    source,
-                )
-            });
-        log(format_args!("offer patch {label}: {result:?}"));
-        match result {
-            Ok(()) => self.status = format!("Sending browse patch: {label}..."),
-            Err(error) => {
-                self.patch_browser.requests.finish(false);
-                self.status = format!("Browse patch failed: {error}");
-            }
-        }
-    }
-
-    /// Sends a prepared effect preset to the editor in place of loading it here.
-    pub(crate) fn offer_effect(&mut self, prepared: crate::effect_preparation::Prepared) {
-        let candidate = &prepared.candidate;
-        let label = candidate.preset.display.clone();
-        let result = self
-            .plugins
-            .iter()
-            .find(|plugin| crate::effect_catalog::matches_plugin(candidate, plugin))
-            .map(PluginKey::from_plugin)
-            .ok_or_else(|| "plugin no longer available".to_string())
-            .and_then(|plugin| {
-                let name = Some(label.clone());
-                self.offer(
-                    Browser::Effect,
-                    plugin,
-                    name,
-                    label.clone(),
-                    &prepared.state,
-                    crate::patch_reference::Source::Effect {
-                        path: candidate.preset.path.clone(),
-                        value: candidate.preset.value.clone(),
-                    },
-                )
-            });
-        log(format_args!("offer effect {label}: {result:?}"));
-        self.status = match result {
-            Ok(()) => format!("Sending effect: {label}..."),
-            Err(error) => format!("Browse effect failed: {error}"),
-        };
-    }
-
-    fn offer(
-        &mut self,
-        browser: Browser,
-        plugin: PluginKey,
-        preset_name: Option<String>,
-        label: String,
-        state: &[u8],
-        source: crate::patch_reference::Source,
-    ) -> Result<(), String> {
-        let resident = self.resident.as_mut().unwrap();
-        let target = resident
-            .shown
-            .filter(|&open| self::browser(open) == browser)
-            .ok_or("the browser was closed")?;
-        if resident.preparation_target != Some(target) {
-            return Err("Selection target changed during state preparation".into());
-        }
-        let shared = resident.sender.share(state).map_err(|e| e.to_string())?;
-        resident
-            .sender
-            .send(&ToEditor::Selected(Selected {
-                reference: Some(Box::new(crate::patch_reference::PatchReference {
-                    plugin: plugin.clone(),
-                    source,
-                    display: preset_name.clone().unwrap_or_else(|| plugin.name.clone()),
-                })),
-                target,
-                plugin,
-                preset_name,
-                state: shared.reference.clone(),
-            }))
-            .map_err(|e| e.to_string())?;
-        resident.offered = Some(Offer {
-            browser,
-            label,
-            _state: shared,
-        });
-        Ok(())
-    }
-
     fn resident_answered(&mut self, result: Result<(), String>) {
         let Some(offer) = self.resident.as_mut().and_then(|r| r.offered.take()) else {
             log("answer arrived with nothing offered; ignored");
             return;
         };
         log(format_args!("answer for {}: {result:?}", offer.label));
+        if self.resident_kit() && result.is_ok() {
+            self.close_drum_browser();
+        }
         let kind = match offer.browser {
             Browser::Patch => {
                 self.patch_browser.requests.finish(result.is_ok());
@@ -326,6 +211,16 @@ impl App {
     }
 
     fn show_resident(&mut self, open: Open) {
+        if self.drum_browser.open {
+            self.close_drum_browser();
+        }
+        if matches!(open, Open::Kit { .. }) {
+            self.patch_browser.close();
+            self.effect_browser.close();
+            self.resident.as_mut().unwrap().shown = Some(open);
+            self.open_resident_kit();
+            return;
+        }
         let browser = browser(open);
         match browser {
             Browser::Patch => {

@@ -24,7 +24,8 @@ impl App {
         }
         self.sync_drum_catalog();
         self.start_opening_drum_audition();
-        let focus = crate::command_palette::take_focus(ctx, crate::command_palette::Screen::Drum);
+        let focus = std::mem::take(&mut self.drum_browser.focus_window)
+            || crate::command_palette::take_focus(ctx, crate::command_palette::Screen::Drum);
         let commands = crate::command_palette::commands(self, crate::command_palette::Screen::Drum);
         let allowed = crate::command_palette::allowed(self, crate::command_palette::Screen::Drum);
         ctx.show_viewport_immediate(
@@ -45,7 +46,14 @@ impl App {
                 );
                 // A search owns all text, including '?' and shortcut letters.
                 if self.drum_browser.editing.is_none() {
-                    crate::help_overlay::show(ctx, crate::help_overlay::Page::Drum);
+                    crate::help_overlay::show(
+                        ctx,
+                        if self.resident_kit() {
+                            crate::help_overlay::Page::DrumSelect
+                        } else {
+                            crate::help_overlay::Page::Drum
+                        },
+                    );
                 }
                 self.draw_drum_browser(ctx);
                 crate::command_palette::end(ctx, input);
@@ -68,6 +76,16 @@ impl App {
             return;
         }
         egui::TopBottomPanel::top("drum_search").show(ctx, |ui| {
+            if self.resident_kit() {
+                ui.horizontal(|ui| {
+                    if ui.button("Enter · Select").clicked() {
+                        self.confirm_resident_kit();
+                    }
+                    if ui.button("Esc · Cancel").clicked() {
+                        self.close_drum_browser();
+                    }
+                });
+            }
             self.drum_feedback(ui);
             let mut compare = self.drum_browser.compare_velocity;
             if ui

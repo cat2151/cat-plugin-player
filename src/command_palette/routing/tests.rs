@@ -163,10 +163,18 @@ fn native_drum_main_palette_hides_melodic_controls_and_keeps_random_patch() {
     app.restore_effect.clear();
     app.deferred_scan = false;
     app.patch_browser.requests.applied = Some(crate::drum_browser::tests::candidate("kit"));
-    let commands = commands(&app, Screen::Main);
-    assert!(!commands
+    let drum_transport = super::catalog::main_commands(&app)
+        .into_iter()
+        .filter(|c| c.id == "play-stop-sequence")
+        .collect::<Vec<_>>();
+    assert_eq!(drum_transport.len(), 1);
+    assert_eq!(drum_transport[0].keys, vec![egui::Key::Space]);
+    assert!(!drum_transport[0].enabled); // No audio: same guard as the button.
+    assert!(!super::catalog::main_commands(&app)
         .iter()
-        .any(|c| c.id == "play-stop-sequence" || c.id == "next-sequence"));
+        .any(|c| c.id == "play-stop-drum-preview"));
+    let commands = commands(&app, Screen::Main);
+    assert!(!commands.iter().any(|c| c.id == "next-sequence"));
     assert!(commands.iter().any(|c| c.id == "random-patch"));
     app.patch_browser
         .requests
@@ -175,6 +183,12 @@ fn native_drum_main_palette_hides_melodic_controls_and_keeps_random_patch() {
         .unwrap()
         .measurement
         .drum_kit = false;
+    let melodic_transport = super::catalog::main_commands(&app)
+        .into_iter()
+        .find(|c| c.id == "play-stop-sequence")
+        .unwrap();
+    assert_eq!(melodic_transport.label, drum_transport[0].label);
+    assert_eq!(melodic_transport.keys, drum_transport[0].keys);
     assert!(super::commands(&app, Screen::Main)
         .iter()
         .any(|c| c.id == "next-sequence"));

@@ -64,6 +64,8 @@ pub struct Effect {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Settings {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kit: Option<crate::drum_kit::Kit>,
     pub version: u8,
     pub layers: Vec<Layer>,
     pub effects: Vec<Effect>,
@@ -73,6 +75,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             version: 1,
+            kit: None,
             layers: vec![Layer::default()],
             effects: vec![],
         }
@@ -95,6 +98,12 @@ impl Settings {
     ) -> Result<(), String> {
         if self.version != 1 || self.layers.len() > 64 || self.effects.len() > 32 {
             return Err("Unsupported layer schema or too many slots".into());
+        }
+        if let Some(kit) = &self.kit {
+            kit.validate()?;
+            if !self.layers.iter().any(|l| l.id == kit.layer) {
+                return Err("Drum kit layer is missing".into());
+            }
         }
         let mut ids = HashSet::new();
         for layer in &self.layers {

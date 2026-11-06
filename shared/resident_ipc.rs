@@ -39,6 +39,9 @@ pub enum ToPlayer {
 /// What a resident player tells the editor.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ToEditor {
+    KitClosed {
+        target: Open,
+    },
     /// A patch or effect chosen in the browser, for the editor to play.
     Selected(Selected),
     /// Patch name under the cursor, independent of applied audio.
@@ -59,6 +62,8 @@ pub enum ToEditor {
 /// until the editor answers with [`ToPlayer::Applied`].
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Selected {
+    #[serde(default)]
+    pub kit: Option<crate::drum_kit::Kit>,
     pub reference: Option<Box<crate::patch_reference::PatchReference>>,
     pub target: Open,
     pub plugin: PluginKey,
@@ -69,10 +74,27 @@ pub struct Selected {
 /// A browser and the part of the song it edits.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Open {
-    Layer { track: usize, layer: u64, song: u64 },
-    Patch { track: usize },
-    Effect { track: usize, slot: Option<usize> },
-    MasterEffect { slot: Option<usize> },
+    Kit {
+        track: usize,
+        layer: Option<u64>,
+        song: u64,
+        request: u64,
+    },
+    Layer {
+        track: usize,
+        layer: u64,
+        song: u64,
+    },
+    Patch {
+        track: usize,
+    },
+    Effect {
+        track: usize,
+        slot: Option<usize>,
+    },
+    MasterEffect {
+        slot: Option<usize>,
+    },
 }
 
 /// A state placed in shared memory, as written into a control message.

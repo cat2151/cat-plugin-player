@@ -4,6 +4,7 @@ use eframe::egui;
 use rand::Rng;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 
+#[derive(Clone)]
 pub(crate) struct Prepared {
     pub candidate: Candidate,
     pub state: Vec<u8>,

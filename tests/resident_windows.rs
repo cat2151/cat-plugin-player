@@ -1,6 +1,9 @@
 //! Launch the real player in resident mode and watch its top-level windows.
 #![cfg(windows)]
 
+#[allow(dead_code)]
+#[path = "../shared/drum_kit.rs"]
+mod drum_kit;
 #[path = "../shared/patch_identity.rs"]
 mod patch_identity;
 #[path = "../shared/resident_ipc.rs"]

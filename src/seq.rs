@@ -153,6 +153,10 @@ impl Sequencer {
         self.drum.replace(notes);
     }
 
+    pub(crate) fn drum_active(&self) -> bool {
+        self.drum.active()
+    }
+
     pub(crate) fn drum_note(&self) -> Option<u8> {
         self.drum.current_note()
     }

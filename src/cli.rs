@@ -13,6 +13,9 @@ pub struct Cli {
     /// Read a patch reference from stdin and return opaque state on stdout.
     #[arg(long, conflicts_with_all = ["resident", "select_smf"])]
     pub restore_state: bool,
+    /// Return the default new-container kit reference and note metadata without a GUI.
+    #[arg(long, conflicts_with_all = ["restore_state", "patch_roots", "resident", "select_smf"])]
+    pub default_drum_kit: bool,
     /// Print where installed plugins keep their patches, as JSON on stdout.
     #[arg(long, conflicts_with_all = ["restore_state", "resident", "select_smf"])]
     pub patch_roots: bool,

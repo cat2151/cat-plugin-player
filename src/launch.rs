@@ -6,6 +6,9 @@ use std::time::Instant;
 pub(super) fn run() -> eframe::Result {
     let main_reached_ms = main_reached::since_process_creation_ms();
     let cli = cli::Cli::parse();
+    if cli.default_drum_kit {
+        return crate::default_drum_kit::run().map_err(|e| eframe::Error::AppCreation(e.into()));
+    }
     if let Some(command) = &cli.command {
         return crate::surge_start_delay::measure::run(command)
             .map_err(|e| eframe::Error::AppCreation(e.into()));

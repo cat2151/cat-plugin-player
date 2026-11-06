@@ -53,6 +53,7 @@ pub fn write(music: &mut Music, effects: &Effects, roots: &mut dyn Roots) -> Res
         return Err("Master effects require format 1".into());
     }
     let settings = instrument_layers::Settings {
+        kit: None,
         version: 1,
         layers: vec![],
         effects: effects.effects.clone(),

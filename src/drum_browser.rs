@@ -23,6 +23,10 @@ pub(crate) struct Saved {
 #[derive(Default)]
 pub(crate) struct Browser {
     pub open: bool,
+    pub prepared: Option<crate::patch_preparation::Prepared>,
+    pub confirm: bool,
+    pub focus_window: bool,
+    search: crate::command_palette::search::SearchQuery,
     pub saved: Saved,
     pub error: Option<String>,
     pub kits: Vec<Candidate>,
@@ -37,6 +41,7 @@ pub(crate) struct Browser {
     pub loading_since: Option<std::time::Instant>,
     pub audition_started: bool,
     pub compare_velocity: bool,
+    pub main_audition: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -68,15 +73,14 @@ impl Browser {
     }
 
     pub fn filter(&mut self) {
-        let query = self.saved.query.to_lowercase();
+        self.search.update(&self.saved.query);
         self.results = self
             .kits
             .iter()
             .enumerate()
             .filter(|(_, c)| {
-                format!("{} {}", c.plugin_name, c.display)
-                    .to_lowercase()
-                    .contains(&query)
+                self.search
+                    .matches(&format!("{} {}", c.plugin_name, c.display))
             })
             .map(|(i, _)| i)
             .collect();
@@ -118,6 +122,36 @@ pub(crate) fn notes(candidate: &Candidate) -> Option<Vec<u8>> {
         notes.dedup();
         notes
     })
+}
+
+pub(crate) fn kit_metadata(
+    candidate: &Candidate,
+    layer: u64,
+) -> Result<crate::drum_kit::Kit, String> {
+    let notes = notes(candidate)
+        .filter(|n| !n.is_empty())
+        .ok_or("Kit note assignments unavailable")?;
+    let kit = crate::drum_kit::Kit {
+        layer,
+        rows: None,
+        muted: vec![],
+        swing: Default::default(),
+        notes: notes
+            .into_iter()
+            .map(|note| crate::drum_kit::Note {
+                note,
+                name: candidate
+                    .measurement
+                    .drum_kit_note_names
+                    .iter()
+                    .find(|(n, _)| *n == note)
+                    .map_or(String::new(), |(_, name)| name.clone()),
+                velocity: 100,
+            })
+            .collect(),
+    };
+    kit.validate()?;
+    Ok(kit)
 }
 
 pub(crate) fn note_name(candidate: &Candidate, note: u8) -> &str {

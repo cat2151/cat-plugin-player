@@ -7,6 +7,7 @@ use crate::{
 impl App {
     pub(crate) fn restore_resident_panes(&mut self, open: Open, panes: [String; 2], query: String) {
         match open {
+            Open::Kit { .. } => (),
             Open::Patch { .. } | Open::Layer { .. } => {
                 // Retain the built catalog and preparation worker across targets.
                 let restored =
@@ -56,6 +57,7 @@ impl App {
         let resident = self.resident.as_ref().unwrap();
         let (_, previous, previous_query) = resident.panes.as_ref().unwrap();
         let (panes, query) = match open {
+            Open::Kit { .. } => return,
             Open::Patch { .. } | Open::Layer { .. } => {
                 let saved = self.patch_browser.saved_filter();
                 ([saved.role, saved.preset], saved.query)

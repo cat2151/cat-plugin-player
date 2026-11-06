@@ -72,6 +72,7 @@ pub struct Voice {
     preview: Arc<crate::preview::Mailbox>,
     drum: Arc<crate::preview::Mailbox>,
     drum_note: Arc<AtomicU8>,
+    drum_active: Arc<AtomicBool>,
     fade_out: Arc<AtomicBool>,
     faded: Arc<AtomicBool>,
 }
@@ -115,6 +116,8 @@ impl Voice {
         let drum_note = Arc::new(AtomicU8::new(128));
         let drum_meter = drum_note.clone();
         let mut seen_drum = 0;
+        let drum_active = Arc::new(AtomicBool::new(false));
+        let drum_active_meter = drum_active.clone();
         let channels = output.config.channels as usize;
         let sequence_pattern = Arc::new(AtomicU64::new(sequence_pattern as u64));
         let sequence_flag = Arc::clone(&sequence_pattern);
@@ -245,6 +248,7 @@ impl Voice {
                         for (meter, value) in macro_meter.iter().zip(macro_value) {
                             meter.store(value, Ordering::Relaxed);
                         }
+                        drum_active_meter.store(sequencer.drum_active(), Ordering::Relaxed);
                         drum_meter.store(sequencer.drum_note().unwrap_or(128), Ordering::Relaxed);
                         capture.record(chunk, channels, events);
                         if trace_signal && chunk.iter().any(|sample| sample.abs() > 0.000001) {
@@ -287,6 +291,7 @@ impl Voice {
             preview,
             drum,
             drum_note,
+            drum_active,
             fade_out,
             faded,
         })
@@ -310,6 +315,10 @@ impl Voice {
 
     pub(crate) fn drum_preview(&self, notes: Option<crate::preview::Notes>) {
         self.drum.publish(notes);
+    }
+
+    pub(crate) fn drum_active(&self) -> bool {
+        self.drum_active.load(Ordering::Relaxed)
     }
 
     pub(crate) fn drum_note(&self) -> Option<u8> {

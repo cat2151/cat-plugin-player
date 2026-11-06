@@ -26,36 +26,6 @@ fn selected_state(current: SequencePattern, selected: SequencePattern) -> Sequen
     }
 }
 
-// Consume repeats too, so a focused button cannot also react to Space.
-fn take_transport_shortcut(ctx: &egui::Context, enabled: bool) -> bool {
-    let editing_text = ctx
-        .memory(|memory| memory.focused())
-        .is_some_and(|id| egui::text_edit::TextEditState::load(ctx, id).is_some());
-    if !enabled || editing_text {
-        return false;
-    }
-    ctx.input_mut(|input| {
-        let mut toggle = false;
-        input.events.retain(|event| {
-            if let egui::Event::Key {
-                key: egui::Key::Space,
-                pressed: true,
-                repeat,
-                modifiers,
-                ..
-            } = event
-            {
-                if modifiers.is_none() {
-                    toggle |= !repeat;
-                    return false;
-                }
-            }
-            true
-        });
-        toggle
-    })
-}
-
 impl App {
     pub(crate) fn sequence_controls(&mut self, ui: &mut egui::Ui) {
         if let Some(selection) = &self.selection {
@@ -68,8 +38,9 @@ impl App {
             ));
             return;
         }
+        let transport = self.main_transport(ui.ctx());
         if self.drum_kit_active() {
-            self.drum_main_controls(ui);
+            self.drum_main_controls(ui, &transport);
             return;
         }
         let current = self.sequence_pattern;
@@ -87,9 +58,7 @@ impl App {
         let mut dropped = false;
         let ready = !self.actions_busy() && !self.mml_input.open && !self.browser_open();
         let mut open_mml = false;
-        let has_audio = self.instances.iter().any(|i| i.voice.is_some());
-        let shortcut =
-            take_transport_shortcut(ui.ctx(), ready && has_audio && !self.mml_input.open);
+        let mut toggle_playback = false;
         let [next_sequence, next_velocity, next_modulation] =
             [egui::Key::S, egui::Key::V, egui::Key::W]
                 .map(|key| ready && self.main_shortcut(ui.ctx(), key));
@@ -138,29 +107,7 @@ impl App {
                 if selected != original {
                     next = selected_state(current, selected);
                 }
-                let playing = current != SequencePattern::Off;
-                if ui
-                    .add_enabled(
-                        ready && has_audio,
-                        egui::Button::new(if playing { "Stop" } else { "Play" }),
-                    )
-                    .on_hover_text(if playing {
-                        "Stop sequence (Space)"
-                    } else {
-                        "Play selected sequence (Space)"
-                    })
-                    .on_disabled_hover_text(
-                        "Load an instrument with audio first; wait for loading to finish",
-                    )
-                    .clicked()
-                    || shortcut
-                {
-                    next = if playing {
-                        SequencePattern::Off
-                    } else {
-                        selected
-                    };
-                }
+                toggle_playback = transport.button(ui);
             });
             ui.horizontal_wrapped(|ui| {
                 ui.label("Velocity");
@@ -289,6 +236,9 @@ m: every macro to sweep, or back to - once all sweep"
                 self.save_session();
             }
         }
+        if toggle_playback {
+            self.toggle_main_playback();
+        }
         if open_mml {
             self.open_mml_editor();
         }
@@ -323,62 +273,6 @@ fn modulation_selector(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn space(repeat: bool, modifiers: egui::Modifiers) -> egui::Event {
-        egui::Event::Key {
-            key: egui::Key::Space,
-            physical_key: None,
-            pressed: true,
-            repeat,
-            modifiers,
-        }
-    }
-
-    #[test]
-    fn space_shortcut_consumes_press_and_ignores_repeat_modifiers_and_disabled_transport() {
-        let ctx = egui::Context::default();
-        for (event, enabled, expected, consumed) in [
-            (space(false, egui::Modifiers::NONE), true, true, true),
-            (space(true, egui::Modifiers::NONE), true, false, true),
-            (space(false, egui::Modifiers::CTRL), true, false, false),
-            (space(false, egui::Modifiers::NONE), false, false, false),
-        ] {
-            let input = egui::RawInput {
-                events: vec![event],
-                ..Default::default()
-            };
-            let _ = ctx.run(input, |ctx| {
-                assert_eq!(take_transport_shortcut(ctx, enabled), expected);
-                assert_eq!(ctx.input(|i| i.events.is_empty()), consumed);
-                assert!(!take_transport_shortcut(ctx, enabled));
-            });
-        }
-    }
-
-    #[test]
-    fn space_in_focused_text_edit_remains_available_for_typing() {
-        let ctx = egui::Context::default();
-        let mut text = String::new();
-        let _ = ctx.run(Default::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
-                ui.text_edit_singleline(&mut text).request_focus();
-            });
-        });
-        let input = egui::RawInput {
-            events: vec![
-                space(false, egui::Modifiers::NONE),
-                egui::Event::Text(" ".into()),
-            ],
-            ..Default::default()
-        };
-        let _ = ctx.run(input, |ctx| {
-            assert!(!take_transport_shortcut(ctx, true));
-            egui::CentralPanel::default().show(ctx, |ui| {
-                ui.text_edit_singleline(&mut text);
-            });
-        });
-        assert_eq!(text, " ");
-    }
 
     #[test]
     fn selecting_while_stopped_does_not_start_playback() {

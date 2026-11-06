@@ -122,7 +122,11 @@ impl App {
         audio::Voice::start(
             self.output.as_ref().unwrap(),
             processor,
-            self.sequence_pattern,
+            if self.drum_kit_active() {
+                crate::SequencePattern::Off
+            } else {
+                self.sequence_pattern
+            },
             self.sequence_velocity,
             self.sequence_modulation,
             &self.macro_lane.active(),

@@ -272,7 +272,10 @@ impl App {
                         self.patch_browser.requests.invalidate();
                     }
                     if self.patch_browser.requests.ready().is_some() {
-                        if self.resident.is_some() {
+                        if self.resident_kit() {
+                            self.drum_browser.prepared = Some(prepared.clone());
+                            self.apply_patch(prepared);
+                        } else if self.resident.is_some() {
                             self.offer_patch(prepared);
                         } else {
                             self.apply_patch(prepared);

@@ -14,9 +14,14 @@ mod config;
 mod correlation;
 #[path = "../shared/correlation_ui.rs"]
 mod correlation_ui;
+mod default_drum_kit;
 mod drum_browser;
 mod drum_browser_app;
 mod drum_browser_ui;
+#[allow(dead_code)]
+#[path = "../shared/drum_kit.rs"]
+mod drum_kit;
+mod drum_main_preview;
 mod drum_preview;
 mod effect_apply;
 mod effect_catalog;
@@ -88,8 +93,10 @@ mod resident_cursor;
 #[allow(dead_code)]
 #[path = "../shared/resident_ipc.rs"]
 mod resident_ipc;
+mod resident_kit;
 #[path = "../shared/resident_log.rs"]
 mod resident_log;
+mod resident_offer;
 mod resident_panes;
 mod routing_ui;
 mod scope;
@@ -133,6 +140,7 @@ mod patch_browser_ui;
 mod patch_filter_store;
 #[path = "../shared/patch_identity.rs"]
 mod patch_identity;
+mod playback_transport;
 mod playback_ui;
 mod sequence_pattern;
 mod sequence_ui;

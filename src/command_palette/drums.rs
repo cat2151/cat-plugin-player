@@ -4,7 +4,7 @@ use eframe::egui::Key;
 
 pub(super) fn commands(app: &App) -> Vec<Command> {
     let selected = app.drum_browser.selected().is_some();
-    vec![
+    let mut commands = vec![
         Command::new(
             "drum-velocity",
             "Toggle velocity comparison",
@@ -59,5 +59,17 @@ pub(super) fn commands(app: &App) -> Vec<Command> {
             &[Key::F1],
             true,
         ),
-    ]
+    ];
+    if app.resident_kit() {
+        commands.push(Command::new(
+            "kit-confirm",
+            "Select kit",
+            "Kit確定",
+            "kit confirm",
+            "Enter",
+            &[Key::Enter],
+            selected,
+        ));
+    }
+    commands
 }

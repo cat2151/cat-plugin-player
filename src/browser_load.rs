@@ -64,6 +64,14 @@ impl App {
         if self.actions_busy() {
             return;
         }
+        if self.auto_start_pending && self.drum_kit_active() {
+            // Startup metadata can arrive after the instrument state.
+            if self.main_drum_candidate().is_some() {
+                self.auto_start_pending = false;
+                self.play_main_drum_preview();
+            }
+            return;
+        }
         if std::mem::take(&mut self.auto_start_pending)
             && only_plugin(&self.plugins, self.prefer_clap, PluginKind::Instrument).is_some()
         {

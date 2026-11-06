@@ -29,8 +29,10 @@
 常駐browserはeditorから渡された対象に属するため、別browserへの切り替えは
 editor側の新しいOpen要求を必要とする。対象を持たない別browserの操作も候補にしない。
 入力・確認で移動できない画面は遷移先から除外する。
-Drum kit適用中の通常モードでは、mainのSequence再生・選択・強弱・変調・MML編集の候補を除外し、
-Drum kits画面の試聴操作を使う。通常音色へ戻ると通常の候補を復元する。
+mainのPlay / stopは通常音色とDrum kitで共通の候補・Space処理を使い、
+通常音色ではSequence、Drum kitではメイン画面専用previewを再生・停止する。
+Drum kit適用中はSequence選択・強弱・変調・MML編集の候補を除外する。
+Drum kits画面の試聴操作は別画面の操作として維持し、通常音色へ戻ると通常の候補を復元する。
 SMF選択中の再生契約は変更しない。
 
 画面移動はplayerの既存のopen/close処理を使い、SMF選択のbrowser_onlyを

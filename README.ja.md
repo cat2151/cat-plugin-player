@@ -87,8 +87,7 @@ https://github.com/user-attachments/assets/c4a7cec0-ebfd-4cea-bc21-bbfc4dd8e92d
         - ここを作ることでUXの改善ができる
 - 誰のための楽器？
   - 猫、赤子
-    - つまり猫や赤子（例えばAndroidタブレット）もターゲットに含むくらいレンジを初心者側に広くとる
-  - ※あくまで比喩表現です。実際にAndroidタブレットで動くかは未確認です。Androidで動かない場合に動くよう努力をする可能性も低いです
+    - 究極的にはそれを目指したいですが、実際にはまだ自分のための楽器を目指している段階です
 
 ## スコープ外、目指さないもの
 - 堅牢さ
@@ -106,10 +105,14 @@ https://github.com/user-attachments/assets/c4a7cec0-ebfd-4cea-bc21-bbfc4dd8e92d
 ## いろいろ
 ### 起動時のメイン画面の座標とサイズを指定するには
 
-AppData Localのsettings.tomlに、例えば、以下を書きます：
+AppData Localのconfig.tomlに、例えば、以下を書きます：
 
 ```
-window = [0, 0, 1800, 900]
+[window.main]
+x = 0.0
+y = 0.0
+width = 960.0
+height = 800.0
 ```
 
 ## ライセンス

@@ -15,6 +15,7 @@ pub(crate) enum Page {
     Settings,
     Analysis,
     Drum,
+    DrumSelect,
 }
 
 /// A function's binds share one color; the colors alone mark the groups.
@@ -47,6 +48,21 @@ const DRUM: &[Group] = &[
         ("Enter / Esc", "適用済みkitを保持して閉じる"),
         ("Ctrl+Shift+P", "コマンドパレット"),
     ],
+];
+
+const DRUM_SELECT: &[Group] = &[
+    &[
+        ("h j k l", "Kit / Note"),
+        ("PgUp PgDn", "10行"),
+        ("Home End", "先頭 / 末尾"),
+    ],
+    &[
+        ("Space", "試聴"),
+        ("V", "Velocity"),
+        ("P", "試聴停止"),
+        ("/", "検索"),
+    ],
+    &[("Ctrl+Shift+P", "コマンドパレット")],
 ];
 
 const LIBRARY: Group = &[
@@ -204,6 +220,7 @@ pub(crate) fn show(ctx: &egui::Context, page: Page) {
         Page::Settings => SETTINGS,
         Page::Analysis => ANALYSIS,
         Page::Drum => DRUM,
+        Page::DrumSelect => DRUM_SELECT,
     };
     let dark = ctx.style().visuals.dark_mode;
     egui::Area::new(id)

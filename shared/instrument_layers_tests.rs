@@ -182,3 +182,39 @@ fn numeric_boundaries_and_duplicate_ids_are_validated() {
     settings.layers.clear();
     assert!(settings.validate().is_ok());
 }
+
+#[test]
+fn kit_saved_without_catalog_keeps_note_identity_names_defaults_and_unrelated_events() {
+    let mut settings = Settings {
+        kit: Some(crate::drum_kit::Kit {
+            layer: 1,
+            rows: None,
+            muted: vec![],
+            swing: Default::default(),
+            notes: vec![
+                crate::drum_kit::Note {
+                    note: 0,
+                    name: "Original".into(),
+                    velocity: 45,
+                },
+                crate::drum_kit::Note {
+                    note: 127,
+                    name: String::new(),
+                    velocity: 100,
+                },
+            ],
+        }),
+        ..Default::default()
+    };
+    let mut track = Track { events: vec![] };
+    write(&mut track, &settings, &mut roots()).unwrap();
+    let music = Music {
+        format: 1,
+        division: 480,
+        tracks: vec![track],
+    };
+    let parsed = crate::smf::ffi::parse(&crate::smf::io::encode(&music).unwrap()).unwrap();
+    assert_eq!(read(&parsed.tracks[0], &mut roots()).unwrap(), settings);
+    settings.kit.as_mut().unwrap().layer = 2;
+    assert!(settings.validate().is_err());
+}

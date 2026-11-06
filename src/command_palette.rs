@@ -16,7 +16,7 @@ pub(crate) use row::shortcut_hint;
 #[cfg(test)]
 mod layout_tests;
 mod migemo;
-mod search;
+pub(crate) mod search;
 #[cfg(test)]
 mod search_tests;
 mod view;
