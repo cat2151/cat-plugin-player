@@ -142,6 +142,7 @@ mod patch_filter_store;
 mod patch_identity;
 mod playback_transport;
 mod playback_ui;
+mod sequence_notes;
 mod sequence_pattern;
 mod sequence_ui;
 mod sequence_velocity;

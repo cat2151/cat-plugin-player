@@ -15,6 +15,8 @@ use crate::sequence_velocity::SequenceVelocity;
 
 /// Standard guitar tuning, from the sixth string to the first (E2 to E4).
 pub const GUITAR_NOTES: [u8; 6] = [40, 45, 50, 55, 59, 64];
+pub const CSUS4_C: [&[u8]; 2] = [&[60, 65, 67], &[60, 64, 67]];
+pub const FMAJ7_G6: [&[u8]; 2] = [&[53, 69, 72, 76], &[55, 71, 74, 76]];
 /// Gradually accelerate the picking while keeping the phrase's total duration.
 const GUITAR_INTERVAL_MILLIS: [u32; 5] = [175, 150, 125, 100, 75];
 
@@ -321,12 +323,8 @@ impl Sequencer {
                     (Some(note), STEP_MILLIS * 1000)
                 }
                 SequencePattern::GuitarArpeggio => self.arpeggio(out, &[&GUITAR_NOTES], 1),
-                SequencePattern::Csus4CArpeggio => {
-                    self.arpeggio(out, &[&[60, 65, 67], &[60, 64, 67]], 2)
-                }
-                SequencePattern::Fmaj7G6Arpeggio => {
-                    self.arpeggio(out, &[&[53, 69, 72, 76], &[55, 71, 74, 76]], 2)
-                }
+                SequencePattern::Csus4CArpeggio => self.arpeggio(out, &CSUS4_C, 2),
+                SequencePattern::Fmaj7G6Arpeggio => self.arpeggio(out, &FMAJ7_G6, 2),
                 SequencePattern::Off | SequencePattern::Custom => unreachable!(),
             };
             if let Some(note) = note {

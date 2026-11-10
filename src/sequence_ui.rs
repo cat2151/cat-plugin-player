@@ -4,6 +4,7 @@ use crate::{App, SequenceModulation, SequencePattern, SequenceVelocity};
 use eframe::egui;
 use value_bar::{drag_bar, value_bar};
 
+mod keyboard;
 mod value_bar;
 
 /// The dropdowns' longest label is "MML / Chord"; the arrows take the saved width.
@@ -108,6 +109,16 @@ impl App {
                     next = selected_state(current, selected);
                 }
                 toggle_playback = transport.button(ui);
+                let sounding = self.instances.iter().filter_map(|i| i.voice.as_ref()).fold(
+                    [0; 2],
+                    |mut notes, voice| {
+                        let current = voice.current_notes();
+                        notes[0] |= current[0];
+                        notes[1] |= current[1];
+                        notes
+                    },
+                );
+                keyboard::show(ui, selected, self.mml_input.phrase.as_ref(), sounding);
             });
             ui.horizontal_wrapped(|ui| {
                 ui.label("Velocity");

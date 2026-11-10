@@ -62,6 +62,7 @@ pub struct Voice {
     sequence_modulation: Arc<AtomicU8>,
     current_velocity: Arc<AtomicU8>,
     current_modulation: Arc<AtomicU8>,
+    notes: Arc<crate::sequence_notes::Meter>,
     /// ADR 0036, per macro: high byte target, low byte choice; `u16::MAX` sends nothing.
     macro_modulation: Arc<[AtomicU16; MACROS]>,
     /// The shim's code for a rejected macro parameter batch; 0 while none.
@@ -128,6 +129,9 @@ impl Voice {
         let modulation_flag = Arc::clone(&sequence_modulation);
         let current_velocity = Arc::new(AtomicU8::new(0));
         let current_modulation = Arc::new(AtomicU8::new(0));
+        let notes = Arc::new(crate::sequence_notes::Meter::default());
+        let note_meter = notes.clone();
+        let mut note_tracker = crate::sequence_notes::Tracker::default();
         let macro_modulation =
             Arc::new(macro_modulation.map(|lane| AtomicU16::new(encode_macro(lane))));
         let macro_flag = Arc::clone(&macro_modulation);
@@ -242,6 +246,7 @@ impl Voice {
                             }
                         }
                         fade.apply(chunk, channels, fading_out);
+                        note_tracker.record(events, &note_meter);
                         let (velocity, modulation, macro_value) = sequencer.current_values();
                         velocity_meter.store(velocity, Ordering::Relaxed);
                         modulation_meter.store(modulation, Ordering::Relaxed);
@@ -283,6 +288,7 @@ impl Voice {
             sequence_modulation,
             current_velocity,
             current_modulation,
+            notes,
             macro_modulation,
             parameter_failure,
             current_macro,
@@ -339,6 +345,10 @@ impl Voice {
                 .each_ref()
                 .map(|value| value.load(Ordering::Relaxed)),
         )
+    }
+
+    pub(crate) fn current_notes(&self) -> [u64; 2] {
+        self.notes.snapshot()
     }
 
     /// The shim's code once a macro parameter batch was rejected; the voice then stops
