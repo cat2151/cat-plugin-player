@@ -42,6 +42,10 @@ pub enum ToEditor {
     KitClosed {
         target: Open,
     },
+    /// The patch browser for `target` was hidden by Esc, Q, or its close button.
+    BrowserClosed {
+        target: Open,
+    },
     /// A patch or effect chosen in the browser, for the editor to play.
     Selected(Selected),
     /// Patch name under the cursor, independent of applied audio.

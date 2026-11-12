@@ -442,3 +442,6 @@ fn a_resident_never_replaces_the_standalone_session() {
 
 #[path = "resident_kit_tests.rs"]
 mod kit;
+
+#[path = "resident_closed_tests.rs"]
+mod closed;

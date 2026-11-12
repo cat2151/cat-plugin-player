@@ -64,7 +64,7 @@ fn resident_esc_after_an_applied_patch_hides_and_keeps_it() {
         Some("Bass 2"),
         "the last applied patch stays"
     );
-    // The only player-to-editor message is a selection, so nothing can undo Bass 2.
+    // Only a selection changes the editor's sound, so nothing can undo Bass 2.
     nothing_sent(&mut app, &ctx);
 
     // Showing it again requests nothing either.

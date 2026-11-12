@@ -92,7 +92,7 @@ fn resident_kit_browser_metadata_confirm_ack_and_cancel_keep_target_identity() {
     assert!(!app.resident_waiting());
 }
 
-fn drum_keys(key: egui::Key) -> Vec<egui::Event> {
+pub(super) fn drum_keys(key: egui::Key) -> Vec<egui::Event> {
     [true, false]
         .into_iter()
         .map(|pressed| egui::Event::Key {
@@ -104,7 +104,7 @@ fn drum_keys(key: egui::Key) -> Vec<egui::Event> {
         })
         .collect()
 }
-fn drum_frame(app: &mut App, ctx: &egui::Context, events: Vec<egui::Event>) {
+pub(super) fn drum_frame(app: &mut App, ctx: &egui::Context, events: Vec<egui::Event>) {
     let _ = ctx.run(
         egui::RawInput {
             events,

@@ -39,6 +39,10 @@ fn closing_reports_pane_changes_without_selecting_any_patch() {
             query: "bass -bright".into()
         })
     );
+    assert_eq!(
+        input.receive::<ToEditor>().unwrap(),
+        Some(ToEditor::BrowserClosed { target: open })
+    );
     assert!(app.patch_browser.requests.desired.is_none());
     assert_eq!(shown(&app), None);
     editor
