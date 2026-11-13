@@ -14,8 +14,8 @@ BASELINES = {
     'vst3/PluginInstanceVST3.States.cpp': '899c53d931a687115ed526f197c94e8564ee91e826c1c1dcab879205868c68e2',
     'vst3/HostClasses.hpp': 'ceaae1d61b89f4f74597a865e10d89b6a48f2a683868c8b8f9efde9f1499b81e',
     'clap/PluginInstanceCLAP.Parameters.cpp': 'cf7b01ee3867baecf2de9fa71060c165a7d98f87000de682fc1e433e78a7be85',
-    'vst3/PluginFormatVST3.hpp': '476e8e208f510f762e90a072f47c72742a82a1ee08a7adf0f6452a241646cc9a',
-    'vst3/PluginInstanceVST3.cpp': 'e42d362ec2c9b97ebfdb49ae207e30b827776c4e00ed814549cfabfbb803673e',
+    'vst3/PluginFormatVST3.hpp': 'e9bf58d62b50e28d068428b0da3193afc63dc91b4dda463965f96175c29b1b30',
+    'vst3/PluginInstanceVST3.cpp': 'a798d6b78e8dec492e8238a248981ce725bf3f9225e9be986f8bb053710f588f',
     'vst3/PluginInstanceVST3.Parameters.cpp': 'ad438ffa987b157d19b2eb8ff845d7494915acf1908b63abd2946c598b19d6f9',
 }
 

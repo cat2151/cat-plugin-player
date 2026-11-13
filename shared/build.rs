@@ -131,11 +131,6 @@ pub fn build() {
             .display()
     );
 
-    println!(
-        "cargo:rerun-if-changed={}",
-        player_dir.join("patches/uapmd/stb-revision-pin").display()
-    );
-
     if env::var_os("UH_SKIP_CMAKE").is_none() {
         let generator =
             env::var("UH_GENERATOR").unwrap_or_else(|_| "Visual Studio 18 2026".to_string());

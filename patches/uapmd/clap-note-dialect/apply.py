@@ -7,8 +7,8 @@ import sys
 
 HERE = Path(__file__).resolve().parent
 BASELINES = {
-    "PluginFormatCLAP.hpp": "116cc11fe00ce2d13b9c7458f317bbb654e39164fc6ea5a098b2d0d5547da1b6",
-    "PluginInstanceCLAP.cpp": "e85a6cf32bc59ab20566cce265939aa375d2a203640b876db30e2b66f8361386",
+    "PluginFormatCLAP.hpp": "db8a5833c267cc56c327a224d103a7a8339c634e316f2a71aaa02e3d57e976fa",
+    "PluginInstanceCLAP.cpp": "36fcc7580aab99a90d6a319778ad2d794494ada8453e613866010f1d5d978cbc",
     "PluginInstanceCLAP.Events.cpp": "cb58643e1077d3f202c202ec46cb2741ef39f46037fd15cea62abf4a774feb26",
 }
 

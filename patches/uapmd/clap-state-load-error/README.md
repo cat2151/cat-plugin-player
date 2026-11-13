@@ -2,8 +2,8 @@
 
 ## Cause and bounded scope
 
-Verified dependency revision: `a4a96938eb31ddcb70209d62caf0dcc6ea9d3abe`
-(CLAP sources and apply baseline are identical to the originally investigated
+Verified dependency revision: `4ec5c3b1c30130fdd3b7d4b375082273247e561f`
+(`PluginInstanceCLAP.States.cpp` and its apply baseline are identical to the originally investigated
 `bc39b50faf2f2b02668de82d3d95f2bdbafd3c34`). It still calls `setState(...)`
 followed by `finish("")` even when CLAP state.load returns false. The shim already propagates callback errors;
 the missing link is remidy's CLAP backend. This can incorrectly commit a

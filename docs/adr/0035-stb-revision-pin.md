@@ -1,6 +1,6 @@
 # ADR 0035: 共有hostでstb revisionを固定する
 
-状態: 採用。
+状態: 置き換え済み（[ADR 0043](0043-remove-stb-revision-pin.md)）。
 
 rtlogの未固定stb取得がヘッダ移動で壊れたため、shared/host.cmakeで
 UAPMDより先に既知SHAをFetchContentへ登録する。target生成はrtlogに任せる。

@@ -1,6 +1,6 @@
 # Direct global parameter automation: CLAP metadata/addressing and VST3 RT queue
 
-Unsent report draft. Investigated revision: `a4a96938eb31ddcb70209d62caf0dcc6ea9d3abe`.
+Unsent report draft. Investigated revision: `4ec5c3b1c30130fdd3b7d4b375082273247e561f`.
 
 CLAP `populateParameterList` passes `true` for PluginParameter's automatable
 argument and the automatable flag for readable. Read-only parameters consequently

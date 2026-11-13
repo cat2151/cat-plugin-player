@@ -22,7 +22,7 @@
 - 説明書に原因、適用条件、検証した上流リビジョン、再適用の仕組み、失敗時の調査手順、
   撤去条件、上流への報告状態と報告済みの場合のリンクを残す。
   作者向け報告文の作成は外部送信の許可として扱わない。
-- 補修の追加・撤去時は `AGENTS.md` の補修一覧を更新する。
+- 補修の追加・撤去時は下の「現在の補修」の表を更新する。
   導入前には目的、適用場所、checkoutへの影響、再clone・既存キャッシュ・上流更新時の挙動を説明し、
   必要な変更範囲の合意を得る。
 
@@ -33,16 +33,14 @@
 | UAPMD / remidyのCLAP入力Note形式 | [clap-note-dialect](../../patches/uapmd/clap-note-dialect/README.md) | [ADR 0005](0005-clap-input-note-dialect.md) |
 | UAPMD / remidyのCLAP state読込失敗 | [clap-state-load-error](../../patches/uapmd/clap-state-load-error/README.md) | [ADR 0013](0013-clap-state-load-error.md) |
 | UAPMD / PluginScanToolのdata directory競合 | [scan-tool-data-dir-race](../../patches/uapmd/scan-tool-data-dir-race/README.md) | [ADR 0032](0032-scan-tool-data-dir-race.md) |
-| UAPMD / rtlogのstb revision | [stb-revision-pin](../../patches/uapmd/stb-revision-pin/README.md) | [ADR 0035](0035-stb-revision-pin.md) |
+| UAPMD / remidyのCLAP/VST3 parameter automation | [parameter-automation](../../patches/uapmd/parameter-automation/README.md) | [ADR 0037](0037-direct-parameter-automation.md) |
 
-撤去済み: Windows VST3ローダー（[ADR 0021](0021-remove-windows-vst3-loader-patch.md)）。
+撤去済み: Windows VST3ローダー（[ADR 0021](0021-remove-windows-vst3-loader-patch.md)）、stb revision固定（[ADR 0043](0043-remove-stb-revision-pin.md)）。
 
 ### 適用経路
 
-stb補修はソースコピーではなく、[共有host](../../shared/host.cmake)でUAPMDより前にFetchContentを宣言し、取得前の既存cacheと取得後を検証する。
-
 [shim/CMakeLists.txt](../../shim/CMakeLists.txt) から共有hostを経由し、各補修の `CMakeLists.cmake` を読み込む。
-以下はソース補修3件の適用方式。
+以下はソース補修4件の適用方式。
 configure時に適用処理が上流ソースを検証し、`target/shim/generated/<補修名>/` に補修済みのコピーを生成して、
 remidyの元ファイルをコンパイル対象から外す。
 [共有build driver](../../shared/build.rs) は補修ディレクトリと上流の対象ソースを監視し、
@@ -72,4 +70,4 @@ CMakeも対象ソースと適用処理の変更を再configureの対象とする
 
 使用するUAPMDに上流修正が入ったことを差分と実際のconfigureで確認し、修正リビジョンを記録する。
 補修の説明書にある撤去前の検証を行ってから、CMakeの補修include、Cargoの監視、補修ディレクトリを撤去し、
-補修一覧と本ADRの表を更新する。古いUAPMDもサポートする場合は、その範囲を先に決めてから撤去を判断する。
+本ADRの表を更新する。古いUAPMDもサポートする場合は、その範囲を先に決めてから撤去を判断する。

@@ -2,7 +2,7 @@
 
 Status: 未報告 / not submitted.
 
-In UAPMD revision a4a96938eb31ddcb70209d62caf0dcc6ea9d3abe,
+In UAPMD revision 4ec5c3b1c30130fdd3b7d4b375082273247e561f,
 `PluginScanToolImpl::PluginScanToolImpl()` (`src/scanner/PluginScanTool.cpp`)
 does:
 

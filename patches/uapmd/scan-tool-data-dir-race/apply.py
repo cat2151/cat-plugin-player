@@ -6,7 +6,7 @@ import sys
 
 HERE = Path(__file__).resolve().parent
 NAME = "PluginScanTool.cpp"
-BASELINE = "586fa326f95ecf72878f49fee2c5798b0e87f071662cb9d0dd12403e33733713"
+BASELINE = "3c1034ed263dbd6ba6909142660c219bfdcec8663168d0c986b952a5b0445b78"
 RACE = '''    if (auto& supplied = applicationDataDirectory(); !supplied.empty())
         dir = supplied;
     else if (!dir.empty())
