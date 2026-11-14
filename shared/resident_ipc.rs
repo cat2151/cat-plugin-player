@@ -42,7 +42,7 @@ pub enum ToEditor {
     KitClosed {
         target: Open,
     },
-    /// The patch browser for `target` was hidden by Esc, Q, or its close button.
+    /// The patch or effect browser for `target` was hidden by Esc, Q, or its close button.
     BrowserClosed {
         target: Open,
     },

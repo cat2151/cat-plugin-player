@@ -1,4 +1,4 @@
-//! Hiding the patch browser tells the editor once; the kit browser keeps its own notice.
+//! Hiding the patch or effect browser tells the editor once; the kit browser keeps its own notice.
 use super::*;
 
 fn key(key: egui::Key) -> Vec<egui::Event> {
@@ -33,11 +33,10 @@ fn closed_notices(sent: &[ToEditor]) -> Vec<ToEditor> {
         .collect()
 }
 
-fn hide_patch_browser(test: &str, events: Vec<egui::Event>, close: bool) -> Vec<ToEditor> {
+fn hide_browser(test: &str, open: Open, events: Vec<egui::Event>, close: bool) -> Vec<ToEditor> {
     let _library = crate::native_library::load().unwrap();
     let (mut app, (mut editor, mut editor_in)) = app(test);
     let ctx = egui::Context::default();
-    let open = Open::Patch { track: 2 };
     request(&mut app, &mut editor, open);
     frame(&mut app, &ctx, Vec::new(), false);
     frame(&mut app, &ctx, events, close);
@@ -52,20 +51,34 @@ fn esc_q_and_the_close_button_each_send_browser_closed_once() {
     if crate::native_library::process::isolated() {
         return;
     }
-    let expected = vec![ToEditor::BrowserClosed {
-        target: Open::Patch { track: 2 },
-    }];
+    let open = Open::Patch { track: 2 };
+    let expected = vec![ToEditor::BrowserClosed { target: open }];
     assert_eq!(
-        hide_patch_browser("closed esc", key(egui::Key::Escape), false),
+        hide_browser("closed esc", open, key(egui::Key::Escape), false),
         expected
     );
     assert_eq!(
-        hide_patch_browser("closed q", key(egui::Key::Q), false),
+        hide_browser("closed q", open, key(egui::Key::Q), false),
         expected
     );
     assert_eq!(
-        hide_patch_browser("closed button", Vec::new(), true),
+        hide_browser("closed button", open, Vec::new(), true),
         expected
+    );
+}
+
+#[test]
+fn hiding_the_effect_browser_sends_browser_closed_once() {
+    if crate::native_library::process::isolated() {
+        return;
+    }
+    let open = Open::Effect {
+        track: 2,
+        slot: None,
+    };
+    assert_eq!(
+        hide_browser("closed effect", open, Vec::new(), true),
+        vec![ToEditor::BrowserClosed { target: open }]
     );
 }
 

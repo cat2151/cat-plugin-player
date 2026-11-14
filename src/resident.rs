@@ -246,7 +246,7 @@ impl App {
     pub(crate) fn hide_resident(&mut self) {
         self.report_resident_panes();
         log("hide browser");
-        self.report_patch_browser_closed();
+        self.report_browser_closed();
         if self.patch_browser.open {
             self.patch_browser.close();
         }
@@ -261,14 +261,14 @@ impl App {
     }
 
     /// The kit browser reports its own closing as [`resident_ipc::ToEditor::KitClosed`].
-    fn report_patch_browser_closed(&mut self) {
+    fn report_browser_closed(&mut self) {
         let Some(resident) = &mut self.resident else {
             return;
         };
         let Some(target) = resident.shown else {
             return;
         };
-        if matches!(target, Open::Kit { .. }) || browser(target) != Browser::Patch {
+        if matches!(target, Open::Kit { .. }) {
             return;
         }
         if let Err(error) = resident
