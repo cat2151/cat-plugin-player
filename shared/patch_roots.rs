@@ -116,6 +116,7 @@ pub fn validate_portable(reference: &PatchReference) -> Result<(), String> {
         return Err("SMF patch references must not name the plugin location".into());
     }
     match &reference.source {
+        Source::Imported { .. } => {}
         Source::Catalog { path, file } => {
             check_relative(path, false)?;
             check_relative(file, false)?;
@@ -142,6 +143,7 @@ fn locate<'a>(plugin: &'a Plugin, relative: &str, roots: &dyn Roots) -> Result<&
 
 fn source_file(source: &Source) -> &Path {
     match source {
+        Source::Imported { .. } => unreachable!("imported states have no patch-root path"),
         Source::Catalog { file, .. } => file,
         Source::Effect { path, .. } => path,
     }
@@ -152,6 +154,12 @@ fn to_portable(
     plugin: &Plugin,
     roots: &dyn Roots,
 ) -> Result<PatchReference, String> {
+    if matches!(reference.source, Source::Imported { .. }) {
+        let mut portable = reference.clone();
+        portable.plugin.bundle_path.clear();
+        validate_portable(&portable)?;
+        return Ok(portable);
+    }
     let file = source_file(&reference.source);
     let (root, relative_file) = plugin
         .roots
@@ -162,6 +170,7 @@ fn to_portable(
         return Err(format!("{relative_file}: found under several patch roots"));
     }
     let source = match &reference.source {
+        Source::Imported { .. } => unreachable!(),
         Source::Catalog { path, .. } => Source::Catalog {
             path: relative(path, root)
                 .ok_or("Patch selector is outside its file's root")?
@@ -190,9 +199,16 @@ fn to_absolute(
     plugin: &Plugin,
     roots: &dyn Roots,
 ) -> Result<PatchReference, String> {
+    if matches!(reference.source, Source::Imported { .. }) {
+        let mut absolute = reference.clone();
+        absolute.plugin.bundle_path = plugin.bundle_path.clone();
+        absolute.validate()?;
+        return Ok(absolute);
+    }
     let text = |path: &Path| path.to_str().unwrap_or_default().to_owned();
     let root = locate(plugin, &text(source_file(&reference.source)), roots)?;
     let source = match &reference.source {
+        Source::Imported { .. } => unreachable!(),
         Source::Catalog { path, file } => Source::Catalog {
             path: join(root, &text(path)),
             file: join(root, &text(file)),

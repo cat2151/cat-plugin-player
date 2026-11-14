@@ -16,6 +16,9 @@ pub(crate) fn generate(reference: &PatchReference) -> Result<Vec<u8>, String> {
         return Err("Catalog restoration currently requires CLAP".into());
     }
     match &reference.source {
+        Source::Imported { .. } => {
+            Err("Imported states must be resolved by their owning application".into())
+        }
         Source::Catalog { path, .. } => catalog(
             &reference.plugin.id,
             std::path::Path::new(&reference.plugin.bundle_path),

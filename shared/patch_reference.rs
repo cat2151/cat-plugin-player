@@ -14,6 +14,9 @@ pub struct PatchReference {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", deny_unknown_fields)]
 pub enum Source {
+    Imported {
+        sha256: String,
+    },
     /// The original catalog path includes any program selector (e.g. Dexed).
     Catalog {
         path: PathBuf,
@@ -32,6 +35,7 @@ impl PatchReference {
             return Err("Invalid patch plugin identity".into());
         }
         let path = match &self.source {
+            Source::Imported { .. } => return Ok(()),
             Source::Catalog { path, file } => {
                 if file.as_os_str().is_empty() || file.to_str().is_none_or(|s| s.contains('\0')) {
                     return Err("Invalid patch source file".into());
@@ -52,6 +56,17 @@ impl PatchReference {
 
     /// Everything but the paths, whose form differs between the SMF and runtime.
     pub fn validate_identity(&self) -> Result<(), String> {
+        match &self.source {
+            Source::Imported { sha256 }
+                if sha256.len() != 64
+                    || !sha256
+                        .bytes()
+                        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) =>
+            {
+                return Err("Invalid imported state digest".into());
+            }
+            _ => {}
+        }
         let key = &self.plugin;
         if !matches!(key.format.as_str(), "CLAP" | "VST3")
             || key.id.is_empty()
