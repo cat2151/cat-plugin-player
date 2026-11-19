@@ -175,6 +175,10 @@ fn installed_catalog_extracts_owned_instrument_clap_paths() {
             &candidate.plugin_id
         ));
         assert!(candidate.path.is_absolute());
+        // Dexed paths carry a program suffix; every other catalog patch is a file.
+        if candidate.plugin_id != cmrt_core::DEXED_PLUGIN_ID {
+            assert!(candidate.path.is_file(), "{}", candidate.path.display());
+        }
         assert!(!candidate.display.is_empty());
         assert!(!candidate.plugin_name.is_empty());
     }

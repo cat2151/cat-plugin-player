@@ -443,3 +443,5 @@ fn decode_macro(word: u16) -> Option<(MacroTarget, SequenceModulation)> {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod timestamp_native_tests;

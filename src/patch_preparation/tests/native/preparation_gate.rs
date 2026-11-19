@@ -63,7 +63,11 @@ fn native_preparation_cross_host_gate() {
             .patch_plugins()
             .audio_info_for_ref(&patch.reference)
             .unwrap();
-        let resolved = PathBuf::from(plugin.patch_base.resolve(&patch.reference.display));
+        let resolved = PathBuf::from(
+            plugin
+                .patch_base
+                .resolve(cmrt_core::split_display(&patch.reference.display).0),
+        );
         let bundle = Path::new(&plugin.plugin_path);
         let started = Instant::now();
         // This is the production worker boundary: only owned paths/ID enter;

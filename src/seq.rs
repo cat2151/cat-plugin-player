@@ -32,8 +32,9 @@ pub fn note_off(channel: u8, note: u8) -> u32 {
     0x2080_0000 | ((channel as u32 & 0x0F) << 16) | ((note as u32 & 0x7F) << 8)
 }
 
-/// JR Timestamp UMP. remidy reads it as "the following events happen this many
-/// samples after the previous ones" within the block being rendered.
+/// JR Timestamp UMP carrying a sample delta from the previous events in the block.
+/// remidy expects 1/31250 s ticks; the shim converts samples to ticks before handing
+/// events to uapmd, so callers stay in samples.
 pub(crate) fn jr_timestamp(delta_samples: usize) -> u32 {
     0x0020_0000 | (delta_samples as u32 & 0xFFFF)
 }

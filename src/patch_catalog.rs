@@ -214,7 +214,10 @@ pub(crate) fn candidates(
             plugin_id: id.into(),
             plugin_name: plugin.name.clone(),
             display: patch.reference.display.clone(),
-            path: plugin.patch_base.resolve(&patch.reference.display).into(),
+            path: plugin
+                .patch_base
+                .resolve(cmrt_core::split_display(&patch.reference.display).0)
+                .into(),
             bundle_path: plugin.plugin_path.clone().into(),
             entry: cmrt_patch_select::PatchCatalogEntry::new(
                 patch.reference.display.clone(),

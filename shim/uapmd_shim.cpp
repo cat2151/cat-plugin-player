@@ -4,6 +4,7 @@
 
 #include "uapmd_shim.h"
 #include "owned_instance.h"
+#include "jr_timestamp.h"
 #include "parameter_binding.h"
 #include "plugin_catalog.h"
 #include "plugin_specific/shu_ui.h"
@@ -763,6 +764,9 @@ static int32_t processStage(UhProcessor* processor, const float* input,
             if (eventBytes > eventIn.maxMessagesInBytes())
                 eventBytes = eventIn.maxMessagesInBytes() / sizeof(uint32_t) * sizeof(uint32_t);
             std::memcpy(eventIn.getMessages(), ump_words, eventBytes);
+            uh::jrSamplesToTicks(static_cast<uint32_t*>(eventIn.getMessages()),
+                                 eventBytes / sizeof(uint32_t),
+                                 static_cast<uint32_t>(processor->master.sampleRate()));
         }
         eventIn.position(eventBytes);
 

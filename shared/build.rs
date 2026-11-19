@@ -86,6 +86,7 @@ pub fn build() {
         "ui_thumbnail.h",
         "window_placement.h",
         "owned_instance.h",
+        "jr_timestamp.h",
         "parameter_binding.h",
         "parameter_api.inc",
         "plugin_catalog.cpp",
