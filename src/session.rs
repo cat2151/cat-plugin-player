@@ -88,17 +88,26 @@ impl App {
         waiting: bool,
         new_instrument: Option<&config::PluginKey>,
     ) -> Result<Option<audio::Voice>, String> {
-        let processor = self.chain_processor(instrument, effects)?;
-        if waiting || self.output.is_none() {
-            return Ok(None);
-        }
-        startup::mark(startup::Stage::ProcessorReady);
         let instrument_plugin = new_instrument.or_else(|| {
             self.instances
                 .iter()
                 .find(|i| i.id == instrument)
                 .map(|i| &i.plugin)
         });
+        // ADR 0044: before the processor exists, as the state APIs require.
+        if let Some(plugin) =
+            instrument_plugin.filter(|plugin| crate::plugin_specific::checks_playable_state(plugin))
+        {
+            let state = self.host.save_state(instrument)?;
+            if let Some(state) = crate::plugin_specific::playable_state(plugin, &state) {
+                self.host.load_state(instrument, &state)?;
+            }
+        }
+        let processor = self.chain_processor(instrument, effects)?;
+        if waiting || self.output.is_none() {
+            return Ok(None);
+        }
+        startup::mark(startup::Stage::ProcessorReady);
         let start_delay = instrument_plugin
             .map(|plugin| {
                 self.surge_start_delay.delay(

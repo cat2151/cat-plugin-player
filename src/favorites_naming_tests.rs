@@ -23,6 +23,7 @@ fn labels_strip_directories_and_preset_extensions_but_preserve_name_dots() {
             "04 FLUTE 22.6",
         ),
         ("Bank.syx/03 FLUTE    4", "Dexed", false, "03 FLUTE    4"),
+        ("factory/dice_acid.json", "JC303", false, "dice_acid"),
         (
             "Surge XT Effects: Reverb/Hall/Large Hall.srgfx",
             "Surge XT Effects",

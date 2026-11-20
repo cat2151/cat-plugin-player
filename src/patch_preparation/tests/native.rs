@@ -11,6 +11,7 @@ mod editor;
 mod favorite_mml;
 mod preparation_gate;
 mod preset_names;
+mod real_jc303;
 mod real_surge;
 
 fn key(mode: &str) -> PluginKey {

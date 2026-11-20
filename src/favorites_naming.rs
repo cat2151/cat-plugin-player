@@ -35,6 +35,7 @@ fn stem<'a>(name: &'a str, plugin: &str, effect: bool) -> &'a str {
                 "sxsnp",
                 "h2p",
                 "vvp",
+                "json",
                 "srgfx",
                 "t3kpreset",
                 "pst",

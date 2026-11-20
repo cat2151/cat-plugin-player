@@ -5,6 +5,7 @@ use crate::config::PluginKey;
 mod floe;
 #[cfg(test)]
 mod instrument_macros_saved_tests;
+mod jc303;
 #[cfg(test)]
 mod macro_parameter_lane_native_tests;
 #[cfg(test)]
@@ -44,6 +45,16 @@ pub(crate) fn automatic_note_start_delay_at_rate(
     sample_rate: u32,
 ) -> std::time::Duration {
     automatic_note_start_delay(plugin).max(patch_settling::delay(plugin, sample_rate))
+}
+
+/// ADR 0044: whether the instrument's state is checked by [`playable_state`] before playing.
+pub(crate) fn checks_playable_state(plugin: &PluginKey) -> bool {
+    jc303::supports(plugin)
+}
+
+/// ADR 0044: the state to load so that the instrument plays incoming notes; `None` keeps it.
+pub(crate) fn playable_state(plugin: &PluginKey, state: &[u8]) -> Option<Vec<u8>> {
+    jc303::internal_sync(plugin, state)
 }
 
 pub(crate) fn same_favorite_state(plugin: &PluginKey, left: &[u8], right: &[u8]) -> bool {
