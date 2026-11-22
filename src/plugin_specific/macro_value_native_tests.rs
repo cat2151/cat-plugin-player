@@ -77,7 +77,7 @@ fn moved(parameter: &Parameter) -> AutomationEvent {
     AutomationEvent::parameter(parameter.binding.with_value(far))
 }
 
-/// The first saved favorite of the CLAP `id_of_plugin` whose state routes a macro:
+/// The first saved favorite of the CLAP `id_of_plugin` routing a non-CC1 macro:
 /// (its name, plugin, state).
 pub(super) fn routing_favorite(id_of_plugin: &str) -> (String, PluginKey, Vec<u8>) {
     let config = crate::config::path().unwrap();
@@ -93,9 +93,12 @@ pub(super) fn routing_favorite(id_of_plugin: &str) -> (String, PluginKey, Vec<u8
         .find_map(|e| {
             let state = saved.state(&config, &e.id).ok()?;
             let macros = instrument.routed("CLAP", &state)?;
-            (!macros.is_empty()).then(|| (e.name.clone(), e.plugin.clone(), state))
+            macros
+                .iter()
+                .any(|m| !m.ccs.contains(&1))
+                .then(|| (e.name.clone(), e.plugin.clone(), state))
         })
-        .expect("a saved favorite routing a macro")
+        .expect("a saved favorite routing a parameter macro other than CC1")
 }
 
 /// A host with one instance of `plugin`; the state is not loaded yet.

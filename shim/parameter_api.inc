@@ -23,7 +23,7 @@ int32_t uh_parameter_count(UhHost* host, int32_t id) {
         return support ? static_cast<int32_t>(support->parameters().size()) : -2;
     } catch (...) { return UH_ERR_EXCEPTION; }
 }
-int32_t uh_parameter_info(UhHost* host, int32_t id, uint32_t index, UhParameterInfo* out) {
+static int32_t parameterInfo(UhHost* host, int32_t id, uint32_t index, UhParameterInfo* out, bool readValue) {
     if (!host || !out) return -1;
     *out = {};
     try {
@@ -43,12 +43,20 @@ int32_t uh_parameter_info(UhHost* host, int32_t id, uint32_t index, UhParameterI
         out->maximum = out->normalized ? 1.0 : p->maxPlainValue();
         out->eligible = p->automatable() && p->readable() && !p->hidden() && !p->discrete()
             && std::isfinite(out->minimum) && std::isfinite(out->maximum) && out->minimum < out->maximum;
-        int result = out->normalized ? uh::automation::vst3Current(support, p->index(), &out->current)
-            : (support->getParameter(p->index(), &out->current) == remidy::StatusCode::OK ? 0 : -1);
-        if (result || !std::isfinite(out->current)) return -4;
+        if (readValue) {
+            int result = out->normalized ? uh::automation::vst3Current(support, p->index(), &out->current)
+                : (support->getParameter(p->index(), &out->current) == remidy::StatusCode::OK ? 0 : -1);
+            if (result || !std::isfinite(out->current)) return -4;
+        }
         return parameterString(out->stable_id, p->stableId()) && parameterString(out->name, p->name())
             && parameterString(out->path, p->path()) ? 0 : -7;
     } catch (...) { return UH_ERR_EXCEPTION; }
+}
+int32_t uh_parameter_info(UhHost* host, int32_t id, uint32_t index, UhParameterInfo* out) {
+    return parameterInfo(host, id, index, out, true);
+}
+int32_t uh_parameter_metadata(UhHost* host, int32_t id, uint32_t index, UhParameterInfo* out) {
+    return parameterInfo(host, id, index, out, false);
 }
 int32_t uh_parameter_text(UhHost* host, int32_t id, const UhParameterValue* value, char* out, int32_t size) {
     if (!host || !value || !out || size <= 0) return -1;

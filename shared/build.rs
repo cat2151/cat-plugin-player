@@ -56,6 +56,12 @@ pub fn build() {
     println!(
         "cargo:rerun-if-changed={}",
         player_dir
+            .join("patches/uapmd/parameter-value-sweeps")
+            .display()
+    );
+    println!(
+        "cargo:rerun-if-changed={}",
+        player_dir
             .join("patches/uapmd/parameter-automation")
             .display()
     );

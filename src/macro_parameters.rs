@@ -30,7 +30,7 @@ pub(crate) fn bind(
         return Ok(bindings);
     };
     processor.prepare_parameters()?;
-    let parameters = host.parameters(id)?;
+    let parameters = host.parameter_metadata(id)?;
     for (index, binding) in bindings.iter_mut().enumerate() {
         let Some(parameter) = parameters
             .iter()

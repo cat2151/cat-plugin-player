@@ -29,6 +29,8 @@ def test(dll_path, clap_path, vst3_path):
         ('uh_pump', [P], None), ('uh_restore_plugin', [P, S, S, S, S, S], I),
         ('uh_instance_create', [P, I, U, U, DONE, P], None), ('uh_instance_destroy', [P, I], None),
         ('uh_parameter_count', [P, I], I), ('uh_parameter_info', [P, I, U, c.POINTER(Info)], I),
+        ('uh_parameter_metadata', [P, I, U, c.POINTER(Info)], I),
+        ('uh_state_load', [P, I, P, c.c_uint64, P, I], I),
         ('uh_parameter_text', [P, I, c.POINTER(Value), P, I], I),
         ('uh_processor_create', [P, I, U, U], P), ('uh_processor_destroy', [P], None),
         ('uh_processor_prepare_parameters', [P], I),
@@ -78,6 +80,12 @@ def test(dll_path, clap_path, vst3_path):
                 first = metadata[0]
                 assert first.normalized == (format_name == 'VST3')
                 assert abs(first.current - .2) < 1e-6
+                definition = Info()
+                assert dll.uh_parameter_metadata(host, instances[0], 0, c.byref(definition)) == 0
+                assert definition.current == 0
+                for field, _ in Info._fields_:
+                    if field != 'current':
+                        assert getattr(definition, field) == getattr(first, field), field
                 values = (Value * 2)(Value(first.generation, first.revision, 0, .7),
                                      Value(first.generation, first.revision, 1, .8))
                 # Validate all before enqueue: rejected batches cannot leak a partial first update.
@@ -156,6 +164,11 @@ def test(dll_path, clap_path, vst3_path):
                         v.revision = refreshed.revision
                     assert dll.uh_processor_parameter_batch(processors[0], values, 2) == 0
                     assert dll.uh_processor_process(processors[0], None, 0, output, 2, 64) == 0
+                if format_name == 'CLAP':
+                    for processor in reversed(processors):
+                        dll.uh_processor_destroy(processor)
+                    processors.clear()
+                    check_sweeps(dll, host, instances[0], clap_path)
                 print(format_name, 'metadata/display/batch/instance identity/capacity/rejected values/order PASS', flush=True)
             finally:
                 for processor in reversed(processors):
@@ -164,6 +177,69 @@ def test(dll_path, clap_path, vst3_path):
                     dll.uh_instance_destroy(host, instance)
     finally:
         dll.uh_destroy(host)
+
+
+def check_sweeps(dll, host, instance, clap_path):
+    fixture = c.CDLL(str(Path(clap_path).resolve()))
+    fixture.parameter_fixture_count.argtypes = [c.c_uint32]
+    fixture.parameter_fixture_count.restype = c.c_uint64
+    fixture.parameter_fixture_reset_counts.argtypes = []
+    fixture.parameter_fixture_reset_counts.restype = None
+    count = fixture.parameter_fixture_count
+    reset = fixture.parameter_fixture_reset_counts
+    # Initialize metadata before measuring; initial metadata construction is retained.
+    size = dll.uh_parameter_count(host, instance)
+    old = Info()
+    assert dll.uh_parameter_metadata(host, instance, 0, c.byref(old)) == 0
+    reset()
+    for index in range(size):
+        info = Info()
+        assert dll.uh_parameter_metadata(host, instance, index, c.byref(info)) == 0
+    assert count(0) == 0 and count(1) == 0, 'metadata discovery read current values'
+    error = c.create_string_buffer(2048)
+    for second in [.42, .61, .62, .63]:
+        # .42 = VALUES; remaining values select INFO / ALL / TEXT in the fixture.
+        state = (c.c_double * 2)(.37, second)
+        reset()
+        assert dll.uh_state_load(host, instance, state, c.sizeof(state), error, len(error)) == 0, error.value
+        after_load = count(0)
+        for _ in range(10):
+            dll.uh_pump(host)
+        if second == .42:
+            assert after_load == 0 and count(0) == 0, ('VALUES swept current values', after_load, count(0))
+            assert count(1) == 0, 'VALUES rebuilt metadata'
+        else:
+            assert count(1) >= size, 'metadata rescan did not refresh definitions'
+        assert count(2) >= 1, 'main-thread callback was removed'
+        # An instance marked processing services request_flush on its next audio
+        # block, even when the previous shim processor has been destroyed.
+        processor = dll.uh_processor_create(host, instance, 48000, 64)
+        assert processor
+        try:
+            output = (c.c_float * 128)()
+            assert dll.uh_processor_process(processor, None, 0, output, 2, 64) == 0
+        finally:
+            dll.uh_processor_destroy(processor)
+        assert count(3) >= 1, 'parameter flush was removed'
+        fresh = Info()
+        assert dll.uh_parameter_metadata(host, instance, 0, c.byref(fresh)) == 0
+        if second == .42:
+            assert fresh.revision == old.revision, 'VALUES invalidated definitions'
+        else:
+            assert fresh.revision > old.revision, 'metadata binding not invalidated'
+            processor = dll.uh_processor_create(host, instance, 48000, 64)
+            assert processor and dll.uh_processor_prepare_parameters(processor) == 0
+            try:
+                stale = Value(old.generation, old.revision, old.index, .7)
+                assert dll.uh_processor_parameter_batch(processor, c.byref(stale), 1) == -6
+            finally:
+                dll.uh_processor_destroy(processor)
+        before = count(0)
+        current = Info()
+        assert dll.uh_parameter_info(host, instance, 0, c.byref(current)) == 0
+        assert count(0) == before + 1 and abs(current.current - .37) < 1e-6
+        old = fresh
+    print('CLAP VALUES load/callback: zero get_value; metadata-only discovery/current/INFO/ALL/TEXT/flush PASS', flush=True)
 
 
 if __name__ == '__main__':

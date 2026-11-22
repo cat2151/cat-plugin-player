@@ -34,7 +34,8 @@ FloeのMacroのうち、stateのCC割り当てにCC1があるもの（工場出�
 
 ## 送信
 
-parameterの準備（`prepare_parameters`）とbindingの解決は、音声rendererが止まっている間に、voiceを作るときに行う。3音源とも、hostからのstate読み込みでは`params.rescan`を出さない。アプリのpatch変更は音声を止めてstateを読み込み、voiceを作り直すので、bindingはその時に1回取れば足りる。
+parameterの準備（`prepare_parameters`）とbindingの解決は、音声rendererが止まっている間に、voiceを作るときに行う。アプリのpatch変更は音声を止めてstateを読み込み、voiceを作り直すので、bindingはその時に1回取れば足りる。
+当初は3音源ともhostからのstate読み込みで`params.rescan`を出さないと判断していたが、Six Sines は VALUES を load 内と main-thread callback で要求する。値だけの更新を一覧変更と混同せず、INFO・ALL・TEXT 後は binding を取り直す。マクロ準備が不要な現在値まで全件取得していた待ちは、[ADR 0045](0045-patch-browser-read-latency.md)のメタデータ専用 API で除く。
 
 欄が選ばれている間は、block（最大1024 frame）ごとに今の値を、そのblockのprocessの直前に送る。sweepの1段（約23 ms以上）はblock長（48 kHzで約21 ms）より長いので、block単位で足りる。
 Floeは、stateを読み込んだ直後しばらく実時間が経つまでparameterのeventを捨てる。変化したときだけ送ると固定値が届かないことがあるため、送り続ける。
@@ -65,7 +66,7 @@ patchの読み直しの時期はTyrellN6と同じく、アプリでpatchを変�
 
 ## 制限
 
-- 3音源とも、音源の画面でpatchを変えても欄の表示・非表示と`-`の表示値は変わらない見込み（hostからのstate読み込みでは`params.rescan`を出さないことを確認した。画面での変更は未確認）。アプリでpatchを変えるか、選択を`-`へ変えたときに更新する。
+- 音源の画面でpatchを変えたとき、メタデータ変更を通知しなければ欄の表示・非表示と`-`の表示値は更新されない。VALUES だけの rescan は一覧変更ではない。アプリでpatchを変えるか、選択を`-`へ変えたときには state を読み直す。
 - `prepare_parameters`は音源のautomation modeを有効にする（[parameter automation補修](../../patches/uapmd/parameter-automation/README.md)）。3音源はvoiceを作るたびにこれを通る。音源の画面でつまみを動かしたときの影響は確かめていない。
 - FloeのMacro 1（CC1）は欄に出ないので、CC1欄で動かす。
 - Macroの位置だけを変えた音色は別Favoriteにならない。

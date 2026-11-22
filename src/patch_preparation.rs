@@ -47,7 +47,11 @@ impl Preparation {
         let (tx, rx) = mpsc::channel();
         self.receiver = Some(rx);
         std::thread::spawn(move || {
+            #[cfg(test)]
+            let span = crate::session::headless::preparation_span();
             let result = prepare(&candidate).map(|state| Prepared { candidate, state });
+            #[cfg(test)]
+            drop(span);
             let _ = tx.send(result);
             ctx.request_repaint();
         });

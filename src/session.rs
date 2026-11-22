@@ -1,5 +1,16 @@
 //! Session ownership, state persistence and changes to a stopped audio chain.
-use crate::{audio, config, ffi, plugin_list::PluginKind, startup, App};
+#[cfg(test)]
+use crate::audio;
+use crate::{config, plugin_list::PluginKind, App};
+#[path = "session_voice.rs"]
+mod voice;
+
+#[cfg(test)]
+#[path = "session_headless.rs"]
+pub(crate) mod headless;
+#[cfg(test)]
+#[path = "session_route_trace.rs"]
+pub(crate) mod route_trace;
 
 impl App {
     pub(crate) fn instrument_id(&self) -> Option<i32> {
@@ -59,112 +70,11 @@ impl App {
         labels.join(" -> ")
     }
 
-    pub(crate) fn chain_processor(
-        &self,
-        instrument: i32,
-        effects: &[i32],
-    ) -> Result<ffi::Processor, String> {
-        self.host
-            .create_chain(
-                if self.selecting_master() {
-                    -1
-                } else {
-                    instrument
-                },
-                effects,
-                self.effect_bypassed,
-                self.sample_rate(),
-                audio::MAX_BLOCK_FRAMES,
-            )
-            .ok_or_else(|| {
-                "Cannot connect main audio buses (mono/stereo input and output required)".into()
-            })
-    }
-
-    pub(crate) fn prepare_voice(
-        &self,
-        instrument: i32,
-        effects: &[i32],
-        waiting: bool,
-        new_instrument: Option<&config::PluginKey>,
-    ) -> Result<Option<audio::Voice>, String> {
-        let instrument_plugin = new_instrument.or_else(|| {
-            self.instances
-                .iter()
-                .find(|i| i.id == instrument)
-                .map(|i| &i.plugin)
-        });
-        // ADR 0044: before the processor exists, as the state APIs require.
-        if let Some(plugin) =
-            instrument_plugin.filter(|plugin| crate::plugin_specific::checks_playable_state(plugin))
-        {
-            let state = self.host.save_state(instrument)?;
-            if let Some(state) = crate::plugin_specific::playable_state(plugin, &state) {
-                self.host.load_state(instrument, &state)?;
-            }
-        }
-        let processor = self.chain_processor(instrument, effects)?;
-        if waiting || self.output.is_none() {
-            return Ok(None);
-        }
-        startup::mark(startup::Stage::ProcessorReady);
-        let start_delay = instrument_plugin
-            .map(|plugin| {
-                self.surge_start_delay.delay(
-                    instrument,
-                    plugin,
-                    crate::plugin_specific::automatic_note_start_delay_at_rate(
-                        plugin,
-                        self.sample_rate(),
-                    ),
-                )
-            })
-            .unwrap_or_default();
-        // Every audio renderer is stopped here, as preparing parameters requires.
-        let macro_parameters = match instrument_plugin {
-            Some(plugin) if !self.selecting_master() => {
-                crate::macro_parameters::bind(&self.host, &processor, instrument, plugin)
-                    .map_err(|error| format!("Macro parameters: {error}"))?
-            }
-            _ => Default::default(),
-        };
-        audio::Voice::start(
-            self.output.as_ref().unwrap(),
-            processor,
-            if self.drum_kit_active() {
-                crate::SequencePattern::Off
-            } else {
-                self.sequence_pattern
-            },
-            self.sequence_velocity,
-            self.sequence_modulation,
-            &self.macro_lane.active(),
-            macro_parameters,
-            start_delay,
-            self.mml_input.phrase.clone(),
-            self.effect_swap_fade,
-            self.selection.as_ref().map(|s| {
-                (
-                    s.timeline.clone(),
-                    s.position.clone(),
-                    s.audio_failed.clone(),
-                )
-            }),
-            self.selection
-                .as_ref()
-                .and_then(|s| s.preview_chain.as_ref())
-                .map(|settings| crate::chain::Chain::open(self.sample_rate(), settings))
-                .transpose()?,
-        )
-        .map(Some)
-    }
-
-    pub(crate) fn start_voice(&self, id: i32) -> Result<audio::Voice, String> {
-        self.prepare_voice(id, &self.effect_ids(), false, None)?
-            .ok_or_else(|| "no audio device".into())
-    }
-
     pub(crate) fn pause_audio(&mut self) {
+        #[cfg(test)]
+        headless::clear();
+        #[cfg(test)]
+        route_trace::record("pause");
         for instance in &mut self.instances {
             if let Some(voice) = instance.voice.take() {
                 self.sequence_pattern = voice.sequence_pattern();
@@ -173,9 +83,16 @@ impl App {
     }
 
     pub(crate) fn resume_audio(&mut self) -> Result<(), String> {
+        #[cfg(test)]
+        route_trace::record("resume");
         let Some(id) = self.instrument_id() else {
             return Ok(());
         };
+        #[cfg(test)]
+        if headless::enabled() {
+            self.prepare_voice(id, &self.effect_ids(), false, None)?;
+            return Ok(());
+        }
         if self.output.is_none() {
             return Ok(());
         }

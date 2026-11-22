@@ -37,6 +37,34 @@ pub struct Parameter {
     pub binding: ParameterValue,
 }
 
+/// Discovery without a current-value read. The binding is an identity token;
+/// supply a value with `with_value` before sending it to a processor.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ParameterMetadata {
+    pub stable_id: String,
+    pub name: String,
+    pub path: String,
+    pub minimum: f64,
+    pub maximum: f64,
+    pub normalized: bool,
+    pub eligible: bool,
+    pub binding: ParameterValue,
+}
+
+impl ParameterMetadata {
+    pub fn domain(&self) -> Result<domain::Domain, String> {
+        domain::Domain::new(
+            if self.normalized {
+                domain::ValueSpace::Normalized
+            } else {
+                domain::ValueSpace::Plain
+            },
+            self.minimum,
+            self.maximum,
+        )
+    }
+}
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct ParameterValue {
@@ -96,6 +124,7 @@ struct Info {
 unsafe extern "C" {
     fn uh_parameter_count(host: *mut UhHost, id: i32) -> i32;
     fn uh_parameter_info(host: *mut UhHost, id: i32, index: u32, info: *mut Info) -> i32;
+    fn uh_parameter_metadata(host: *mut UhHost, id: i32, index: u32, info: *mut Info) -> i32;
     fn uh_parameter_text(
         host: *mut UhHost,
         id: i32,
@@ -120,6 +149,33 @@ unsafe extern "C" {
 }
 impl Host {
     pub fn parameters(&self, id: i32) -> Result<Vec<Parameter>, String> {
+        self.discover_parameters(id, true).map(|infos| {
+            infos
+                .into_iter()
+                .map(|info| {
+                    let metadata = info.metadata();
+                    Parameter {
+                        stable_id: metadata.stable_id,
+                        name: metadata.name,
+                        path: metadata.path,
+                        minimum: metadata.minimum,
+                        maximum: metadata.maximum,
+                        current: info.current,
+                        normalized: metadata.normalized,
+                        eligible: metadata.eligible,
+                        binding: metadata.binding.with_value(info.current),
+                    }
+                })
+                .collect()
+        })
+    }
+
+    pub fn parameter_metadata(&self, id: i32) -> Result<Vec<ParameterMetadata>, String> {
+        self.discover_parameters(id, false)
+            .map(|infos| infos.into_iter().map(|info| info.metadata()).collect())
+    }
+
+    fn discover_parameters(&self, id: i32, current: bool) -> Result<Vec<Info>, String> {
         let count = unsafe { uh_parameter_count(self.raw, id) };
         if count < 0 {
             return Err(format!("Parameter discovery failed ({count})"));
@@ -127,39 +183,23 @@ impl Host {
         let mut parameters = Vec::new();
         for index in 0..count as u32 {
             let mut info = std::mem::MaybeUninit::<Info>::uninit();
-            let code = unsafe { uh_parameter_info(self.raw, id, index, info.as_mut_ptr()) };
+            let code = unsafe {
+                if current {
+                    uh_parameter_info(self.raw, id, index, info.as_mut_ptr())
+                } else {
+                    uh_parameter_metadata(self.raw, id, index, info.as_mut_ptr())
+                }
+            };
             if code != 0 {
                 return Err(format!("Parameter {index} discovery failed ({code})"));
             }
             let info = unsafe { info.assume_init() };
-            let string = |bytes: &[c_char]| {
-                // C ABI guarantees NUL termination on success.
-                unsafe { CStr::from_ptr(bytes.as_ptr()) }
-                    .to_string_lossy()
-                    .into_owned()
-            };
-            let binding = ParameterValue {
-                generation: info.generation,
-                revision: info.revision,
-                index: info.index,
-                value: info.current,
-            };
-            if parameters.first().is_some_and(|p: &Parameter| {
-                p.binding.generation != binding.generation || p.binding.revision != binding.revision
+            if parameters.first().is_some_and(|p: &Info| {
+                p.generation != info.generation || p.revision != info.revision
             }) {
                 return Err("Parameter list changed during discovery".into());
             }
-            parameters.push(Parameter {
-                stable_id: string(&info.stable_id),
-                name: string(&info.name),
-                path: string(&info.path),
-                minimum: info.minimum,
-                maximum: info.maximum,
-                current: info.current,
-                eligible: info.eligible != 0,
-                normalized: info.normalized != 0,
-                binding,
-            });
+            parameters.push(info);
         }
         Ok(parameters)
     }
@@ -176,6 +216,31 @@ impl Host {
         Ok(unsafe { CStr::from_ptr(text.as_ptr()) }
             .to_string_lossy()
             .into_owned())
+    }
+}
+impl Info {
+    fn metadata(&self) -> ParameterMetadata {
+        let string = |bytes: &[c_char]| {
+            // C ABI guarantees NUL termination on success.
+            unsafe { CStr::from_ptr(bytes.as_ptr()) }
+                .to_string_lossy()
+                .into_owned()
+        };
+        ParameterMetadata {
+            stable_id: string(&self.stable_id),
+            name: string(&self.name),
+            path: string(&self.path),
+            minimum: self.minimum,
+            maximum: self.maximum,
+            normalized: self.normalized != 0,
+            eligible: self.eligible != 0,
+            binding: ParameterValue {
+                generation: self.generation,
+                revision: self.revision,
+                index: self.index,
+                value: self.minimum,
+            },
+        }
     }
 }
 impl Processor {

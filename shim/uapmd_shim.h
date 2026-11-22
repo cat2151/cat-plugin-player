@@ -133,6 +133,9 @@ typedef struct UhParameterValue {
 } UhParameterValue;
 UH_API int32_t uh_parameter_count(UhHost*, int32_t instance_id);
 UH_API int32_t uh_parameter_info(UhHost*, int32_t instance_id, uint32_t index, UhParameterInfo*);
+/* Same metadata and identity, without querying current values. The current field
+ * is reserved (zero), not a value read. Bind an explicit value before sending. */
+UH_API int32_t uh_parameter_metadata(UhHost*, int32_t instance_id, uint32_t index, UhParameterInfo*);
 UH_API int32_t uh_parameter_text(UhHost*, int32_t instance_id, const UhParameterValue*, char*, int32_t size);
 UH_API int32_t uh_processor_prepare_parameters(UhProcessor*);
 /* Audio thread only. At most 256 distinct parameters, all validated before

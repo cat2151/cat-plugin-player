@@ -47,10 +47,21 @@ impl App {
         }
         #[cfg(not(test))]
         let _ = operation;
+        #[cfg(test)]
+        let _span = crate::session::headless::span(match operation {
+            Operation::Backup => "backup",
+            Operation::Apply => "load",
+            Operation::Chain => "route",
+            Operation::Rollback => "rollback",
+            Operation::Resume => "resume",
+            Operation::Create => "create_request",
+        });
         action(self)
     }
 
     pub(crate) fn apply_patch(&mut self, prepared: Prepared) {
+        #[cfg(test)]
+        let _span = crate::session::headless::span("apply_transaction");
         let candidate = &prepared.candidate;
         // Resolve current scan identity again, never retain an index in a candidate.
         let Some(plugin) = self
@@ -196,6 +207,8 @@ impl App {
         id: i32,
         error: Option<String>,
     ) {
+        #[cfg(test)]
+        let _span = crate::session::headless::span("instance_created_to_finish");
         if let Some(error) = error.or_else(|| (id < 0).then(|| "creation failed".into())) {
             if id >= 0 {
                 self.host.destroy_instance(id);
@@ -267,6 +280,8 @@ impl App {
     }
 
     fn patch_succeeded(&mut self, id: i32, replacement: Replacement) {
+        #[cfg(test)]
+        let _span = crate::session::headless::span("persist_and_finish");
         self.instances
             .iter_mut()
             .find(|i| i.id == id)
@@ -288,14 +303,10 @@ impl App {
         self.patch_browser.requests.finish(true);
         self.patch_browser.requests.applied = Some(replacement.prepared.candidate.clone());
         if self.resident_kit() {
-            if let Err(error) = self.resume_audio() {
-                self.status = error;
-            }
             self.drum_patch_finished(true);
             return;
         }
-        // Save both old and applied bytes with the existing state store. No favorite capture.
-        self.pause_audio();
+        // Owned bytes need no native state access: keep the committed voice running.
         let saved = (|| {
             let path = self.config_path.as_ref().map_err(Clone::clone)?;
             if let Some((key, state)) = &replacement.old_state {
@@ -314,7 +325,6 @@ impl App {
                 Some(&replacement.prepared.candidate.display),
             )
         })();
-        let resumed = self.resume_audio();
         self.selection_committed();
         self.save_session();
         let error = saved.err().or_else(|| self.config_error.clone());
@@ -323,9 +333,5 @@ impl App {
                 .push_str(&format!("; applied, saving failed: {error}"));
         }
         self.drum_patch_finished(true);
-        if let Err(error) = resumed {
-            self.status
-                .push_str(&format!("; applied, no audio: {error}"));
-        }
     }
 }

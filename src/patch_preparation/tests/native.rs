@@ -9,10 +9,12 @@ use std::path::{Path, PathBuf};
 mod browser;
 mod editor;
 mod favorite_mml;
+mod latency;
 mod preparation_gate;
 mod preset_names;
 mod real_jc303;
 mod real_surge;
+mod route;
 
 fn key(mode: &str) -> PluginKey {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))

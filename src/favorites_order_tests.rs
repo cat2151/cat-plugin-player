@@ -1,5 +1,6 @@
 use super::*;
 use crate::{config::PluginKey, sequence_pattern::SequencePattern};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 struct Fixture {
     dir: std::path::PathBuf,
@@ -9,13 +10,15 @@ struct Fixture {
 
 impl Fixture {
     fn new() -> Self {
+        static NEXT: AtomicU64 = AtomicU64::new(0);
         let dir = std::env::temp_dir().join(format!(
-            "cat-favorite-order-{}-{}",
+            "cat-favorite-order-{}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         Self {
             config: dir.join("config.toml"),

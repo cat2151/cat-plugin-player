@@ -3,6 +3,14 @@
 #include <cstring>
 #include <cstdio>
 
+static uint64_t value_reads{}, metadata_reads{}, main_callbacks{}, flush_calls{};
+extern "C" CLAP_EXPORT uint64_t parameter_fixture_count(uint32_t kind) {
+    return kind == 0 ? value_reads : kind == 1 ? metadata_reads : kind == 2 ? main_callbacks : flush_calls;
+}
+extern "C" CLAP_EXPORT void parameter_fixture_reset_counts() {
+    value_reads = metadata_reads = main_callbacks = flush_calls = 0;
+}
+
 static const char* features[]{CLAP_PLUGIN_FEATURE_INSTRUMENT, nullptr};
 static const clap_plugin_descriptor_t descriptor{
     CLAP_VERSION, "cat.test.parameters", "Parameter fixture", "cat test", "", "", "", "1", "", features};
@@ -12,6 +20,7 @@ struct Fixture {
     bool invalid{};
     const clap_host_t* host{};
     bool rescan{};
+    uint32_t rescan_flags{CLAP_PARAM_RESCAN_INFO};
 };
 static Fixture& data(const clap_plugin_t* p) { return *static_cast<Fixture*>(p->plugin_data); }
 static const void* extension(const clap_plugin_t*, const char* id) {
@@ -22,7 +31,17 @@ static const void* extension(const clap_plugin_t*, const char* id) {
         [](const clap_plugin_t* p,const clap_istream_t* stream) {
             double values[2];
             if (stream->read(stream,values,sizeof(values))!=sizeof(values)) return false;
-            std::memcpy(data(p).values,values,sizeof(values));data(p).invalid=false;data(p).rescan=false;return true;
+            auto& f = data(p);
+            std::memcpy(f.values,values,sizeof(values));f.invalid=false;f.rescan=true;
+            // Test load and its queued callback separately. A third value selects
+            // a metadata rescan without changing the public fixture parameter list.
+            f.rescan_flags = values[1] == .61 ? CLAP_PARAM_RESCAN_INFO
+                : values[1] == .62 ? CLAP_PARAM_RESCAN_ALL
+                : values[1] == .63 ? CLAP_PARAM_RESCAN_TEXT : CLAP_PARAM_RESCAN_VALUES;
+            auto* params = static_cast<const clap_host_params_t*>(f.host->get_extension(f.host, CLAP_EXT_PARAMS));
+            if (params) { params->rescan(f.host, f.rescan_flags); params->request_flush(f.host); }
+            f.host->request_callback(f.host);
+            return true;
         }};
     static const clap_plugin_audio_ports_t audio{
         [](const clap_plugin_t*, bool input) -> uint32_t { return input ? 0 : 1; },
@@ -42,6 +61,7 @@ static const void* extension(const clap_plugin_t*, const char* id) {
     static const clap_plugin_params_t params{
         [](const clap_plugin_t*) -> uint32_t { return 5; },
         [](const clap_plugin_t*, uint32_t i, clap_param_info_t* info) {
+            ++metadata_reads;
             if (i >= 5) return false;
             *info = {}; info->id = 101 + i * 17; info->min_value = 0; info->max_value = 1;
             info->default_value = 0.2 + i * 0.1;
@@ -52,13 +72,14 @@ static const void* extension(const clap_plugin_t*, const char* id) {
             std::snprintf(info->module, sizeof(info->module), "Module/%u", i); return true;
         },
         [](const clap_plugin_t* p, clap_id id, double* value) {
+            ++value_reads;
             if (id < 101 || (id - 101) % 17 || (id - 101) / 17 >= 5) return false;
             *value = data(p).values[(id - 101) / 17]; return true;
         },
         [](const clap_plugin_t*, clap_id, double value, char* text, uint32_t size) {
             std::snprintf(text, size, "native %.3f", value); return true;
         }, [](const clap_plugin_t*, clap_id, const char*, double*) { return false; },
-        [](const clap_plugin_t*, const clap_input_events_t*, const clap_output_events_t*) {}};
+        [](const clap_plugin_t*, const clap_input_events_t*, const clap_output_events_t*) { ++flush_calls; }};
     if (!std::strcmp(id, CLAP_EXT_AUDIO_PORTS)) return &audio;
     if (!std::strcmp(id, CLAP_EXT_NOTE_PORTS)) return &notes;
     if (!std::strcmp(id, CLAP_EXT_PARAMS)) return &params;
@@ -96,6 +117,7 @@ static clap_process_status process(const clap_plugin_t* p, const clap_process_t*
             block->audio_outputs[0].data32[c][i] = f.invalid ? -1.f : float(f.values[c]);
     if (f.values[0] == 0.91 && !f.rescan) {
         f.rescan = true;
+        f.rescan_flags = CLAP_PARAM_RESCAN_INFO;
         f.host->request_callback(f.host);
     }
     for (uint32_t i = 0; i < 2; ++i) {
@@ -117,10 +139,11 @@ static const clap_plugin_t* create(const clap_plugin_factory_t*, const clap_host
         [](const clap_plugin_t*) {}, [](const clap_plugin_t*) { return true; },
         [](const clap_plugin_t*) {}, [](const clap_plugin_t*) {}, process, extension,
         [](const clap_plugin_t* p) {
+            ++main_callbacks;
             auto& f = data(p);
             if (f.rescan) {
                 auto* params = static_cast<const clap_host_params_t*>(f.host->get_extension(f.host, CLAP_EXT_PARAMS));
-                if (params) params->rescan(f.host, CLAP_PARAM_RESCAN_INFO);
+                if (params) params->rescan(f.host, f.rescan_flags);
             }
         }};
     return &f->plugin;
