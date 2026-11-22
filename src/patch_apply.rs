@@ -185,7 +185,14 @@ impl App {
             })
             .and_then(|()| {
                 self.patch_operation(Operation::Chain, |app| {
-                    app.prepare_voice(id, &app.effect_ids(), false, None)
+                    let key = &app
+                        .instances
+                        .iter()
+                        .find(|instance| instance.id == id)
+                        .unwrap()
+                        .plugin;
+                    let display = replacement.prepared.candidate.display.as_str();
+                    app.prepare_voice(id, &app.effect_ids(), false, Some((key, Some(display))))
                 })
             });
         match result {
@@ -274,7 +281,8 @@ impl App {
             })
             .and_then(|()| {
                 self.patch_operation(Operation::Chain, |app| {
-                    app.prepare_voice(id, &app.effect_ids(), false, Some(&key))
+                    let display = replacement.prepared.candidate.display.as_str();
+                    app.prepare_voice(id, &app.effect_ids(), false, Some((&key, Some(display))))
                 })
             });
         let voice = match result {

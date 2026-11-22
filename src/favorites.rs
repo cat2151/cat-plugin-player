@@ -292,6 +292,9 @@ impl App {
         }
         self.unsafe_state.remove(&id);
         self.mark_favorite(id, favorite);
+        if !favorite.effect {
+            self.refresh_cc1_modulation();
+        }
         self.status = format!(
             "Loaded favorite: {}{}",
             favorite.name,

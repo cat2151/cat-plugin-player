@@ -241,6 +241,7 @@ struct App {
     selected_sequence: SequencePattern,
     sequence_velocity: SequenceVelocity,
     sequence_modulation: Option<SequenceModulation>,
+    cc1_pitch_cache: sequence_ui::Cc1PitchCache,
     macro_lane: macro_lane::MacroLane,
     mml_input: mml_input::MmlInput,
     restore: Option<config::PluginKey>,

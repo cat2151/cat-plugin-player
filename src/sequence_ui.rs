@@ -4,8 +4,11 @@ use crate::{App, SequenceModulation, SequencePattern, SequenceVelocity};
 use eframe::egui;
 use value_bar::{drag_bar, value_bar};
 
+mod cc1_pitch;
 mod keyboard;
 mod value_bar;
+
+pub(crate) use cc1_pitch::{Cc1PitchCache, PatchSource};
 
 /// The dropdowns' longest label is "MML / Chord"; the arrows take the saved width.
 const CHOICE_WIDTH: f32 = 110.0;
@@ -63,6 +66,10 @@ impl App {
         let [next_sequence, next_velocity, next_modulation] =
             [egui::Key::S, egui::Key::V, egui::Key::W]
                 .map(|key| ready && self.main_shortcut(ui.ctx(), key));
+        if next_modulation {
+            self.cc1_pitch_cache.load_on_shortcut();
+            modulation = SequenceModulation::adjacent(modulation, true);
+        }
 
         let (velocity_value, modulation_value, macro_values) = self
             .instances
@@ -155,20 +162,25 @@ impl App {
             }
             ui.horizontal_wrapped(|ui| {
                 ui.label("CC1 modulation");
+                let sweep = Some(SequenceModulation::Sweep);
+                let sweep_limited = self.current_cc1_modulation(sweep) != sweep;
                 ui.add_enabled_ui(ready, |ui| {
-                    if next_modulation {
-                        modulation = SequenceModulation::adjacent(modulation, true);
-                    }
                     modulation_selector(
                         ui,
                         "sequence_modulation",
                         &mut modulation,
+                        sweep_limited,
                         "-: not sent; the patch's modulation wheel stays
 sweep: 0 -> 127 in 2 seconds, then 127 -> 0 in 2 seconds; repeat
+sweep-0: CC1 held at 0 on patches flagged for pitch change
 w: next choice",
                     )
                 });
-                let value = shown(modulation, controls.wheel, modulation_value);
+                let value = if sweep_limited && modulation == sweep {
+                    0
+                } else {
+                    shown(modulation, controls.wheel, modulation_value)
+                };
                 let drag = ui.add_enabled_ui(ready, |ui| drag_bar(ui, value)).inner;
                 drag.apply(&mut modulation, &mut dragging, &mut dropped);
             });
@@ -194,6 +206,7 @@ w: next choice",
                             ui,
                             ("sequence_macro_modulation", index),
                             &mut macro_choices[index],
+                            false,
                             &format!(
                                 "This macro of the patch, {sent}
 -: not sent; the patch's macro value stays
@@ -221,6 +234,7 @@ m: every macro to sweep, or back to - once all sweep"
             self.sequence_pattern = next;
             self.sequence_velocity = velocity;
             self.sequence_modulation = modulation;
+            let sent_modulation = self.current_cc1_modulation(modulation);
             // A choice of "-" shows the value the plugin keeps now.
             self.macro_lane.reread |= modulation != original_modulation && modulation.is_none();
             for instance in &self.instances {
@@ -229,7 +243,7 @@ m: every macro to sweep, or back to - once all sweep"
                         voice.set_sequence(next);
                     }
                     voice.set_velocity(velocity);
-                    voice.set_modulation(modulation);
+                    voice.set_modulation(sent_modulation);
                 }
             }
             if !dragging {
@@ -261,13 +275,20 @@ fn modulation_selector(
     ui: &mut egui::Ui,
     id: impl std::hash::Hash,
     choice: &mut Option<SequenceModulation>,
+    sweep_limited: bool,
     hover: &str,
 ) {
     if arrow(ui, false, "Previous modulation") {
         *choice = SequenceModulation::adjacent(*choice, false);
     }
     egui::ComboBox::from_id_salt(id)
-        .selected_text(SequenceModulation::label(*choice))
+        .selected_text(
+            if sweep_limited && *choice == Some(SequenceModulation::Sweep) {
+                "sweep-0".into()
+            } else {
+                SequenceModulation::label(*choice)
+            },
+        )
         .width(CHOICE_WIDTH)
         .show_ui(ui, |ui| {
             for value in SequenceModulation::CHOICES {

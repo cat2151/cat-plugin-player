@@ -1,7 +1,7 @@
 //! Build the stopped instrument/effect route and attach its renderer.
 #[cfg(test)]
 use super::{headless, route_trace};
-use crate::{audio, config, ffi, startup, App};
+use crate::{audio, ffi, sequence_ui::PatchSource, startup, App};
 
 impl App {
     pub(crate) fn chain_processor(
@@ -31,16 +31,17 @@ impl App {
         instrument: i32,
         effects: &[i32],
         waiting: bool,
-        new_instrument: Option<&config::PluginKey>,
+        new_instrument: Option<PatchSource<'_>>,
     ) -> Result<Option<audio::Voice>, String> {
         #[cfg(test)]
         route_trace::record("prepare");
-        let instrument_plugin = new_instrument.or_else(|| {
+        let patch = new_instrument.or_else(|| {
             self.instances
                 .iter()
                 .find(|i| i.id == instrument)
-                .map(|i| &i.plugin)
+                .map(|i| (&i.plugin, i.preset_name.as_deref()))
         });
+        let instrument_plugin = patch.map(|(plugin, _)| plugin);
         // ADR 0044: before the processor exists, as the state APIs require.
         if let Some(plugin) =
             instrument_plugin.filter(|plugin| crate::plugin_specific::checks_playable_state(plugin))
@@ -92,7 +93,8 @@ impl App {
                 self.sequence_pattern
             },
             self.sequence_velocity,
-            self.sequence_modulation,
+            self.cc1_pitch_cache
+                .effective(self.sequence_modulation, patch),
             &self.macro_lane.active(),
             macro_parameters,
             start_delay,

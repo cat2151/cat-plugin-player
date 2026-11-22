@@ -196,7 +196,12 @@ impl App {
             self.apply_playback(playback);
             (favorite, state)
         });
-        let new_instrument = (kind == PluginKind::Instrument).then_some(&key);
+        let new_instrument = (kind == PluginKind::Instrument).then(|| {
+            let display = favorite
+                .as_ref()
+                .and_then(|(favorite, _)| favorite.preset_name.as_deref());
+            (&key, display)
+        });
         let prepared = if rebuilding {
             crate::session_editor::checkpoint("chain")
         } else {
@@ -303,6 +308,9 @@ impl App {
             );
         } else if self.restoring {
             self.restore_favorite_selection(id);
+        }
+        if kind == PluginKind::Instrument {
+            self.refresh_cc1_modulation();
         }
         if editor_of.is_some() {
             self.show_editor(id);

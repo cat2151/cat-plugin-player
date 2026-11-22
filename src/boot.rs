@@ -131,6 +131,7 @@ impl App {
             selected_sequence,
             sequence_velocity,
             sequence_modulation,
+            cc1_pitch_cache: Default::default(),
             macro_lane: crate::macro_lane::MacroLane::new(macro_choices),
             restore,
             mml_input,

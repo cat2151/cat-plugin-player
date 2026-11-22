@@ -15,6 +15,10 @@ pub(crate) enum MainRandom {
 impl App {
     pub(crate) fn request_main_random(&mut self, ctx: &eframe::egui::Context) {
         if !self.patch_browser.open {
+            if self.sequence_modulation == Some(crate::SequenceModulation::Sweep) {
+                self.cc1_pitch_cache.load_on_shortcut();
+                self.refresh_cc1_modulation();
+            }
             if let Some(status) = self.patch_browser.begin_main_random(ctx) {
                 self.status = status;
             }
