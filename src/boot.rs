@@ -115,6 +115,8 @@ impl App {
                 .unwrap_or_default(),
             editor_rebuild: None,
             instances: Vec::new(),
+            retained_instruments: Vec::new(),
+            instrument_origin: None,
             selection: None,
             resident: None,
             window_config,

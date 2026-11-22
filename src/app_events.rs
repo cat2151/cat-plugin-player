@@ -31,6 +31,7 @@ impl App {
                     }
                     self.scanning = false;
                     self.plugins = self.host.plugins();
+                    self.reconcile_retained();
                     self.patch_catalog.reconcile(&self.plugins);
                     startup::mark(Stage::CatalogReady);
                     let scan_succeeded = error.is_none();

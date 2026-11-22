@@ -96,6 +96,11 @@ impl Drop for Span {
 pub(crate) fn spans() -> Vec<(&'static str, f64)> {
     SINK.with_borrow_mut(|s| std::mem::take(&mut s.spans))
 }
+pub(crate) fn record_elapsed(name: &'static str, start: Instant) {
+    if enabled() {
+        SINK.with_borrow_mut(|s| s.spans.push((name, start.elapsed().as_secs_f64() * 1000.0)));
+    }
+}
 
 static PREPARATIONS: std::sync::Mutex<Vec<f64>> = std::sync::Mutex::new(Vec::new());
 pub(crate) struct PreparationSpan(Option<Instant>);

@@ -28,6 +28,9 @@ impl App {
             return;
         }
         let plugin = self.plugins[index].clone();
+        if plugin.kind == PluginKind::Instrument {
+            self.forget_retained(&config::PluginKey::from_plugin(&plugin));
+        }
         // Restoring reloads the saved state; an effect leaves the instrument patch alone.
         if self.restoring || plugin.kind == PluginKind::Effect {
             self.patch_browser.requests.invalidate();
@@ -261,6 +264,8 @@ impl App {
             .unwrap()
             .voice = voice;
         if kind == PluginKind::Instrument {
+            self.instrument_origin =
+                crate::retained_instruments::Identity::read(&plugin, self.sample_rate());
             self.restored = Some(key);
             self.restore = None;
         }

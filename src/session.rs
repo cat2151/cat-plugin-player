@@ -331,6 +331,8 @@ impl App {
 impl Drop for App {
     fn drop(&mut self) {
         self.save_on_shutdown();
+        self.pause_audio();
+        self.clear_retained();
     }
 }
 

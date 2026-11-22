@@ -114,6 +114,7 @@ impl App {
         let plugins = self.host.plugins();
         let changed = plugin_cache::entries(&plugins) != plugin_cache::entries(&self.plugins);
         self.plugins = plugins;
+        self.reconcile_retained();
         if changed {
             self.patch_catalog.reconcile(&self.plugins);
         }

@@ -66,6 +66,7 @@ mod patch_catalog_rebuild;
 mod patch_preparation;
 #[path = "../shared/patch_reference.rs"]
 mod patch_reference;
+mod retained_instruments;
 // The editor converts SMF references; the player only builds the table.
 #[allow(dead_code)]
 #[path = "../shared/patch_roots.rs"]
@@ -223,6 +224,8 @@ struct App {
     // Declared before `host` so that it drops first: the audio streams and
     // processors in here must be gone before the host is destroyed.
     instances: Vec<Instance>,
+    retained_instruments: Vec<retained_instruments::Retained>,
+    instrument_origin: Option<retained_instruments::Identity>,
     selection: Option<selection::Selection>,
     resident: Option<resident::Resident>,
     window_config: window_config::WindowConfig,

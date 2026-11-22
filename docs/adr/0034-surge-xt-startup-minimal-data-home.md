@@ -1,7 +1,7 @@
 # ADR 0034: Surge XTの起動高速化と、Show UIで通常構成へ戻す方式の変更
 
 - 状態: 採用。旧instanceを保持したまま作り直す方式は撤回。
-- 関連: [cat-smf-editor ADR 0012](../../../cat-smf-editor/docs/adr/0012-surge-minimal-data-home.md) / [自動note開始待ち（ADR 0008）](0008-surge-xt-automatic-note-start-delay.md)
+- 関連: [cat-smf-editor ADR 0012](../../../cat-smf-editor/docs/adr/0012-surge-minimal-data-home.md) / [自動note開始待ち（ADR 0008）](0008-surge-xt-automatic-note-start-delay.md) / [CLAP主音源の保持と再生成例外（ADR 0046）](0046-retain-clap-browser-instruments.md)
 
 ## 起動順序を変えた当初の判断
 

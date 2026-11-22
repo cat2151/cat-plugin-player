@@ -47,6 +47,7 @@ impl App {
         }) else {
             return false;
         };
+        self.forget_retained(&PluginKey::from_plugin(&plugin));
         let id = self.instances[slot].id;
         self.pause_audio();
         let saved = checkpoint("save")

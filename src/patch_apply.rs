@@ -15,6 +15,8 @@ pub(crate) struct Replacement {
     old_pattern: SequencePattern,
     old_state: Option<(PluginKey, Vec<u8>)>,
     old_name: Option<String>,
+    #[cfg(test)]
+    create_started: Option<std::time::Instant>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -121,6 +123,8 @@ impl App {
             old_pattern,
             old_state,
             old_name,
+            #[cfg(test)]
+            create_started: None,
         };
         let existing = self
             .instances
@@ -129,11 +133,24 @@ impl App {
                 i.kind == PluginKind::Instrument
                     && i.plugin.format == plugin.format
                     && i.plugin.id == plugin.id
+                    && (plugin.format != "CLAP"
+                        || self.instrument_origin.as_ref().is_some_and(|origin| {
+                            crate::retained_instruments::Identity::read(&plugin, self.sample_rate())
+                                .as_ref()
+                                == Some(origin)
+                        }))
             })
             .map(|i| i.id);
         if let Some(id) = existing {
             self.patch_current(id, replacement);
+        } else if let Some(retained) = self.take_retained(&plugin) {
+            self.restore_retained_patch(retained, replacement);
         } else {
+            #[cfg(test)]
+            let replacement = Replacement {
+                create_started: Some(std::time::Instant::now()),
+                ..replacement
+            };
             self.status = format!("Loading Browse patch: {}...", plugin.name);
             self.pending = Some(PendingLoad {
                 plugin: plugin.clone(),
@@ -209,6 +226,10 @@ impl App {
     ) {
         #[cfg(test)]
         let _span = crate::session::headless::span("instance_created_to_finish");
+        #[cfg(test)]
+        if let Some(start) = replacement.create_started {
+            crate::session::headless::record_elapsed("create_wait", start);
+        }
         if let Some(error) = error.or_else(|| (id < 0).then(|| "creation failed".into())) {
             if id >= 0 {
                 self.host.destroy_instance(id);
@@ -220,6 +241,30 @@ impl App {
             return;
         }
         let key = PluginKey::from_plugin(&plugin);
+        let identity = crate::retained_instruments::Identity::read(&plugin, self.sample_rate());
+        self.patch_replacement(
+            Instance {
+                id,
+                label: format!("{} [{}]", plugin.name, plugin.format),
+                plugin: key,
+                kind: PluginKind::Instrument,
+                voice: None,
+                minimal_data_home: false,
+                preset_name: None,
+            },
+            identity,
+            replacement,
+        );
+    }
+
+    pub(crate) fn patch_replacement(
+        &mut self,
+        mut instance: Instance,
+        identity: Option<crate::retained_instruments::Identity>,
+        replacement: Replacement,
+    ) {
+        let id = instance.id;
+        let key = instance.plugin.clone();
         self.surge_start_delay.forget(id);
         let permit = self.surge_start_delay.authorize(id, &replacement.prepared);
         self.surge_start_delay.replace(id, permit);
@@ -235,8 +280,7 @@ impl App {
         let voice = match result {
             Ok(voice) => voice,
             Err(error) => {
-                self.surge_start_delay.forget(id);
-                self.host.destroy_instance(id);
+                self.destroy_inactive(instance);
                 self.patch_failed(
                     replacement.old_pattern,
                     format!("Browse patch failed: {error}"),
@@ -244,24 +288,10 @@ impl App {
                 return;
             }
         };
-        if let Some(previous) = self.instrument_id() {
-            self.instances.retain(|i| i.id != previous);
-            self.unsafe_state.remove(&previous);
-            self.host.destroy_instance(previous);
-            self.surge_start_delay.forget(previous);
-        }
-        self.instances.insert(
-            0,
-            Instance {
-                id,
-                label: format!("{} [{}]", plugin.name, plugin.format),
-                plugin: key.clone(),
-                kind: PluginKind::Instrument,
-                voice,
-                minimal_data_home: false,
-                preset_name: None,
-            },
-        );
+        self.retire_browser_instrument();
+        instance.voice = voice;
+        self.instances.insert(0, instance);
+        self.instrument_origin = identity;
         self.restored = Some(key);
         self.patch_succeeded(id, replacement);
     }

@@ -14,6 +14,8 @@ mod preparation_gate;
 mod preset_names;
 mod real_jc303;
 mod real_surge;
+mod retained_latency;
+mod retention;
 mod route;
 
 fn key(mode: &str) -> PluginKey {

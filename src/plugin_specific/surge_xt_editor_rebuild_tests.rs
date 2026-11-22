@@ -92,12 +92,20 @@ fn child(case: &str) {
 #[ignore = "requires installed Surge XT CLAP/VST3 and factory patches; briefly opens editors, memory-only audio"]
 fn native_editor_rebuilds_minimal_surge_with_normal_data_home() {
     let Ok(case) = std::env::var(CHILD) else {
-        for case in ["clap-unset", "clap-set", "vst3-unset", "vst3-set", "manual"] {
+        for case in [
+            "clap-unset",
+            "clap-set",
+            "vst3-unset",
+            "vst3-set",
+            "manual",
+            "retained-headless",
+        ] {
             child(case);
         }
         return;
     };
     let _dll = crate::native_library::load().unwrap();
+    let headless = case == "retained-headless";
     let before_env = std::env::var_os(ENV);
     let mut app = App::prepare();
     app.output = None;
@@ -129,14 +137,21 @@ fn native_editor_rebuilds_minimal_surge_with_normal_data_home() {
         cmrt_patches::prepare_clap_patch_state("org.surge-synth-team.surge-xt", &patch).unwrap();
     app.host.load_state(old, &state).unwrap();
     // Opening Surge's editor adds editor-only fields (zoom, MSEG view) to its state.
-    app.host.show_ui(old).unwrap();
-    app.host.hide_ui(old);
+    if !headless {
+        app.host.show_ui(old).unwrap();
+        app.host.hide_ui(old);
+    }
     let edited = edited_state(&app.host.save_state(old).unwrap(), key.format == "VST3");
     app.host.load_state(old, &edited).unwrap();
     let before = app.host.save_state(old).unwrap();
     assert!(!crate::plugin_specific::same_favorite_state(
         &key, &initial, &before
     ));
+    if headless {
+        retained_round_trip(&mut app, &key, &before);
+        assert_eq!(app.instrument_id(), Some(old));
+        assert!(app.instances[0].minimal_data_home);
+    }
 
     app.favorites.active.push((old, "favorite".into()));
     app.sequence_pattern = SequencePattern::Off;
@@ -146,7 +161,7 @@ fn native_editor_rebuilds_minimal_surge_with_normal_data_home() {
     app.instances[0].preset_name = Some("edited Bass 2".into());
     let catalog = super::catalog_probe::CatalogProbe::start();
     let started = Instant::now();
-    if case == "manual" {
+    if case == "manual" || headless {
         app.load_plugin(0);
     } else {
         app.open_editor(old);
@@ -185,7 +200,7 @@ fn native_editor_rebuilds_minimal_surge_with_normal_data_home() {
     assert_eq!(app.favorites.active, [(new, "favorite".to_string())]);
     assert_eq!(
         app.host.ui_is_visible(new),
-        case != "manual",
+        case != "manual" && !headless,
         "{}",
         app.status
     );
@@ -209,15 +224,53 @@ fn native_editor_rebuilds_minimal_surge_with_normal_data_home() {
         Some("edited Bass 2")
     );
     assert!(app.editor_rebuild.is_none());
-    app.open_editor(new);
-    assert!(app.pending.is_none(), "already normal must not rebuild");
-    app.host.hide_ui(new);
+    if !headless {
+        app.open_editor(new);
+        assert!(app.pending.is_none(), "already normal must not rebuild");
+        app.host.hide_ui(new);
+    }
     let peak = peak(&app, new);
     assert!(peak > 1e-3, "silent chain: {peak}");
     eprintln!(
         "rebuild: {case} {:.1} ms, peak {peak:.3}",
         elapsed.as_secs_f64() * 1000.0
     );
+}
+
+fn retained_round_trip(app: &mut App, surge: &crate::config::PluginKey, state: &[u8]) {
+    let fixture = crate::config::PluginKey {
+        format: "CLAP".into(),
+        id: "cat.test.state.normal".into(),
+        name: "State normal".into(),
+        vendor: "cat test".into(),
+        bundle_path: PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("target/shim/Release/clap_state_test_plugin.clap")
+            .to_string_lossy()
+            .into_owned(),
+    };
+    let mut plugin = app.host.restore_plugin(&fixture).unwrap();
+    plugin.kind = crate::plugin_list::PluginKind::Instrument;
+    app.plugins.push(plugin);
+    for (key, bytes) in [(&fixture, &[5][..]), (surge, state)] {
+        app.apply_patch(crate::patch_preparation::Prepared {
+            candidate: crate::patch_catalog::Candidate {
+                format: key.format.clone(),
+                plugin_id: key.id.clone(),
+                plugin_name: key.name.clone(),
+                display: "retained edited Bass 2".into(),
+                path: "X:/patch.fxp".into(),
+                bundle_path: (&key.bundle_path).into(),
+                entry: cmrt_patch_select::PatchCatalogEntry::from_display(
+                    "retained edited Bass 2".into(),
+                ),
+                measurement: Default::default(),
+            },
+            state: bytes.to_vec(),
+        });
+        settle(app);
+        assert!(app.status.contains("Browse patch:"), "{}", app.status);
+    }
+    assert_eq!(app.retained_instruments.len(), 1);
 }
 
 pub(super) fn edited_state(state: &[u8], vst: bool) -> Vec<u8> {
