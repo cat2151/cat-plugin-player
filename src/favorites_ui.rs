@@ -87,6 +87,9 @@ impl App {
                         if self.can_rescan() && Settings.take(ui.ctx(), egui::Key::Y) {
                             self.confirm_rescan = true;
                         }
+                        if self.can_rebuild_patch_catalog() && Settings.take(ui.ctx(), egui::Key::R) {
+                            self.rebuild_patch_catalog(ui.ctx());
+                        }
                         ui.label("Settings");
                         let favorites_tab = self.favorites.show && !self.favorites.show_history;
                         ui.add_enabled_ui(favorites_tab, |ui| {
@@ -116,6 +119,12 @@ impl App {
                             .clicked()
                         {
                             self.confirm_rescan = true;
+                            ui.memory_mut(|m| m.close_popup());
+                        }
+                        if ui.add_enabled(self.can_rebuild_patch_catalog(),
+                            egui::Button::new("Rebuild patch catalog (R)"))
+                            .clicked() {
+                            self.rebuild_patch_catalog(ui.ctx());
                             ui.memory_mut(|m| m.close_popup());
                         }
                     });

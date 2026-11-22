@@ -62,6 +62,7 @@ mod native_library;
 mod offline_render;
 mod patch_apply;
 mod patch_catalog;
+mod patch_catalog_rebuild;
 mod patch_preparation;
 #[path = "../shared/patch_reference.rs"]
 mod patch_reference;
@@ -257,6 +258,7 @@ struct App {
     plugin_icons: plugin_icons::PluginIcons,
     repaint_heartbeat: Option<repaint_heartbeat::RepaintHeartbeat>,
     patch_catalog: patch_catalog::Catalog,
+    patch_catalog_rebuild: patch_catalog_rebuild::Rebuild,
     patch_browser: patch_browser::Browser,
     drum_browser: drum_browser::Browser,
     effect_browser: effect_browser::EffectBrowser,
@@ -362,6 +364,7 @@ impl eframe::App for App {
             self.status = notice;
         }
         self.poll_patch_catalog(ctx);
+        self.poll_patch_catalog_rebuild(ctx);
         self.poll_catalog_startup(ctx);
         startup::flush_if_ready();
 

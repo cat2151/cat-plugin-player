@@ -78,6 +78,7 @@ const SETTINGS: &[Group] = &[
         ("N", "お気に入りを plugin 名順に"),
         ("D", "重複 plugin は CLAP だけ"),
         ("Y", "plugin 再スキャン"),
+        ("R", "patch catalog 再構築"),
     ],
     &[("Esc", "メニューを閉じる")],
 ];

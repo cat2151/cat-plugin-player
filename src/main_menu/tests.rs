@@ -46,7 +46,7 @@ fn frame(ctx: &egui::Context, events: Vec<Event>, enabled: bool) -> (Vec<(Menu, 
                     menu.button(ui, |ui| {
                         ui.label("Menu");
                         let keys: &[Key] = match menu {
-                            Menu::Settings => &[Key::O, Key::N, Key::D, Key::Y],
+                            Menu::Settings => &[Key::O, Key::N, Key::D, Key::Y, Key::R],
                             Menu::Analysis => &[Key::A, Key::P, Key::C, Key::Z, Key::G],
                         };
                         for &key in keys {
@@ -65,7 +65,11 @@ fn frame(ctx: &egui::Context, events: Vec<Event>, enabled: bool) -> (Vec<(Menu, 
 #[test]
 fn prefixes_open_without_executing_and_actions_close_only_their_menu() {
     for (menu, prefix, keys) in [
-        (Menu::Settings, Key::D, vec![Key::O, Key::N, Key::D, Key::Y]),
+        (
+            Menu::Settings,
+            Key::D,
+            vec![Key::O, Key::N, Key::D, Key::Y, Key::R],
+        ),
         (
             Menu::Analysis,
             Key::A,

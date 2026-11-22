@@ -156,6 +156,7 @@ impl App {
             repaint_heartbeat: None,
             drum_browser,
             patch_catalog: Default::default(),
+            patch_catalog_rebuild: Default::default(),
             patch_browser: crate::patch_browser::Browser::restored(browser_filter),
             effect_browser: crate::effect_browser::EffectBrowser::restored(effect_filter),
             auto_start_pending: true,

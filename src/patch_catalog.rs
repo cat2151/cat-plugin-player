@@ -41,6 +41,11 @@ pub(crate) struct Catalog {
 }
 
 impl Catalog {
+    pub(crate) fn replace(&mut self, candidates: Vec<Candidate>, plugins: &[PluginInfo]) {
+        self.state = State::Ready(candidates);
+        self.reconcile(plugins);
+    }
+
     #[cfg(test)]
     pub(crate) fn from_candidates(candidates: Vec<Candidate>, plugins: &[PluginInfo]) -> Self {
         let mut catalog = Self {

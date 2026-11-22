@@ -127,6 +127,15 @@ pub(crate) fn main_commands(app: &App) -> Vec<Command> {
             app.can_rescan(),
         ),
         Command::new(
+            "rebuild-patch-catalog",
+            "Rebuild patch catalog",
+            "パッチカタログを再構築",
+            "cmrt catalog rebuild カタログ 再構築",
+            "D → R",
+            &[Key::D, Key::R],
+            app.can_rebuild_patch_catalog(),
+        ),
+        Command::new(
             "toggle-analysis-labels",
             "Toggle analysis labels",
             "解析ラベルの表示を切り替え",

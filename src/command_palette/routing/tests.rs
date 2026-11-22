@@ -15,6 +15,18 @@ fn native_cross_screen_candidates_navigation_and_selection_do_not_exit_or_duplic
     let ctx = egui::Context::default();
     app.patch_browser.open = true;
     let list = commands(&app, Screen::Patch);
+    let rebuild = list
+        .iter()
+        .find(|c| c.id == "rebuild-patch-catalog")
+        .unwrap();
+    assert_eq!(rebuild.label, "Rebuild patch catalog");
+    assert_eq!(rebuild.keys, vec![egui::Key::D, egui::Key::R]);
+    assert_eq!(rebuild.screen, Screen::Main);
+    app.scanning = true;
+    assert!(!commands(&app, Screen::Patch)
+        .iter()
+        .any(|c| c.id == "rebuild-patch-catalog"));
+    app.scanning = false;
     assert!(list
         .iter()
         .any(|c| c.id == "next-velocity" && c.screen == Screen::Main));

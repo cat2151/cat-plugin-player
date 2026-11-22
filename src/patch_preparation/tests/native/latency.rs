@@ -118,8 +118,8 @@ fn native_browser_memory_latency_and_restart() {
             .map(|block| {
                 let sum: f64 = block.iter().map(|s| f64::from(*s).powi(2)).sum();
                 let slope: f64 = block
-                    .chunks_exact(2)
-                    .collect::<Vec<_>>()
+                    .as_chunks::<2>()
+                    .0
                     .windows(2)
                     .map(|w| {
                         (f64::from(w[1][0]) - f64::from(w[0][0])).powi(2)
