@@ -88,6 +88,40 @@ fn question_mark_and_f1_toggle_and_the_open_overlay_takes_every_key() {
 }
 
 #[test]
+fn reading_help_state_while_a_worker_requests_repaint_completes() {
+    use std::sync::{mpsc, Arc, Barrier};
+    use std::time::Duration;
+
+    let ctx = egui::Context::default();
+    open(&ctx, Page::Main);
+    let start = Arc::new(Barrier::new(2));
+    let (done, finished) = mpsc::channel();
+    let reader = {
+        let ctx = ctx.clone();
+        let start = start.clone();
+        std::thread::spawn(move || {
+            start.wait();
+            for _ in 0..10_000 {
+                assert!(is_open(&ctx));
+            }
+            done.send(()).unwrap();
+        })
+    };
+    // Both contenders run independently so a deadlock fails by timeout.
+    let writer = std::thread::spawn(move || {
+        start.wait();
+        for _ in 0..10_000 {
+            ctx.request_repaint();
+        }
+    });
+    finished
+        .recv_timeout(Duration::from_secs(5))
+        .expect("help state read stalled during repaint");
+    reader.join().unwrap();
+    writer.join().unwrap();
+}
+
+#[test]
 fn question_mark_typed_into_a_text_field_is_left_alone() {
     let ctx = egui::Context::default();
     let mut text = String::new();

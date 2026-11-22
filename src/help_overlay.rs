@@ -175,8 +175,9 @@ pub(crate) fn open(ctx: &egui::Context, page: Page) {
 }
 
 pub(crate) fn is_open(ctx: &egui::Context) -> bool {
-    ctx.data(|data| data.get_temp::<bool>(id(ctx)))
-        .unwrap_or(false)
+    // viewport_id also reads the context. Resolve it before taking the data lock.
+    let id = id(ctx);
+    ctx.data(|data| data.get_temp::<bool>(id)).unwrap_or(false)
 }
 
 /// Call before the window's other key handling, so Esc and every other key go to the overlay.
