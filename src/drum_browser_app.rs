@@ -74,16 +74,23 @@ impl App {
     }
 
     pub(crate) fn close_drum_browser(&mut self) {
+        self.finish_drum_browser(false);
+    }
+
+    pub(crate) fn finish_drum_browser(&mut self, confirmed: bool) {
         self.stop_drum_preview();
         self.drum_browser.prepared = None;
         self.drum_browser.open = false;
         if self.resident_kit() {
             let resident = self.resident.as_mut().unwrap();
             if let Some(target) = resident.shown {
-                if let Err(error) = resident
-                    .sender
-                    .send(&crate::resident_ipc::ToEditor::KitClosed { target })
-                {
+                use crate::resident_ipc::ToEditor;
+                let event = if confirmed {
+                    ToEditor::BrowserConfirmed { target }
+                } else {
+                    ToEditor::KitClosed { target }
+                };
+                if let Err(error) = resident.sender.send(&event) {
                     self.status = error.to_string();
                 }
             }

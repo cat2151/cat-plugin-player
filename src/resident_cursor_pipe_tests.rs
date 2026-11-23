@@ -24,7 +24,8 @@ fn named_cursor_waits_for_catalog_then_cursor_only_changes_are_reported() {
             context: "song/patch/1".into(),
             panes: ["ALL".into(), "ALL".into()],
             query: String::new(),
-            cursor: Some(patch.clone()),
+            cursor: Some(Box::new(patch.clone())),
+            random_patch_role: None,
         })
         .unwrap();
     let deadline = Instant::now() + Duration::from_secs(5);

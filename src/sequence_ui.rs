@@ -1,5 +1,5 @@
 //! Sequence controls independent of their containing panel and placement.
-use crate::sequence_modulation::MacroTarget;
+use crate::sequence_modulation::{MacroTarget, MACRO_HALF_PERIOD_MS};
 use crate::{App, SequenceModulation, SequencePattern, SequenceVelocity};
 use eframe::egui;
 use value_bar::{drag_bar, value_bar};
@@ -202,16 +202,17 @@ w: next choice",
                         None => ui.label(number),
                     };
                     ui.add_enabled_ui(ready, |ui| {
+                        let seconds = MACRO_HALF_PERIOD_MS[index] as f64 / 1000.0;
                         modulation_selector(
                             ui,
                             ("sequence_macro_modulation", index),
                             &mut macro_choices[index],
                             false,
                             &format!(
-                                "This macro of the patch, {sent}
--: not sent; the patch's macro value stays
-sweep: 0 -> 127 in 4 seconds, then 127 -> 0 in 4 seconds; repeat
-m: every macro to sweep, or back to - once all sweep"
+                                "{sent}
+-: keep the current value
+sweep: 0 to 127 and back, {seconds:.1} seconds each way
+M: toggle all rows between sweep and -"
                             ),
                         )
                     });
@@ -251,14 +252,10 @@ m: every macro to sweep, or back to - once all sweep"
             }
         }
         if !self.actions_busy() && macro_choices != original_macros {
-            self.macro_lane.choices = macro_choices;
-            self.macro_lane.reread |= macro_choices
-                .iter()
-                .zip(original_macros)
-                .any(|(now, was)| now.is_none() && was.is_some());
-            self.apply_macro_lane();
-            if !dragging {
-                self.save_session();
+            match self.set_macro_choices(macro_choices) {
+                Ok(()) if !dragging => self.save_session(),
+                Ok(()) => (),
+                Err(error) => self.status = error,
             }
         }
         if toggle_playback {

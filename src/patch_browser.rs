@@ -44,6 +44,12 @@ pub(crate) struct Browser {
     pub scroll_to_preset: bool,
     /// Set on open; reveal the saved named cursor, or the playing patch, after loading.
     pub reveal_pending: bool,
+    /// Role to draw from once a resident browser has a filtered catalog.
+    pub random_on_open: Option<usize>,
+    /// The resident role workflow can advance only after its current patch applies.
+    pub confirm_on_enter: bool,
+    /// One-shot closing reason for the resident notification.
+    pub confirmed: bool,
     pub list_columns: usize,
     /// `w`: columns as wide as the longest label instead of the fixed width.
     pub fit_columns: bool,
@@ -126,6 +132,7 @@ impl Browser {
     pub fn open_window(&mut self) {
         self.restore_selected = self.saved_cursor();
         self.open = true;
+        self.confirmed = false;
         self.reveal_pending = true;
     }
 
@@ -136,6 +143,7 @@ impl Browser {
         self.solo_draft = None;
         self.condition_menu = false;
         self.count = None;
+        self.random_on_open = None;
         self.requests.invalidate();
     }
 

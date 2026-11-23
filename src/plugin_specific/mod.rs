@@ -5,7 +5,7 @@ use crate::config::PluginKey;
 mod floe;
 #[cfg(test)]
 mod instrument_macros_saved_tests;
-mod jc303;
+pub(crate) mod jc303;
 #[cfg(test)]
 mod macro_parameter_lane_native_tests;
 #[cfg(test)]
@@ -103,6 +103,7 @@ impl Controls {
 pub(crate) fn reports_controls(plugin: &PluginKey) -> bool {
     surge_xt_macro::supports(plugin)
         || tyrell_n6_control::supports(plugin)
+        || jc303::supports(plugin)
         || parameter_macros(plugin).is_some()
 }
 

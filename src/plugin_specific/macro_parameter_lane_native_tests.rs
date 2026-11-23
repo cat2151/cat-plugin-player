@@ -7,6 +7,7 @@ use crate::{
     ffi::{self, parameters::ParameterValue},
     instrument_macros::Instrument,
     macro_parameters::{self, Bindings},
+    plugin_specific::jc303,
     seq::{EventBuf, Sequencer},
     sequence_modulation::{MacroTarget, SequenceModulation, MACROS},
     SequencePattern, SequenceVelocity,
@@ -318,4 +319,94 @@ fn native_six_sines_macro_rows_move_their_parameters() {
 #[ignore = "requires installed Floe CLAP and saved favorites (read only)"]
 fn native_floe_macro_rows_move_their_parameters() {
     check("com.floe-audio.floe");
+}
+
+#[test]
+#[ignore = "requires installed JC303 CLAP; no audio device"]
+fn native_jc303_parameter_rows_move_independently() {
+    let _dll = crate::native_library::load().unwrap();
+    let plugin = crate::config::PluginKey {
+        format: "CLAP".into(),
+        id: "co.midilab.JC303".into(),
+        name: "JC303".into(),
+        vendor: "midilab".into(),
+        bundle_path: std::env::var("S07_JC303_BUNDLE")
+            .unwrap_or_else(|_| r"C:\Program Files\Common Files\CLAP\JC303.clap".into()),
+    };
+    let (host, id) = open(&plugin, 48000);
+    let state = host.save_state(id).unwrap();
+    if let Some(state) = jc303::internal_sync(&plugin, &state) {
+        host.load_state(id, &state).unwrap();
+    }
+    let processor = host
+        .create_chain(id, &[], false, 48000, BLOCK as u32)
+        .unwrap();
+    let bindings = macro_parameters::bind(&host, &processor, id, &plugin).unwrap();
+    assert!(bindings.iter().all(Option::is_some));
+
+    let read = || jc303::controls(&host.parameters(id).unwrap());
+    let controls = read();
+    assert_eq!(controls.targets, [Some(MacroTarget::Parameter); MACROS]);
+    let mut player = Player {
+        host: &host,
+        audio: unsafe { processor.audio_ref() },
+        bindings,
+        sequencer: Sequencer::new(48000),
+        ump: EventBuf::new(),
+        scratch: [ParameterValue::default(); MACROS],
+    };
+    let (low, _) = player.play(&[1, 2], Some(SequenceModulation::Fixed(0)), 100, true);
+    assert_eq!(&read().macros[..2], &[Some(0), Some(0)]);
+    let (open, _) = player.play(&[1], Some(SequenceModulation::Fixed(127)), 100, true);
+    assert_eq!(&read().macros[..2], &[Some(127), Some(0)]);
+    let (resonant, _) = player.play(&[2], Some(SequenceModulation::Fixed(127)), 100, true);
+    assert_eq!(&read().macros[..2], &[Some(127), Some(127)]);
+    assert!(low.distance(open) > 0.02, "Cutoff: {low:?} -> {open:?}");
+    assert!(
+        open.distance(resonant) > 0.02,
+        "Resonance: {open:?} -> {resonant:?}"
+    );
+
+    let (_, fixed) = player.play(&[1], Some(SequenceModulation::Fixed(55)), 10, false);
+    assert_eq!(&fixed[..2], &[Some(55), None]);
+    assert_eq!(&read().macros[..2], &[Some(55), Some(127)]);
+    let added = [3, 4, 5, 6, 7, 8];
+    player.play(&added, Some(SequenceModulation::Fixed(0)), 10, false);
+    let mut expected = [
+        Some(55),
+        Some(127),
+        Some(0),
+        Some(0),
+        Some(0),
+        Some(0),
+        Some(0),
+        Some(0),
+    ];
+    assert_eq!(read().macros, expected);
+    for number in added {
+        player.play(&[number], Some(SequenceModulation::Fixed(127)), 10, false);
+        expected[number - 1] = Some(127);
+        assert_eq!(read().macros, expected, "row {number}");
+    }
+
+    let all = [1, 2, 3, 4, 5, 6, 7, 8];
+    let mut previous = [0; MACROS];
+    for _ in 0..4 {
+        let (_, levels) = player.play(&all, Some(SequenceModulation::Sweep), 25, false);
+        assert_ne!(levels[0], levels[1]);
+        let current = read().macros;
+        for i in 0..MACROS {
+            let value = current[i].unwrap();
+            // JC303 rounds some intermediate values to its own parameter step.
+            assert!(value.abs_diff(levels[i].unwrap()) <= 1, "lane {i}");
+            assert!(value > previous[i], "lane {i} did not advance");
+            previous[i] = value;
+        }
+    }
+    let last = read().macros;
+    player.play(&[], None, 25, false);
+    assert_eq!(read().macros, last);
+    drop(player);
+    drop(processor);
+    host.destroy_instance(id);
 }

@@ -1,10 +1,66 @@
 //! Pane labels travel independently of sound selection and preparation.
 use crate::{
     resident_ipc::{Open, ToEditor},
+    status::PatchIdentity,
     App,
 };
+use cmrt_patch_select::FilterGroup;
 
 impl App {
+    pub(crate) fn restore_filtered_browser(
+        &mut self,
+        open: Open,
+        context: String,
+        panes: [String; 2],
+        query: String,
+        cursor: Option<PatchIdentity>,
+        random_patch_role: Option<&str>,
+    ) {
+        self.report_resident_panes();
+        let resident = self.resident.as_ref().unwrap();
+        // A quick reopen may arrive before the editor has read our last notification.
+        let (panes, query) = resident
+            .pane_cache
+            .get(&context)
+            .cloned()
+            .unwrap_or((panes, query));
+        let cursor = resident
+            .cursor_cache
+            .get(&context)
+            .cloned()
+            .unwrap_or(cursor);
+        let playing = resident.playing_cache.get(&context).cloned();
+        let patch = matches!(open, Open::Patch { .. } | Open::Layer { .. });
+        let random_group = random_patch_role.filter(|_| patch).and_then(|key| {
+            FilterGroup::ALL
+                .iter()
+                .position(|group| group.role().is_some_and(|role| role.key() == key))
+        });
+        if let Some(group) = random_group {
+            self.restore_resident_panes(
+                open,
+                [FilterGroup::ALL[group].label().into(), "ALL".into()],
+                String::new(),
+            );
+        } else {
+            self.restore_resident_panes(open, panes.clone(), query.clone());
+        }
+        if patch {
+            self.patch_browser.random_on_open = random_group;
+            self.patch_browser.confirm_on_enter = random_group.is_some();
+            self.patch_browser.restore_selected = if random_group.is_none() {
+                cursor.clone()
+            } else {
+                None
+            };
+            self.patch_browser.restore_playing = playing;
+            self.patch_browser.resolve_restored_playing();
+        }
+        let resident = self.resident.as_mut().unwrap();
+        resident.cursor = cursor;
+        resident.panes = Some((context, panes, query));
+    }
+
     pub(crate) fn restore_resident_panes(&mut self, open: Open, panes: [String; 2], query: String) {
         match open {
             Open::Kit { .. } => (),

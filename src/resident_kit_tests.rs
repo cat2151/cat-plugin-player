@@ -58,7 +58,7 @@ fn resident_kit_browser_metadata_confirm_ack_and_cancel_keep_target_identity() {
     assert!(!app.drum_browser.open);
     assert_eq!(
         receiver.receive::<ToEditor>().unwrap(),
-        Some(ToEditor::KitClosed { target: open })
+        Some(ToEditor::BrowserConfirmed { target: open })
     );
     let next = Open::Kit {
         track: 1,

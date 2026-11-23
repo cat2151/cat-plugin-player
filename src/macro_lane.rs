@@ -1,5 +1,5 @@
 //! ADR 0036: automatic controllers for the instrument's macros, shown only when found.
-use crate::plugin_specific::Controls;
+use crate::plugin_specific::{jc303, Controls};
 use crate::sequence_modulation::{MacroLanes, MACROS};
 use crate::{audio, plugin_list::PluginKind, App, SequenceModulation};
 #[derive(Default)]
@@ -64,6 +64,16 @@ impl App {
         let plugin = instrument.plugin.clone();
         self.macro_lane.seen = seen;
         self.macro_lane.reread = false;
+        if jc303::supports(&plugin) {
+            self.macro_lane.state = None;
+            let controls = self
+                .host
+                .parameters(id)
+                .map(|parameters| jc303::controls(&parameters))
+                .unwrap_or_default();
+            self.set_controls(controls);
+            return;
+        }
         let Ok(state) = self.host.save_state(id) else {
             self.macro_lane.state = None;
             self.set_controls(Controls::default());
@@ -90,6 +100,36 @@ impl App {
         for voice in self.instances.iter().filter_map(|i| i.voice.as_ref()) {
             voice.set_macro_modulation(&lanes);
         }
+    }
+
+    pub(crate) fn set_macro_choices(
+        &mut self,
+        choices: [Option<SequenceModulation>; MACROS],
+    ) -> Result<(), String> {
+        let previous = std::mem::replace(&mut self.macro_lane.choices, choices);
+        let activate_jc303 = self.macro_lane.active().iter().any(Option::is_some)
+            && self.instances.iter().any(|i| {
+                i.kind == PluginKind::Instrument
+                    && jc303::supports(&i.plugin)
+                    && i.voice.as_ref().is_some_and(|v| !v.has_macro_parameters)
+            });
+        if activate_jc303 {
+            // A restored JC303 with idle controls starts without preparing automation.
+            self.pause_audio();
+            if let Err(error) = self.resume_audio() {
+                self.macro_lane.choices = previous;
+                return Err(match self.resume_audio() {
+                    Ok(()) => error,
+                    Err(resume) => format!("{error}; could not resume playback: {resume}"),
+                });
+            }
+        }
+        self.macro_lane.reread |= choices
+            .iter()
+            .zip(previous)
+            .any(|(now, was)| now.is_none() && was.is_some());
+        self.apply_macro_lane();
+        Ok(())
     }
 
     /// Call before playing a patch the app loads. TyrellN6, Vaporizer2, Six Sines and

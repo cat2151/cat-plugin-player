@@ -67,6 +67,7 @@ pub struct Voice {
     macro_modulation: Arc<[AtomicU16; MACROS]>,
     /// The shim's code for a rejected macro parameter batch; 0 while none.
     parameter_failure: Arc<AtomicI32>,
+    pub(crate) has_macro_parameters: bool,
     current_macro: Arc<[AtomicU8; MACROS]>,
     rendered: Arc<AtomicBool>,
     scope: crate::scope::Scope,
@@ -104,6 +105,7 @@ impl Voice {
         )>,
         preview_chain: Option<crate::chain::Chain>,
     ) -> Result<Self, String> {
+        let has_macro_parameters = macro_parameters.iter().any(Option::is_some);
         let mut fade = crate::audio_fade::Fade::new(output.sample_rate(), fade_in);
         let fade_out = Arc::new(AtomicBool::new(false));
         let fade_out_flag = Arc::clone(&fade_out);
@@ -291,6 +293,7 @@ impl Voice {
             notes,
             macro_modulation,
             parameter_failure,
+            has_macro_parameters,
             current_macro,
             rendered,
             scope,

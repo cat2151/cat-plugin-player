@@ -128,6 +128,8 @@ impl App {
                 ToPlayer::Open(open) => {
                     self.report_resident_panes();
                     self.resident.as_mut().unwrap().panes = None;
+                    self.patch_browser.random_on_open = None;
+                    self.patch_browser.confirm_on_enter = false;
                     self.show_resident(open);
                 }
                 ToPlayer::OpenFiltered {
@@ -136,46 +138,22 @@ impl App {
                     panes,
                     query,
                     cursor,
+                    random_patch_role,
                 } => {
-                    self.report_resident_panes();
-                    // A quick close/reopen can arrive before the editor has read
-                    // our last pane notification. Keep the newest local labels.
-                    let (panes, query) = self
-                        .resident
-                        .as_ref()
-                        .unwrap()
-                        .pane_cache
-                        .get(&context)
-                        .cloned()
-                        .unwrap_or((panes, query));
-                    let playing = self
-                        .resident
-                        .as_ref()
-                        .unwrap()
-                        .playing_cache
-                        .get(&context)
-                        .cloned();
-                    let cursor = self
-                        .resident
-                        .as_ref()
-                        .unwrap()
-                        .cursor_cache
-                        .get(&context)
-                        .cloned()
-                        .unwrap_or(cursor);
                     if matches!(open, Open::Kit { .. }) {
+                        self.report_resident_panes();
                         self.show_resident(open);
                         continue;
                     }
-                    self.restore_resident_panes(open, panes.clone(), query.clone());
-                    if matches!(open, Open::Patch { .. } | Open::Layer { .. }) {
-                        self.patch_browser.restore_selected = cursor.clone();
-                        self.patch_browser.restore_playing = playing;
-                        self.patch_browser.resolve_restored_playing();
-                    }
-                    self.resident.as_mut().unwrap().cursor = cursor;
+                    self.restore_filtered_browser(
+                        open,
+                        context,
+                        panes,
+                        query,
+                        cursor.map(|patch| *patch),
+                        random_patch_role.as_deref(),
+                    );
                     self.show_resident(open);
-                    self.resident.as_mut().unwrap().panes = Some((context, panes, query));
                 }
                 ToPlayer::Applied(result) => self.resident_answered(result),
             }
@@ -195,7 +173,7 @@ impl App {
         };
         log(format_args!("answer for {}: {result:?}", offer.label));
         if self.resident_kit() && result.is_ok() {
-            self.close_drum_browser();
+            self.finish_drum_browser(true);
         }
         let kind = match offer.browser {
             Browser::Patch => {
@@ -260,7 +238,7 @@ impl App {
         }
     }
 
-    /// The kit browser reports its own closing as [`resident_ipc::ToEditor::KitClosed`].
+    /// The kit browser sends its own close or confirmation notice.
     fn report_browser_closed(&mut self) {
         let Some(resident) = &mut self.resident else {
             return;
@@ -271,10 +249,12 @@ impl App {
         if matches!(target, Open::Kit { .. }) {
             return;
         }
-        if let Err(error) = resident
-            .sender
-            .send(&resident_ipc::ToEditor::BrowserClosed { target })
-        {
+        let event = if std::mem::take(&mut self.patch_browser.confirmed) {
+            resident_ipc::ToEditor::BrowserConfirmed { target }
+        } else {
+            resident_ipc::ToEditor::BrowserClosed { target }
+        };
+        if let Err(error) = resident.sender.send(&event) {
             self.status = error.to_string();
         }
     }

@@ -25,6 +25,13 @@ impl App {
         if browser.open && browser.reveal_pending && browser.snapshot.is_some() {
             browser.reveal_pending = false;
             browser.reveal_playing();
+            // Prefer patches that can play immediately under the existing load gate.
+            if browser.random_on_open.take() == Some(browser.role)
+                && !browser
+                    .select_random_matching(|patch| !patch.measurement.is_heavy_offline_load())
+            {
+                browser.select_random();
+            }
         }
         if self.patch_browser.open {
             let focus = self.take_browser_focus(crate::cli::Browser::Patch)
@@ -233,6 +240,17 @@ impl Browser {
             self.count = None;
         }
         if ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, Key::Enter)) {
+            if self.confirm_on_enter {
+                let applied = self.requests.selected.as_ref().is_some_and(|selected| {
+                    self.requests.applied.as_ref().is_some_and(|applied| {
+                        crate::patch_browser_requests::same(&selected.candidate, applied)
+                    })
+                });
+                if !applied {
+                    return;
+                }
+                self.confirmed = true;
+            }
             self.close();
             return;
         }
@@ -281,14 +299,30 @@ impl Browser {
     }
 
     pub(crate) fn select_random(&mut self) {
+        self.select_random_matching(|_| true);
+    }
+
+    fn select_random_matching(
+        &mut self,
+        eligible: impl Fn(&crate::patch_catalog::Candidate) -> bool,
+    ) -> bool {
         if self.error.is_some() {
-            return;
+            return false;
         }
-        if let Some(index) =
-            crate::patch_preparation::choose(self.results.iter().copied(), &mut rand::thread_rng())
-        {
-            self.select(index);
-        }
+        let Some(snapshot) = &self.snapshot else {
+            return false;
+        };
+        let Some(index) = crate::patch_preparation::choose(
+            self.results
+                .iter()
+                .copied()
+                .filter(|&index| eligible(&snapshot.candidates[index])),
+            &mut rand::thread_rng(),
+        ) else {
+            return false;
+        };
+        self.select(index);
+        true
     }
 }
 

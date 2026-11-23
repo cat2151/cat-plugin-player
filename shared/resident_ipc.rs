@@ -30,7 +30,10 @@ pub enum ToPlayer {
         #[serde(default)]
         query: String,
         #[serde(default)]
-        cursor: Option<PatchIdentity>,
+        cursor: Option<Box<PatchIdentity>>,
+        /// Open on this catalog role and invoke the patch browser's Random once.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        random_patch_role: Option<String>,
     },
     /// The editor's answer to the last [`ToEditor::Selected`].
     Applied(Result<(), String>),
@@ -44,6 +47,10 @@ pub enum ToEditor {
     },
     /// The patch or effect browser for `target` was hidden by Esc, Q, or its close button.
     BrowserClosed {
+        target: Open,
+    },
+    /// The user confirmed the applied patch or kit and its browser closed.
+    BrowserConfirmed {
         target: Open,
     },
     /// A patch or effect chosen in the browser, for the editor to play.

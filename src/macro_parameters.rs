@@ -5,6 +5,7 @@ use crate::ffi::{
     self,
     parameters::{domain::Position, ParameterValue},
 };
+use crate::plugin_specific::{jc303, parameter_macros};
 use crate::sequence_modulation::MACROS;
 
 /// One macro parameter's binding and its value at each CC-scale level 0-127.
@@ -26,16 +27,22 @@ pub(crate) fn bind(
     plugin: &PluginKey,
 ) -> Result<Bindings, String> {
     let mut bindings = [None; MACROS];
-    let Some(instrument) = crate::plugin_specific::parameter_macros(plugin) else {
+    let instrument = parameter_macros(plugin);
+    let jc303 = jc303::supports(plugin);
+    if instrument.is_none() && !jc303 {
         return Ok(bindings);
-    };
+    }
     processor.prepare_parameters()?;
     let parameters = host.parameter_metadata(id)?;
     for (index, binding) in bindings.iter_mut().enumerate() {
-        let Some(parameter) = parameters
-            .iter()
-            .find(|p| p.eligible && instrument.parameter(index + 1, &p.name))
-        else {
+        let Some(parameter) = parameters.iter().find(|p| {
+            p.eligible
+                && if jc303 {
+                    p.name == jc303::PARAMETER_ROWS[index].0
+                } else {
+                    instrument.is_some_and(|i| i.parameter(index + 1, &p.name))
+                }
+        }) else {
             continue;
         };
         let domain = parameter.domain()?;

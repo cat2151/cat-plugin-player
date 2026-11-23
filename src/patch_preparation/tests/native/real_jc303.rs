@@ -79,6 +79,21 @@ fn native_real_jc303_plays_incoming_notes_after_host_sync() {
     let first = app.instrument_id().unwrap();
     let internal = app.host.save_state(first).unwrap();
     assert_eq!(sync_mode(&internal), "0.0");
+    app.poll_macro_lane();
+    assert_eq!(
+        app.macro_lane.controls.labels,
+        [
+            "Cutoff",
+            "Resonance",
+            "Filt. EnvMod",
+            "Filt. Decay",
+            "Accent",
+            "Waveform",
+            "OD Drive",
+            "OD Dry/Wet"
+        ]
+    );
+    assert!(app.macro_lane.controls.macros.iter().all(Option::is_some));
     let expected = render(&app.host, first);
     assert!(expected.iter().any(|s| *s != 0.0));
     assert_ne!(unswitched, expected);

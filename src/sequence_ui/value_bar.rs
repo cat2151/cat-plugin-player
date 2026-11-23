@@ -73,7 +73,7 @@ pub(super) fn value_bar(ui: &mut egui::Ui, value: u8, sense: egui::Sense) -> egu
         egui::FontId::monospace(12.0),
         ui.visuals().text_color(),
     );
-    response.on_hover_text(format!("Current MIDI value: {value} / 127"))
+    response.on_hover_text(format!("Current value: {value} / 127"))
 }
 
 #[cfg(test)]

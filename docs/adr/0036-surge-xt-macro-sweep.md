@@ -19,6 +19,7 @@ CC1とMacroの値表示バーを横にドラッグすると、0〜127の任意�
 ドラッグ中は毎フレーム値が変わるため、sessionの保存はドラッグを離したときにまとめて行う。
 
 Surge XT以外のプラグインにも類似の仕組み（Macroや割り当て可能なCC）がある。TyrellN6のControl A / Bは[ADR 0038](0038-tyrell-n6-control-ab-sweep.md)、Vaporizer2・Six Sines・FloeのMacroは[ADR 0039](0039-parameter-macro-sweep.md)で同じ欄に載せた。
+JC-303の音色パラメーターも同じ欄で直接操作する（[ADR 0047](0047-jc303-filter-controls.md)）。
 
 Surge XTのMacro 1〜Macro 8は、1つの操作で複数のパラメータに同時に影響を与える仕組みと認識している。
 そのため、分解能が128段階しかないデメリットをあえて許容し、Control Changeを使っての制御でUXを検証すると決めた。

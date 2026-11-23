@@ -1,7 +1,7 @@
 //! Build the stopped instrument/effect route and attach its renderer.
 #[cfg(test)]
 use super::{headless, route_trace};
-use crate::{audio, ffi, sequence_ui::PatchSource, startup, App};
+use crate::{audio, ffi, plugin_specific::jc303, sequence_ui::PatchSource, startup, App};
 
 impl App {
     pub(crate) fn chain_processor(
@@ -42,6 +42,8 @@ impl App {
                 .map(|i| (&i.plugin, i.preset_name.as_deref()))
         });
         let instrument_plugin = patch.map(|(plugin, _)| plugin);
+        let is_jc303 = instrument_plugin.is_some_and(jc303::supports);
+        let jc303_controls_active = is_jc303 && self.macro_lane.choices.iter().any(Option::is_some);
         // ADR 0044: before the processor exists, as the state APIs require.
         if let Some(plugin) =
             instrument_plugin.filter(|plugin| crate::plugin_specific::checks_playable_state(plugin))
@@ -78,11 +80,25 @@ impl App {
             .unwrap_or_default();
         // Every audio renderer is stopped here, as preparing parameters requires.
         let macro_parameters = match instrument_plugin {
-            Some(plugin) if !self.selecting_master() => {
-                crate::macro_parameters::bind(&self.host, &processor, instrument, plugin)
-                    .map_err(|error| format!("Macro parameters: {error}"))?
+            Some(plugin)
+                if !self.selecting_master()
+                    && (!is_jc303 || jc303_controls_active || !self.restoring) =>
+            {
+                match crate::macro_parameters::bind(&self.host, &processor, instrument, plugin) {
+                    Err(_) if is_jc303 && !jc303_controls_active => Default::default(),
+                    result => result.map_err(|error| format!("Macro parameters: {error}"))?,
+                }
             }
             _ => Default::default(),
+        };
+        let macro_lanes = if is_jc303 {
+            use crate::sequence_modulation::MacroTarget;
+            std::array::from_fn(|i| {
+                macro_parameters[i]
+                    .and(self.macro_lane.choices[i].map(|c| (MacroTarget::Parameter, c)))
+            })
+        } else {
+            self.macro_lane.active()
         };
         audio::Voice::start(
             self.output.as_ref().unwrap(),
@@ -95,7 +111,7 @@ impl App {
             self.sequence_velocity,
             self.cc1_pitch_cache
                 .effective(self.sequence_modulation, patch),
-            &self.macro_lane.active(),
+            &macro_lanes,
             macro_parameters,
             start_delay,
             self.mml_input.phrase.clone(),
