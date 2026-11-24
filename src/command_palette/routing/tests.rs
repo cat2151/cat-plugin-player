@@ -92,7 +92,25 @@ fn native_cross_screen_candidates_navigation_and_selection_do_not_exit_or_duplic
     let root =
         std::path::PathBuf::from(std::env::var_os(crate::native_library::process::ROOT).unwrap());
     let music = root.join("input.mid");
-    crate::selection_tests::input(&music, &Default::default());
+    crate::selection_tests::input(
+        &music,
+        &crate::chain_settings::Settings {
+            instrument: Some(crate::chain_settings::PluginState {
+                reference: None,
+                plugin: crate::config::PluginKey {
+                    format: "CLAP".into(),
+                    id: "cat.test.selection".into(),
+                    name: "Selection fixture".into(),
+                    vendor: "cat test".into(),
+                    bundle_path: "selection-fixture.clap".into(),
+                },
+                state: vec![1],
+                preset_name: None,
+                bypass: false,
+            }),
+            ..Default::default()
+        },
+    );
     let previous_target = Target::of(&app, Screen::Main);
     app.configure_selection(music, crate::cli::Browser::Patch)
         .unwrap();
