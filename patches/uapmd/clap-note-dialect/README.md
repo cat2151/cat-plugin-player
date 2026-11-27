@@ -2,10 +2,9 @@
 
 ## Cause and scope
 
-Verified dependency revision: `4ec5c3b1c30130fdd3b7d4b375082273247e561f`
-(`PluginInstanceCLAP.Events.cpp` is identical to the originally investigated
-`bc39b50faf2f2b02668de82d3d95f2bdbafd3c34`; the header and instance baselines
-changed only around the offline/realtime processing mode). This revision converts every UMP
+Verified dependency revision: `277aa85468795267d6cf64953af587ea18c7f653`.
+In `onNoteOn`/`onNoteOff` the repair replaces only the native note emission;
+upstream's per-note tuning (Pitch 7.9) bookkeeping after it is kept. This revision converts every UMP
 Note On/Off into native CLAP Note events and drops CC. Installed sforzando CLAP
 2.1.2.4 reports input port 0 supported/preferred dialect `2` (MIDI only).
 The repair selects the input port's supported dialect: native CLAP when supported,

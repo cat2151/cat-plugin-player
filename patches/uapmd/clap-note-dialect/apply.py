@@ -7,9 +7,9 @@ import sys
 
 HERE = Path(__file__).resolve().parent
 BASELINES = {
-    "PluginFormatCLAP.hpp": "db8a5833c267cc56c327a224d103a7a8339c634e316f2a71aaa02e3d57e976fa",
-    "PluginInstanceCLAP.cpp": "36fcc7580aab99a90d6a319778ad2d794494ada8453e613866010f1d5d978cbc",
-    "PluginInstanceCLAP.Events.cpp": "cb58643e1077d3f202c202ec46cb2741ef39f46037fd15cea62abf4a774feb26",
+    "PluginFormatCLAP.hpp": "63331386b59150aef0edfe54d52df2c9d52bafb17221ca69192398d2ab19c530",
+    "PluginInstanceCLAP.cpp": "d44c1284db6eb9d5a9200cd9517c44925459f28e42672806098c6671fcc92796",
+    "PluginInstanceCLAP.Events.cpp": "ec853984db72e6a496f2cd07dc84a869fccaf6a10c81ef7b4e084b703013c3f3",
 }
 
 def generate(source, output):
@@ -56,14 +56,19 @@ def generate(source, output):
              "            activated_ = plugin->activate(configuration.sampleRate, 1, configuration.bufferSizeInSamples);")
         name = "PluginInstanceCLAP.Events.cpp"
         for method, call in [("onNoteOn", "note"), ("onNoteOff", "note"), ("onCC", "cc")]:
-            pattern = rf"(    void PluginInstanceCLAP::CLAPUmpInputDispatcher::{method}\([^\n]+\) \{{)\n.*?\n    \}}"
+            head = rf"(    void PluginInstanceCLAP::CLAPUmpInputDispatcher::{method}\([^\n]+\) \{{)\n"
             if method == "onCC":
+                pattern = head + r".*?\n    \}"
                 args = "group, channel, index, data, timestamp()"
+                tail = "\n    }"
             else:
+                # Replace only the native note emission; upstream's per-note tuning bookkeeping after it stays.
+                pattern = head + r".*?\n        evt->velocity = \(double\) velocity / UINT16_MAX;"
                 args = f"{'true' if method == 'onNoteOn' else 'false'}, group, channel, note, velocity, timestamp()"
+                tail = ""
             replacement = (rf"\1\n        uh::clap_dialect::{call}([&](size_t size) -> void* {{\n"
                            "            return owner->events_in->tryAllocate(alignof(void*), size);\n"
-                           "        }, owner->inputNoteDialects(group), " + args + ");\n    }")
+                           "        }, owner->inputNoteDialects(group), " + args + ");" + tail)
             texts[name], count = re.subn(pattern, replacement, texts[name], flags=re.S)
             if count != 1:
                 raise ValueError(f"{name}: {method}: expected one method, found {count}")

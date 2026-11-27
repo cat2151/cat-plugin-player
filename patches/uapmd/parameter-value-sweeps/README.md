@@ -2,7 +2,7 @@
 
 ## Cause and scope
 
-Verified UAPMD revision: `4ec5c3b1c30130fdd3b7d4b375082273247e561f`.
+Verified UAPMD revision: `277aa85468795267d6cf64953af587ea18c7f653`.
 Six Sines requests VALUES rescans both while loading state and from its queued
 main-thread callback. Each rescan walks every current value just to notify listeners.
 This shim observes metadata changes, but has no consumer of those value notifications.

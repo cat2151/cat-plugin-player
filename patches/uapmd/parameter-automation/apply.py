@@ -14,9 +14,9 @@ BASELINES = {
     'vst3/PluginInstanceVST3.States.cpp': '899c53d931a687115ed526f197c94e8564ee91e826c1c1dcab879205868c68e2',
     'vst3/HostClasses.hpp': 'ceaae1d61b89f4f74597a865e10d89b6a48f2a683868c8b8f9efde9f1499b81e',
     'clap/PluginInstanceCLAP.Parameters.cpp': 'cf7b01ee3867baecf2de9fa71060c165a7d98f87000de682fc1e433e78a7be85',
-    'vst3/PluginFormatVST3.hpp': 'e9bf58d62b50e28d068428b0da3193afc63dc91b4dda463965f96175c29b1b30',
-    'vst3/PluginInstanceVST3.cpp': 'a798d6b78e8dec492e8238a248981ce725bf3f9225e9be986f8bb053710f588f',
-    'vst3/PluginInstanceVST3.Parameters.cpp': 'ad438ffa987b157d19b2eb8ff845d7494915acf1908b63abd2946c598b19d6f9',
+    'vst3/PluginFormatVST3.hpp': '4d2f56c1caf2ccd8f6a79c0aa5bf8aaa9462e786ce96c477898cf4555e8516be',
+    'vst3/PluginInstanceVST3.cpp': 'c632a8072dabf0ea6d6eb4d34d873630e239922e1793517938902c21b38d020f',
+    'vst3/PluginInstanceVST3.Parameters.cpp': '4c3b93dc5cf536616982fee00c50dfa7f1084d6346993d81b068184ad5e060d9',
 }
 
 
@@ -322,6 +322,7 @@ std::string vst3Text(remidy::PluginParameterSupport* p, uint32_t index, double v
         once(vc, '    auto result = processor->process(processData);', '''    if (automation_enabled) {
         if (processDataInputEvents.overflowed() || !automation_changes.append(processDataInputParameterChanges)) {
             automation_changes.clear(); automation_current_pending_count=0; processDataInputParameterChanges.clear();
+            processDataInputEvents.clear(); process_data_input_sysex_bytes.clear();
             return StatusCode::INSUFFICIENT_MEMORY;
         }
         automation_output_changes.clear();
@@ -338,12 +339,16 @@ std::string vst3Text(remidy::PluginParameterSupport* p, uint32_t index, double v
                     automation_current_pending[i].target->store(automation_current_pending[i].value,std::memory_order_relaxed);
         automation_current_pending_count=0;
     }''')
-        once(vc,'    processDataInputEvents.clear();\n    ump_input_dispatcher.process(process);', '''    processDataInputEvents.clear();
+        # Upstream clears the input events after process(), so early returns here clear them too.
+        once(vc,'    // handle UMP inputs via UmpInputDispatcher.\n    ump_input_dispatcher.process(process);', '''    // handle UMP inputs via UmpInputDispatcher.
     if (automation_enabled) {
         for (int32 i=0;i<automation_note_events.getEventCount();++i) {
             Event event{}; automation_note_events.getEvent(i,event);
             event.ppqPosition=process_context.projectTimeMusic;
-            if (processDataInputEvents.addEvent(event)!=kResultOk) {automation_note_events.clear();return StatusCode::INSUFFICIENT_MEMORY;}
+            if (processDataInputEvents.addEvent(event)!=kResultOk) {
+                automation_note_events.clear(); processDataInputEvents.clear(); process_data_input_sysex_bytes.clear();
+                return StatusCode::INSUFFICIENT_MEMORY;
+            }
         }
         automation_note_events.clear();
     }

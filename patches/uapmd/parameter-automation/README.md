@@ -2,7 +2,7 @@
 
 ## Cause and scope
 
-Verified UAPMD revision: `4ec5c3b1c30130fdd3b7d4b375082273247e561f`.
+Verified UAPMD revision: `277aa85468795267d6cf64953af587ea18c7f653`.
 The CLAP metadata constructor swaps automatable/readable and ignores read-only;
 its global RT event addresses note/key/port/channel zero and sets LIVE. VST3's
 plain RT setter calls the controller and a mutex-backed listener, retains a

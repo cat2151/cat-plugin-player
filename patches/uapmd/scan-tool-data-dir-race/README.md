@@ -2,7 +2,7 @@
 
 ## Cause and bounded scope
 
-Verified dependency revision: `4ec5c3b1c30130fdd3b7d4b375082273247e561f`.
+Verified dependency revision: `277aa85468795267d6cf64953af587ea18c7f653`.
 `PluginScanToolImpl`'s constructor publishes its default directory into the
 process-global `applicationDataDirectoryStorage()` path without a lock. Until
 the path is first published, every constructor that runs concurrently takes the

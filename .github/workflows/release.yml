@@ -22,7 +22,7 @@ permissions:
 
 env:
   # The uapmd commit that the local build was checked against (ADR 0021).
-  UAPMD_VERIFIED_SHA: 4ec5c3b1c30130fdd3b7d4b375082273247e561f
+  UAPMD_VERIFIED_SHA: 277aa85468795267d6cf64953af587ea18c7f653
 
 jobs:
   # Fix the sibling commits once, so that the build and the notes use the same sources.

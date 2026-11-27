@@ -2,7 +2,7 @@
 
 ## Cause and bounded scope
 
-Verified dependency revision: `4ec5c3b1c30130fdd3b7d4b375082273247e561f`
+Verified dependency revision: `277aa85468795267d6cf64953af587ea18c7f653`
 (`PluginInstanceCLAP.States.cpp` and its apply baseline are identical to the originally investigated
 `bc39b50faf2f2b02668de82d3d95f2bdbafd3c34`). It still calls `setState(...)`
 followed by `finish("")` even when CLAP state.load returns false. The shim already propagates callback errors;
